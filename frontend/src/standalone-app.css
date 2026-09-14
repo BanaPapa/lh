@@ -1480,3 +1480,18 @@
 .api-conn-none {
   color: var(--muted-2);
 }
+
+/* 심사표 모달 — 룰북·API 연결과 같은 틀(80vw × 70vh). 안쪽은 심사표가 스크롤한다. */
+.sheet-modal {
+  box-sizing: border-box;
+  width: max(80vw, min(900px, 100%));
+  height: max(70vh, min(640px, calc(100vh - 48px)));
+  max-width: 100%;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  color: var(--fg);
+  background: var(--raise);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}

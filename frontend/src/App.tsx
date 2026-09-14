@@ -1,4 +1,4 @@
-import { MapPin, PanelRightOpen, X } from "lucide-react";
+import { MapPin, PanelRightOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { searchAddress } from "./api";
 import { useTheme } from "./theme";
@@ -745,18 +745,20 @@ function App() {
         </div>
 
         {sheetOpen && (
-          <div className="module-detail-overlay">
-            <header>
-              <strong>심사</strong>
-              <button
-                type="button"
-                onClick={() => setSheetOpen(false)}
-                aria-label="상세 닫기"
-              >
-                <X size={17} />
-              </button>
-            </header>
-            <div className="module-detail-body">
+          // 심사표는 룰북·API 연결과 같은 크기의 모달(80vw × 70vh)로 띄운다.
+          // 닫기·인쇄는 심사표 자체 머리글이 갖고 있어 바깥 머리글은 두지 않는다.
+          <div
+            className="api-keys-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setSheetOpen(false);
+            }}
+          >
+            <section
+              className="sheet-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="심사표"
+            >
               <ScreeningSheet
                   result={screeningResult}
                   running={screeningRunning}
@@ -787,7 +789,7 @@ function App() {
                   onClose={() => setSheetOpen(false)}
                   onRerun={() => void runScreening()}
                 />
-            </div>
+            </section>
           </div>
         )}
       </div>
