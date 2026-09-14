@@ -28,6 +28,20 @@ export interface PixelPoint {
   y: number;
 }
 
+/** 링(필지 경계) 꼭짓점의 산술 평균. 마커·검색 중심으로 쓸 대표점. */
+export function ringCentroid(ring: readonly LatLng[]): LatLng | null {
+  const points = ring.length >= 2 && ring[0].lat === ring[ring.length - 1].lat &&
+    ring[0].lng === ring[ring.length - 1].lng
+    ? ring.slice(0, -1)
+    : ring;
+  if (points.length === 0) return null;
+  const sum = points.reduce(
+    (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
+    { lat: 0, lng: 0 },
+  );
+  return { lat: sum.lat / points.length, lng: sum.lng / points.length };
+}
+
 /** 결과 드로어가 지도 우측을 덮으므로 심사 모드에서는 오른쪽 여백을 크게 둔다. */
 export function viewportPadding(hazardMode: boolean): ViewportPadding {
   return { top: 90, right: hazardMode ? 500 : 60, bottom: 70, left: 60 };

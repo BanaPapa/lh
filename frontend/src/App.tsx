@@ -12,6 +12,7 @@ import {
   resolveHazardParcelAt,
 } from "./hazard-review/api";
 import { ScreeningProgressModal } from "./screening/ScreeningProgressModal";
+import { ringCentroid } from "./hazard-review/mapViewport";
 import type {
   CadastralParcel,
   HazardApplicationType,
@@ -393,12 +394,18 @@ function App() {
       if (parcels.length === 0) {
         throw new Error("신청 필지를 확보하지 못했습니다.");
       }
+      // 사업지 좌표는 검색 지점이 아니라 지금 고른 대표 필지(첫 항목)의 중심이다.
+      // 검색 지점 필지를 빼고 다른 필지를 골랐으면 후보 조회 중심도 그쪽이어야 한다.
+      const representative = parcels.find((p) => p.geometry.length >= 4);
+      const siteCoordinates =
+        (representative && ringCentroid(representative.geometry)) ||
+        selectedCandidate.coordinates;
       const started = await startScreeningJob({
         site: {
           name: selectedCandidate.name,
           address:
             selectedCandidate.road_address || selectedCandidate.address || "",
-          coordinates: selectedCandidate.coordinates,
+          coordinates: siteCoordinates,
           housing_type: housingType,
           application_type: applicationType,
           parcels,

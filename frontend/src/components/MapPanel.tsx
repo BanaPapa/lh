@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  GripVertical,
   Bus,
   BusFront,
   CheckCheck,
@@ -53,6 +54,7 @@ import {
   type LatLngBox,
 } from "../hazard-review/cadastralTiles";
 import {
+  ringCentroid,
   symmetricBoxAroundSite,
   viewportPadding,
   visibleCenterPoint,
@@ -681,6 +683,37 @@ export function MapPanel({
   // 심사 시점 뷰포트까지만 남기고, 이후 이동해도 새로 받지 않는다. 사용자가
   // 스위치로 다시 켤 수 있고, 타일 없는 자리를 누르면 그 주변만 따로 받는다.
   const [cadastralAutoOn, setCadastralAutoOn] = useState(true);
+  // 레이어 스위치 패널의 드래그 이동량(px). 손잡이를 끌면 바뀐다.
+  const [switchOffset, setSwitchOffset] = useState({ x: 0, y: 0 });
+  const switchDragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null);
+  const startSwitchDrag = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      event.preventDefault();
+      const base = switchOffset;
+      switchDragRef.current = {
+        startX: event.clientX,
+        startY: event.clientY,
+        baseX: base.x,
+        baseY: base.y,
+      };
+      const onMove = (move: PointerEvent) => {
+        const drag = switchDragRef.current;
+        if (!drag) return;
+        setSwitchOffset({
+          x: drag.baseX + (move.clientX - drag.startX),
+          y: drag.baseY + (move.clientY - drag.startY),
+        });
+      };
+      const onUp = () => {
+        switchDragRef.current = null;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [switchOffset],
+  );
   const cadastralAutoRef = useRef(true);
   useEffect(() => {
     cadastralAutoRef.current = cadastralAutoOn;
@@ -1468,12 +1501,21 @@ export function MapPanel({
       overlaysRef.current.push(radiusCircle);
     });
 
+    // SITE 마커는 검색 좌표가 아니라 지금 고른 대표 필지(첫 항목) 위에 선다.
+    // 검색 지점 필지를 빼고 다른 필지를 고르면 사업지가 그쪽으로 옮겨 간 것이다.
+    const representative = hazardParcels.find((p) => p.geometry.length >= 4);
+    const representativeCenter = representative
+      ? ringCentroid(representative.geometry)
+      : null;
+    const siteMarkerPosition = representativeCenter
+      ? toMapPosition(runtime, representativeCenter.lat, representativeCenter.lng)
+      : center;
     const siteNode = document.createElement("button");
     siteNode.type = "button";
     siteNode.className = "site-map-marker";
     siteNode.textContent = "SITE";
     siteNode.title = site.name;
-    const siteOverlay = createHtmlOverlay(runtime, map, center, siteNode, {
+    const siteOverlay = createHtmlOverlay(runtime, map, siteMarkerPosition, siteNode, {
       yAnchor: 1.5,
       zIndex: 5,
     });
@@ -2090,7 +2132,22 @@ export function MapPanel({
         </div>
 
         {hazardMode && (
-          <div className="map-zoning-control">
+          <div
+            className="map-zoning-control"
+            style={{
+              transform: `translate(${switchOffset.x}px, ${switchOffset.y}px)`,
+            }}
+          >
+            <button
+              type="button"
+              className="map-switch-handle"
+              aria-label="레이어 스위치 패널 옮기기"
+              title="끌어서 옮기기"
+              onPointerDown={startSwitchDrag}
+            >
+              <GripVertical size={14} aria-hidden="true" />
+              <span>레이어</span>
+            </button>
             <button
               type="button"
               className={`map-zoning-toggle${cadastralAutoOn ? " is-on" : ""}`}
