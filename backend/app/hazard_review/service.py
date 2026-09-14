@@ -825,6 +825,11 @@ class HazardReviewService:
         # 그 슬랙 구간(판정 후보로 승격되지 못한 것)이 참고 핀으로 새어 나오지 않게
         # 명시적으로 거른다. 컨텍스트 반경이 0 이면 참고 핀은 없다.
         nearby = [f for f in nearby if f.distance_m <= HAZARD_CONTEXT_RADIUS_M]
+        # 참고 시설도 경계를 붙여 경계↔경계 거리로 보여 준다(2026-09-14 사용자
+        # 결정). 종전엔 VWorld 호출을 아끼려 점 좌표로 뒀는데, 화면에서 선이 시설
+        # 영역 안 점까지 들어가 "중심까지 재는 것 아니냐"는 오해를 낳았다. 경계
+        # 재측정으로 거리가 늘어난 시설은 그대로 참고 시설로 남는다(판정 불변).
+        await self._attach_facility_boundaries(request, nearby)
         nearby.sort(key=lambda item: item.distance_m)
         return facilities, nearby, failed_sources
 

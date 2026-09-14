@@ -1392,12 +1392,13 @@ export function MapPanel({
         const polygon = new runtime.sdk.maps.Polygon({
           map,
           ...(runtime.provider === "kakao" ? { path } : { paths: path }),
-          strokeWeight: 2,
+          // 판정 기준선은 보이되 화면을 덮지 않게 채움 없이 얇은 점선만 그린다.
+          strokeWeight: 1.5,
           strokeColor: bandColor,
-          strokeOpacity: 0.9,
+          strokeOpacity: 0.85,
           strokeStyle: "shortdash",
           fillColor: bandColor,
-          fillOpacity: band.threshold_m >= 500 ? 0.045 : 0.08,
+          fillOpacity: 0,
         });
         overlaysRef.current.push(polygon);
         path.forEach((point) => bounds.extend(point));
@@ -1494,9 +1495,20 @@ export function MapPanel({
       const zoningText = facility.zoning_name
         ? ` · ${facility.zoning_name}`
         : "";
-      const metaText = nearby
-        ? `${finding.label} · 기준 밖 · ${distanceText}${zoningText}`
-        : `${finding.label} · ${distanceText}${zoningText}`;
+      // 이 시설이 어떤 항목에서 어떤 결과를 냈는지 한 줄로. 기준거리 밖 시설은
+      // 판정에 들어가지 않아 「통과」다. 판정창 안 시설은 항목의 판정 상태를 쓴다.
+      const thresholdText =
+        finding.threshold_m !== null ? `기준 ${finding.threshold_m}m` : "";
+      const verdictText = nearby
+        ? "기준거리 밖 → 통과"
+        : finding.status === "exclusion_match"
+          ? "저촉 → 매입제외"
+          : finding.status === "review_required"
+            ? "검토 필요"
+            : finding.status_label;
+      const metaText = [finding.label, thresholdText, distanceText, verdictText]
+        .filter(Boolean)
+        .join(" · ") + zoningText;
 
       // 이미지 마커 + 브라우저 기본 title 이었다. 호버하면 OS 툴팁이 조그맣게
       // 떠서 무슨 시설인지 읽기 어려웠다. HTML 오버레이로 바꿔 이름·항목·거리를
@@ -1509,9 +1521,7 @@ export function MapPanel({
       markerNode.style.setProperty("--hazard-tone", markerColor);
       markerNode.setAttribute(
         "aria-label",
-        `${finding.label} · ${facility.name}${
-          nearby ? " · 기준 밖" : ""
-        } · ${distanceText}`,
+        `${finding.label} · ${facility.name} · ${distanceText} · ${verdictText}`,
       );
 
       const pinNode = document.createElement("span");
@@ -1895,7 +1905,7 @@ export function MapPanel({
             )}
             {hazardMarkers.some((marker) => marker.nearby) && (
               <span>
-                <i className="marker-nearby" /> 기준 밖
+                <i className="marker-nearby" /> 기준거리 밖 (통과)
               </span>
             )}
             <span>

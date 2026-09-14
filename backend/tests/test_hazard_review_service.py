@@ -1879,8 +1879,10 @@ class TestNearbyFacilities:
         # 반경 밖 시설은 판정 후보에도 없다.
         assert "반경밖모텔" not in {f.name for f in finding.facilities}
 
-    def test_nearby_facility_has_no_geometry(self) -> None:
-        # 참고 시설은 경계 조회를 건너뛰므로 점 좌표 그대로다(geometry 비어 있음).
+    def test_nearby_facility_gets_boundary_too(self) -> None:
+        # 참고 시설도 경계를 붙여 경계↔경계 거리로 보여 준다(2026-09-14). 종전엔
+        # 점 좌표로 뒀는데 지도의 선이 시설 영역 안 점까지 들어가 오해를 낳았다.
+        # 판정은 바뀌지 않는다(위 test_nearby_does_not_change_verdict).
         result = self._run(
             [
                 stored_facility("lodgings", "판정후보모텔", 0, 60),
@@ -1889,8 +1891,10 @@ class TestNearbyFacilities:
         )
         finding = self._lodging_finding(result)
         nearby = next(f for f in finding.nearby_facilities if f.name == "참고반경모텔")
-        assert nearby.geometry == []
-        assert nearby.geometry_type == "point"
+        assert len(nearby.geometry) >= 4
+        assert nearby.geometry_type == "polygon"
+        # 경계까지 재므로 점 거리(300m)보다 짧아진다(가짜 필지 반폭 5m).
+        assert nearby.distance_m < 300
 
 
 # ---------------------------------------------------------------------------
