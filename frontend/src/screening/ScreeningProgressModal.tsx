@@ -1,17 +1,14 @@
-import { ChevronDown, Square, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ScreeningJobStatus } from "./types";
 
 /**
- * 심사 진행 화면.
+ * 심사 진행 모달.
  *
- * 예전에는 유해시설·심사 두 모듈이 같은 모달을 나눠 썼고, 그래서 제목이
- * 「유해시설 검토 진행 중」으로 고정돼 심사를 돌려도 유해시설이라 적혔다.
- * 실행 경로가 심사 하나로 줄면서 이 모달도 심사 것이 되었다.
- *
- * 표현은 리포트(report.css)와 같은 규격을 쓴다. 대문자 영문 눈썹
- * 문구, 주황 진행바, 원형 스피너를 걷어내고 단계 목록과 로그만 남긴다.
+ * 좌: 단계별 진행률 막대 + 상세 로그(접힘) · 우: 라이브 카운트(확인한 건수)와
+ * 중지 버튼. 심사가 끝나면 App 이 모달을 내리고 결과 레일이 이어받으므로
+ * 완료 화면은 없다.
  */
 interface ScreeningProgressModalProps {
   open: boolean;
@@ -20,13 +17,29 @@ interface ScreeningProgressModalProps {
   onStop: () => void;
 }
 
+function unitValue(item: ScreeningJobStatus["items"][number]): string {
+  if (item.status === "completed") {
+    return item.count !== null ? `${item.count.toLocaleString()}건` : "완료";
+  }
+  if (item.status === "pending") return "대기";
+  if (item.status === "failed") return "실패";
+  return `${item.progress}%`;
+}
+
+function unitPrefix(status: ScreeningJobStatus["items"][number]["status"]): string {
+  if (status === "running") return "▸ ";
+  if (status === "completed") return "✓ ";
+  if (status === "failed") return "✕ ";
+  return "";
+}
+
 export function ScreeningProgressModal({
   open,
   progress,
   siteName,
   onStop,
 }: ScreeningProgressModalProps) {
-  const [logOpen, setLogOpen] = useState(true);
+  const [logOpen, setLogOpen] = useState(false);
   const logBodyRef = useRef<HTMLDivElement>(null);
   const activeUnitRef = useRef<HTMLLIElement>(null);
   const items = progress?.items ?? [];
@@ -34,7 +47,7 @@ export function ScreeningProgressModal({
     (item) => item.status === "completed",
   ).length;
   const evidenceCount = items.reduce((sum, item) => sum + (item.count ?? 0), 0);
-  const percent = Math.max(progress?.progress ?? 2, 2);
+  const logs = items.filter((item) => item.status !== "pending");
 
   useEffect(() => {
     if (logOpen && logBodyRef.current) {
@@ -49,129 +62,118 @@ export function ScreeningProgressModal({
   if (!open) return null;
 
   return createPortal(
-    <div className="analysis-modal-backdrop screening-progress-backdrop">
+    <div className="sp-overlay">
       <section
-        className="analysis-modal is-loading screening-progress-modal"
+        className={`sp-card${logOpen ? " is-log-open" : ""}`}
         role="dialog"
         aria-modal="true"
-        aria-label="서류심사 진행"
+        aria-label="심사 진행"
       >
-        <header className="analysis-modal-header">
-          <div className="analysis-modal-title">
-            <span>LH 신축매입약정 서류심사</span>
-            <strong>{siteName || "심사 진행 중"}</strong>
-          </div>
-          <div className="analysis-modal-actions">
-            <button
-              type="button"
-              className="modal-close"
-              aria-label="심사 중단"
-              onClick={onStop}
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </header>
-
-        <div className="progress-body">
-          <div className="progress-headline">
-            <p className="progress-stage">
-              {progress?.stage || "심사 작업을 준비하고 있습니다."}
-            </p>
-            <p className="progress-message">
-              {progress?.message ||
-                "신청필지와 규칙팩을 확인한 뒤 1차 판정과 2차 배점을 차례로 계산합니다."}
-            </p>
-            <div
-              className="progress-meter"
-              role="progressbar"
-              aria-valuenow={percent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="전체 진행률"
-            >
-              <i style={{ width: `${percent}%` }} />
+        <div className="sp-body">
+          {/* 좌: 단계별 진행률 */}
+          <div className="sp-left">
+            <div className="sp-head">
+              <b>심사 진행{siteName ? ` · ${siteName}` : ""}</b>
+              <span className="sp-frac">
+                {completedCount} / {items.length || 3}
+              </span>
             </div>
-            <dl className="progress-facts">
-              <div>
-                <dt>전체 진행률</dt>
-                <dd>{percent}%</dd>
-              </div>
-              <div>
-                <dt>완료 단계</dt>
-                <dd>
-                  {completedCount} / {items.length || 1}
-                </dd>
-              </div>
-              <div>
-                <dt>확인한 건수</dt>
-                <dd>{evidenceCount.toLocaleString()}</dd>
-              </div>
-            </dl>
-          </div>
 
-          <ol className="progress-steps">
-            {items.map((item) => (
-              <li
-                key={item.id}
-                ref={
-                  item.status === "running" && item.label === progress?.stage
-                    ? activeUnitRef
-                    : undefined
-                }
-                className={`is-${item.status}`}
+            <ol className="sp-list">
+              {items.length === 0 && (
+                <li className="sp-unit is-pending">
+                  <div className="sp-unit-row">
+                    <span className="sp-nm">심사 작업을 준비하고 있습니다</span>
+                    <span className="sp-ct">대기</span>
+                  </div>
+                  <div className="sp-bar">
+                    <i style={{ width: "0%" }} />
+                  </div>
+                </li>
+              )}
+              {items.map((item) => (
+                <li
+                  key={item.id}
+                  ref={item.status === "running" ? activeUnitRef : undefined}
+                  className={`sp-unit is-${item.status}${
+                    item.status === "completed" && item.count === 0 ? " is-empty" : ""
+                  }`}
+                >
+                  <div className="sp-unit-row">
+                    <span className="sp-nm">
+                      {unitPrefix(item.status)}
+                      {item.label}
+                    </span>
+                    <span className="sp-ct">{unitValue(item)}</span>
+                  </div>
+                  <div className="sp-bar">
+                    <i
+                      style={{
+                        width: `${item.status === "completed" ? 100 : item.progress}%`,
+                      }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            <div className="sp-log-wrap">
+              <button
+                type="button"
+                className="sp-log-toggle"
+                aria-expanded={logOpen}
+                onClick={() => setLogOpen((current) => !current)}
               >
-                <span className="progress-step-label">{item.label}</span>
-                <span className="progress-step-value">
-                  {item.status === "completed" && item.count !== null
-                    ? `${item.count.toLocaleString()}건`
-                    : item.status === "pending"
-                      ? "대기"
-                      : item.status === "failed"
-                        ? "실패"
-                        : `${item.progress}%`}
-                </span>
-                <i>
-                  <span style={{ width: `${item.progress}%` }} />
-                </i>
-              </li>
-            ))}
-          </ol>
-
-          <div className="progress-log">
-            <button
-              type="button"
-              className="progress-log-toggle"
-              aria-expanded={logOpen}
-              onClick={() => setLogOpen((current) => !current)}
-            >
-              <ChevronDown size={14} className={logOpen ? "is-open" : ""} />
-              상세 로그
-              <b>{items.filter((item) => item.status !== "pending").length}</b>
-            </button>
-            {logOpen && (
-              <div className="progress-log-body" ref={logBodyRef}>
-                {items
-                  .filter((item) => item.status !== "pending")
-                  .map((item) => (
-                    <p
-                      key={`${item.id}-${item.status}`}
-                      className={`log-${item.status}`}
-                    >
-                      <span>{item.label}</span>
-                      {item.message && <small>{item.message}</small>}
-                    </p>
-                  ))}
-              </div>
-            )}
+                <ChevronDown size={15} className={logOpen ? "is-open" : ""} />
+                상세 로그
+                <span className="sp-log-count">{logs.length || ""}</span>
+              </button>
+              {logOpen && (
+                <div className="sp-log-body" ref={logBodyRef}>
+                  {logs.length === 0 ? (
+                    <p className="sp-log-empty">로그가 없습니다</p>
+                  ) : (
+                    logs.map((item) => (
+                      <p
+                        key={`${item.id}-${item.status}`}
+                        className={`sp-log-entry is-${item.status}`}
+                      >
+                        <span className="sp-log-ic" aria-hidden="true">
+                          {item.status === "completed"
+                            ? "✓"
+                            : item.status === "failed"
+                              ? "✕"
+                              : "●"}
+                        </span>
+                        <span className="sp-log-msg">
+                          <b>{item.label}</b>
+                          {item.message && <small>{item.message}</small>}
+                        </span>
+                      </p>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          <footer className="progress-actions">
-            <button type="button" onClick={onStop}>
-              <Square size={11} fill="currentColor" aria-hidden="true" />
-              심사 중지
-            </button>
-          </footer>
+          {/* 우: 라이브 카운트 */}
+          <div className="sp-right">
+            <div className="sp-live">
+              <span className="sp-spin" aria-hidden="true" />
+              <div className="sp-live-v">{evidenceCount.toLocaleString()}</div>
+              <div className="sp-live-l">건 확인 중…</div>
+              <div className="sp-live-frac">
+                {progress?.stage || "준비 중"}
+              </div>
+              <button type="button" className="sp-stop-btn" onClick={onStop}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="6" y="6" width="12" height="12" rx="1.5" />
+                </svg>
+                심사 중지
+              </button>
+            </div>
+          </div>
         </div>
       </section>
     </div>,

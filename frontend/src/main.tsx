@@ -10,10 +10,8 @@ import "./styles.css";
 import "./hazard-review.css";
 import "./screening.css";
 import "./unified-layout.css";
-import "./modal-layout.css";
 import "./standalone-app.css";
-// 리포트 표현 규격은 마지막에 온다. styles.css 의 세 겹 레이어를 한 겹으로 덮는다.
-import "./report.css";
+import "./screening-progress.css";
 
 // 첫 페인트 전에 테마를 확정한다. 기본값은 라이트다.
 applyTheme(readStoredTheme());

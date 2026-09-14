@@ -1,0 +1,401 @@
+/* ── 심사 진행 모달 ─────────────────────────────────────────────
+   좌: 단계별 진행률 막대 + 상세 로그 · 우: 라이브 카운트 + 중지 버튼.
+   흰 카드, 둥근 모서리 20px, 진행색은 테마 강조색(--blue). */
+
+.sp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 8, 14, 0.62);
+  animation: sp-fade 0.18s ease;
+}
+
+@keyframes sp-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.sp-card {
+  position: relative;
+  width: min(1120px, 94vw);
+  min-height: 420px;
+  padding: 26px 28px;
+  color: var(--fg);
+  background: var(--surface-3, #fff);
+  border: 1px solid var(--border-2);
+  border-radius: 20px;
+  box-shadow: 0 28px 90px rgba(3, 10, 17, 0.42);
+  animation: sp-pop 0.2s ease;
+}
+
+@keyframes sp-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sp-body {
+  display: flex;
+  gap: 22px;
+  min-height: 0;
+}
+
+.sp-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sp-right {
+  flex: none;
+  width: 34%;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-left: 22px;
+  border-left: 1px solid var(--border);
+  text-align: center;
+}
+
+/* 머리줄 — 제목과 완료 분수 */
+
+.sp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sp-head b {
+  overflow: hidden;
+  color: var(--fg);
+  font-size: 20px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-frac {
+  flex: none;
+  color: var(--blue);
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 단계 목록 */
+
+.sp-list {
+  margin: 0;
+  padding: 0 6px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  list-style: none;
+  min-height: 0;
+}
+
+.sp-unit {
+  font-size: 20px;
+}
+
+.sp-unit-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.sp-nm {
+  overflow: hidden;
+  color: var(--fg-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-ct {
+  flex: none;
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sp-unit.is-running .sp-nm, .sp-unit.is-running .sp-ct {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.sp-unit.is-completed .sp-nm {
+  color: var(--fg);
+}
+
+.sp-unit.is-completed .sp-ct {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.sp-unit.is-empty .sp-nm, .sp-unit.is-empty .sp-ct {
+  color: var(--muted-2);
+  font-weight: 400;
+}
+
+.sp-unit.is-failed .sp-ct {
+  color: var(--red, #d92d3f);
+  font-weight: 700;
+}
+
+.sp-bar {
+  height: 9px;
+  overflow: hidden;
+  background: var(--border-2);
+  border-radius: 99px;
+}
+
+.sp-bar i {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  border-radius: 99px;
+  transition: width 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.sp-unit.is-empty .sp-bar i {
+  background: var(--border-2);
+}
+
+.sp-unit.is-failed .sp-bar i {
+  background: var(--red, #d92d3f);
+}
+
+/* 상세 로그 — 목록 아래에 붙고, 펼치면 카드가 세로로 자란다 */
+
+.sp-log-wrap {
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.sp-log-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sp-log-toggle:hover {
+  color: var(--fg);
+}
+
+.sp-log-toggle svg {
+  transition: transform 140ms ease;
+}
+
+.sp-log-toggle svg.is-open {
+  transform: rotate(180deg);
+}
+
+.sp-log-count {
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-log-body {
+  height: 200px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.sp-card.is-log-open .sp-log-body {
+  height: 320px;
+}
+
+.sp-log-empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 15px;
+  text-align: center;
+}
+
+.sp-log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 5px 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.sp-log-ic {
+  flex: none;
+  width: 16px;
+  color: var(--muted-2);
+  text-align: center;
+}
+
+.sp-log-entry.is-completed .sp-log-ic {
+  color: var(--blue);
+}
+
+.sp-log-entry.is-failed .sp-log-ic {
+  color: var(--red, #d92d3f);
+}
+
+.sp-log-msg {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.sp-log-msg b {
+  color: var(--fg);
+  font-weight: 700;
+}
+
+.sp-log-msg small {
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+/* 우측 라이브 카운트 */
+
+.sp-live {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.sp-spin {
+  display: inline-block;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 10px;
+  border: 5px solid color-mix(in srgb, var(--blue) 16%, transparent);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: sp-spin 0.7s linear infinite;
+}
+
+@keyframes sp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sp-live-v {
+  color: var(--blue);
+  font-size: 80px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.sp-live-l {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.sp-live-frac {
+  max-width: 100%;
+  margin-top: 14px;
+  overflow: hidden;
+  color: var(--muted-2);
+  font-size: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-stop-btn {
+  width: 200px;
+  height: 52px;
+  margin-top: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #fff;
+  background: var(--blue);
+  border: 0;
+  border-radius: 12px;
+  box-shadow:
+    0 12px 26px -10px color-mix(in srgb, var(--blue) 45%, transparent),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  font: inherit;
+  font-size: 19px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 0.16s cubic-bezier(0.22, 0.61, 0.36, 1),
+    filter 0.16s;
+}
+
+.sp-stop-btn:hover {
+  transform: translateY(-1px);
+}
+
+.sp-stop-btn:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.sp-stop-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.2;
+}
+
+/* 좁은 화면: 두 열을 세로로 쌓는다 */
+
+@media (max-width: 760px) {.sp-card {
+    padding: 20px;
+    min-height: 0;
+  }
+
+.sp-body {
+    flex-direction: column;
+  }
+
+.sp-right {
+    width: 100%;
+    min-width: 0;
+    padding: 20px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+.sp-live-v {
+    font-size: 56px;
+  }
+}
