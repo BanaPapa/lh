@@ -3,15 +3,23 @@ import { useCallback, useState } from "react";
 
 export type ThemeMode = "light" | "dark";
 
-const STORAGE_KEY = "site-scope-theme";
+const STORAGE_KEY = "lh-screening-theme";
+// 이전 이름으로 저장된 값은 처음 읽을 때 새 이름으로 옮긴다.
+const LEGACY_STORAGE_KEY = "site-scope-theme";
 const DEFAULT_THEME: ThemeMode = "light";
 
 /** 저장된 테마를 읽는다. 값이 없거나 읽기가 막히면 라이트로 본다. */
 export function readStoredTheme(): ThemeMode {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === "dark"
-      ? "dark"
-      : DEFAULT_THEME;
+    let stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored === null) {
+      stored = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (stored !== null) {
+        window.localStorage.setItem(STORAGE_KEY, stored);
+        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    }
+    return stored === "dark" ? "dark" : DEFAULT_THEME;
   } catch {
     return DEFAULT_THEME;
   }

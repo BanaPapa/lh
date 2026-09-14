@@ -10,11 +10,6 @@
   gap: 5px;
 }
 
-.hazard-segmented-grid.four {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 6px;
-}
-
 .hazard-segmented-grid button {
   min-height: 34px;
   padding: 0 4px;
@@ -27,8 +22,7 @@
   cursor: pointer;
 }
 
-.hazard-segmented-grid button:hover,
-.hazard-segmented-grid button.is-active {
+.hazard-segmented-grid button:hover, .hazard-segmented-grid button.is-active {
   color: #fff;
   background: var(--blue);
   border-color: var(--blue);
@@ -40,6 +34,7 @@
 }
 
 /* ── 신청유형 선택 패널 (결과 레일) ─────────────────────────── */
+
 .hazard-criteria-block {
   padding: 12px;
   background: var(--surface-2);
@@ -200,7 +195,9 @@
 }
 
 /* 연속지적도에서 실제 경계를 받은 필지는 임시 필지와 구분해 표시한다. */
+
 /* ── 룰 그룹핑 / data_state / 근거 (검토 드로어) ─────────────── */
+
 .hazard-map-legend {
   position: absolute;
   bottom: 18px;
@@ -254,6 +251,7 @@
 }
 
 /* 1차 유해시설(빨강 채움). 범례는 지도 타일 위 핀과 같은 색이어야 한다. */
+
 .hazard-map-legend .marker-primary {
   width: 10px;
   height: 10px;
@@ -265,6 +263,7 @@
 
 /* 참고 시설은 밴드가 아니라 빈 회색 원으로 표시해 판정 밴드와 구분한다.
    지도 타일(항상 밝음) 위 스와치라 배경은 테마 토큰이 아니라 고정 흰색이다. */
+
 .hazard-map-legend .marker-nearby {
   width: 10px;
   height: 10px;
@@ -278,6 +277,7 @@
 }
 
 /* 실측 거리 표시. 판정을 가르는 수치라 지도 위에서 가장 또렷해야 한다. */
+
 .hazard-distance-label {
   display: inline-flex;
   align-items: center;
@@ -301,6 +301,7 @@
    예전에는 SVG 이미지 마커에 브라우저 기본 title 을 달아, 호버하면 OS 툴팁이
    조그맣게 떴다. 무슨 시설인지 읽으려고 마우스를 올려 두고 기다려야 했다.
    이제 핀과 이름표가 한 요소라, 호버하거나 고르면 이름·항목·거리가 함께 선다. */
+
 .hazard-map-marker {
   --hazard-tone: var(--muted, #667085);
   position: relative;
@@ -332,6 +333,7 @@
 }
 
 /* 느낌표는 핀과 함께 기울면 읽히지 않는다. 되돌려 세운다. */
+
 .hazard-map-pin::before {
   font-size: 14px;
   font-weight: 800;
@@ -340,8 +342,7 @@
   content: "!";
 }
 
-.hazard-map-marker:hover .hazard-map-pin,
-.hazard-map-marker.is-selected .hazard-map-pin {
+.hazard-map-marker:hover .hazard-map-pin, .hazard-map-marker.is-selected .hazard-map-pin {
   transform: rotate(-45deg) scale(1.12);
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.35),
@@ -349,6 +350,7 @@
 }
 
 /* 이름표는 평소에 접어 둔다. 후보가 여럿이면 지도가 글자로 덮인다. */
+
 .hazard-map-card {
   position: absolute;
   bottom: 0;
@@ -374,8 +376,7 @@
     padding 200ms ease;
 }
 
-.hazard-map-marker:hover .hazard-map-card,
-.hazard-map-marker.is-selected .hazard-map-card {
+.hazard-map-marker:hover .hazard-map-card, .hazard-map-marker.is-selected .hazard-map-card {
   max-width: 260px;
   padding: 7px 11px;
   opacity: 1;
@@ -406,6 +407,7 @@
 }
 
 /* 고른 마커는 이름표가 계속 서 있으므로 다른 마커 위로 올린다. */
+
 .hazard-map-marker.is-selected {
   z-index: 2;
 }
@@ -419,11 +421,13 @@
 /* exclusion_match: 빨강 채움 "!" — 기본 .hazard-map-pin 규칙 그대로라 별도 없음. */
 
 /* review_required: 빨강 채움 "?" */
+
 .hazard-map-marker.is-review_required .hazard-map-pin::before {
   content: "?";
 }
 
 /* geometry_missing: 빨강 점선 테두리 + 흰 배경 "?". 배경은 지도 타일 위라 고정 흰색. */
+
 .hazard-map-marker.is-geometry_missing .hazard-map-pin {
   color: var(--hazard-tone);
   background: #fff;
@@ -435,16 +439,13 @@
 }
 
 /* 그 외(판정창 안 시설이 없는 상태지만 핀이 서면): 빨강 윤곽 + 흰 배경, 글리프 없음. */
-.hazard-map-marker.is-no_conflict_in_snapshot .hazard-map-pin,
-.hazard-map-marker.is-dataset_missing .hazard-map-pin,
-.hazard-map-marker.is-not_applicable .hazard-map-pin {
+
+.hazard-map-marker.is-no_conflict_in_snapshot .hazard-map-pin, .hazard-map-marker.is-dataset_missing .hazard-map-pin, .hazard-map-marker.is-not_applicable .hazard-map-pin {
   color: var(--hazard-tone);
   background: #fff;
 }
 
-.hazard-map-marker.is-no_conflict_in_snapshot .hazard-map-pin::before,
-.hazard-map-marker.is-dataset_missing .hazard-map-pin::before,
-.hazard-map-marker.is-not_applicable .hazard-map-pin::before {
+.hazard-map-marker.is-no_conflict_in_snapshot .hazard-map-pin::before, .hazard-map-marker.is-dataset_missing .hazard-map-pin::before, .hazard-map-marker.is-not_applicable .hazard-map-pin::before {
   content: "";
 }
 
@@ -452,6 +453,7 @@
    회색 테두리 원으로 그려 판단을 방해하지 않는다. 느낌표 대신 빈 원만 남긴다.
    배경은 지도 타일 위라 테마 토큰이 아니라 고정 흰색이어야 다크에서도 흰 원이다.
    hover·selected 의 scale 효과는 기본 핀 규칙을 그대로 물려받는다. */
+
 .hazard-map-marker.is-nearby .hazard-map-pin {
   width: 22px;
   height: 22px;
@@ -470,29 +472,27 @@
 
 /* 지적편집도 상태 안내(로딩·게이트·3km·일부표시). small 스타일을 재사용하되
    활성 상태 정보라 좁은 화면에서도 감추지 않고, 색으로 조금 도드라지게 둔다. */
+
 .hazard-map-legend .cadastral-note {
   flex-basis: 100%;
   color: var(--fg-2);
 }
 
-@media (max-width: 1050px) {
-  .hazard-map-legend small {
+@media (max-width: 1050px) {.hazard-map-legend small {
     display: none;
   }
 
-  .hazard-map-legend .cadastral-note {
+.hazard-map-legend .cadastral-note {
     display: block;
   }
 }
 
-@media (max-width: 760px) {
-  .hazard-map-legend {
+@media (max-width: 760px) {.hazard-map-legend {
     right: 12px;
     bottom: 12px;
     left: 12px;
     flex-wrap: wrap;
   }
-
 }
 
 /* ── 2차 배점 근거 시설 ───────────────────────────────────────────
@@ -500,6 +500,7 @@
    예전엔 채움 없는 윤곽 핀이라 배경에 --raise 를 써 다크 테마에서 검은 원이
    됐다. 지도 타일(항상 밝음) 위 요소라 파랑은 테마와 무관한 고정 hex 로 쓴다.
    이름표(.hazard-map-card)와 거리 라벨 형식은 1차와 그대로 공유한다. */
+
 .hazard-map-marker.is-screening {
   --hazard-tone: #2563eb;
 }
@@ -511,16 +512,19 @@
 }
 
 /* 파랑 채움만으로 1차와 구분되므로 글리프는 두지 않는다. */
+
 .hazard-map-marker.is-screening .hazard-map-pin::before {
   content: "";
 }
 
 /* 2차 근거 시설의 최단거리선 라벨. 판정(빨강) 거리와 구분해 파랑으로 둔다. */
+
 .hazard-distance-label.is-amenity {
   background: var(--blue, #2563eb);
 }
 
 /* 문·출구 후보 핀. 작은 알약 버튼으로, selected 는 채워 강조한다. */
+
 .screening-door-pin {
   display: inline-flex;
   align-items: center;
@@ -546,8 +550,7 @@
   border-style: solid;
 }
 
-.screening-door-pin:hover,
-.screening-door-pin:focus-visible {
+.screening-door-pin:hover, .screening-door-pin:focus-visible {
   outline: 2px solid var(--blue, #2563eb);
   outline-offset: 2px;
 }
@@ -555,6 +558,7 @@
 /* 2차 근거 시설 핀은 파랑 채움 + 흰 테두리(.screening-hit-pin)다. 범례 스와치가
    속 빈 원에 테마 토큰(--raise)을 쓰면 다크에서 검은 "0" 처럼 보이고 핀과도 다르다.
    지도 위 핀과 같은 고정색을 쓴다. */
+
 .hazard-map-legend .marker-screening {
   width: 10px;
   height: 10px;
@@ -572,6 +576,7 @@
 }
 
 /* 용도지역(지적편집도) 오버레이가 켜졌음을 알리는 스와치. */
+
 .hazard-map-legend .marker-zoning {
   width: 10px;
   height: 10px;
@@ -581,6 +586,7 @@
 }
 
 /* ── 용도지역(지적편집도) 레이어 토글 — 줌 컨트롤 묶음 바로 아래 ─────────── */
+
 .map-zoning-control {
   position: absolute;
   top: 158px;
@@ -625,14 +631,14 @@
   opacity: 0.85;
 }
 
-@media (max-width: 720px) {
-  .map-zoning-control {
+@media (max-width: 720px) {.map-zoning-control {
     top: 150px;
     right: 12px;
   }
 }
 
 /* ── 기준점 지정 모드 안내 띠(#8·#9) ─────────────────────────────── */
+
 .designation-banner {
   position: absolute;
   top: 14px;
@@ -695,17 +701,14 @@
   border-color: var(--blue, #2563eb);
 }
 
-@media (max-width: 620px) {
-  .designation-banner {
+@media (max-width: 620px) {.designation-banner {
     flex-wrap: wrap;
   }
 
-  .designation-banner span {
+.designation-banner span {
     flex-direction: row;
     flex-wrap: wrap;
     gap: 4px;
     align-items: baseline;
   }
 }
-
-

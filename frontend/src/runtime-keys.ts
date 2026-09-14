@@ -20,7 +20,9 @@ export const RUNTIME_KEY_NAMES: RuntimeKeyName[] = [
   "VITE_NAVER_MAP_STYLE_ID",
 ];
 
-const STORAGE_PREFIX = "site-scope-runtime-key:";
+const STORAGE_PREFIX = "lh-screening-runtime-key:";
+// 이전 이름으로 저장된 키는 처음 읽을 때 새 이름으로 옮긴다(브라우저 키 유실 방지).
+const LEGACY_STORAGE_PREFIX = "site-scope-runtime-key:";
 
 // 빌드 시 주입된 폴백. localStorage 값이 없을 때만 쓴다.
 const ENV_FALLBACK: Record<RuntimeKeyName, string> = {
@@ -41,7 +43,14 @@ function storageKey(name: RuntimeKeyName): string {
 
 function safeGet(name: RuntimeKeyName): string | null {
   try {
-    return window.localStorage.getItem(storageKey(name));
+    const current = window.localStorage.getItem(storageKey(name));
+    if (current !== null) return current;
+    const legacy = window.localStorage.getItem(`${LEGACY_STORAGE_PREFIX}${name}`);
+    if (legacy !== null) {
+      window.localStorage.setItem(storageKey(name), legacy);
+      window.localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${name}`);
+    }
+    return legacy;
   } catch {
     return null;
   }

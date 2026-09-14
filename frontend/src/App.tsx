@@ -540,7 +540,7 @@ function App() {
   const showRail = Boolean(selectedCandidate) && railVisible;
 
   return (
-    <main className="site-scope-module solo-app" data-module-view="solo">
+    <main className="screening-app solo-app" data-module-view="solo">
       <TopSearchBar
         query={query}
         onQueryChange={(nextQuery) => {

@@ -12,6 +12,7 @@
 }
 
 /* ── 톤 ─────────────────────────────────────────────────────── */
+
 .screening-sheet .tone-danger {
   --screening-tone: var(--red);
 }
@@ -29,11 +30,13 @@
 }
 
 /* 숫자 열은 자릿수가 흔들리면 표로 읽히지 않는다. */
+
 .screening-sheet .is-num {
   font-variant-numeric: tabular-nums;
 }
 
 /* ── A. 머리말 ──────────────────────────────────────────────── */
+
 .screening-head {
   display: flex;
   align-items: flex-start;
@@ -145,6 +148,7 @@
 }
 
 /* ── 공용 고지 문구 ─────────────────────────────────────────── */
+
 .screening-notice {
   --screening-tone: var(--muted);
   margin: 0;
@@ -165,6 +169,7 @@
 }
 
 /* ── B. 종합 판정 배너 ──────────────────────────────────────── */
+
 .screening-verdict {
   --screening-tone: var(--muted);
   display: grid;
@@ -214,6 +219,7 @@
 }
 
 /* 부적격 사유. 화면에서 가장 중요한 블록이라 접지 않는다. */
+
 .screening-reasons {
   --screening-tone: var(--red);
   padding: 12px 14px;
@@ -253,6 +259,7 @@
 }
 
 /* ── 섹션 공통 ──────────────────────────────────────────────── */
+
 .screening-section {
   display: grid;
   gap: 10px;
@@ -260,6 +267,7 @@
 
 /* display 를 지정한 요소에는 브라우저 기본 [hidden] 규칙이 지므로 명시한다.
    이게 없으면 탭을 눌러도 두 단계가 함께 보인다. */
+
 .screening-sheet .screening-section[hidden] {
   display: none;
 }
@@ -298,8 +306,10 @@
 }
 
 /* ── C. 단계 탭 ─────────────────────────────────────────────── */
+
 /* 1차와 2차를 한 장에 쏟으면 지금 어느 쪽을 읽는지 알 수 없고 스크롤만 길다.
    인쇄할 때는 두 장이 다 나와야 하므로 아래 @media print 에서 되돌린다. */
+
 .screening-stage-tabs {
   display: flex;
   margin: 2px 0 2px;
@@ -349,6 +359,7 @@
 }
 
 /* ── C-1. 1차 매입제외 표 ───────────────────────────────────── */
+
 .screening-table-scroll {
   overflow-x: auto;
   background: var(--surface-3);
@@ -378,22 +389,23 @@
    줄바꿈되는 것을 막는다. th 에 min-width 를 주면 열 전체 최소 폭이 되고, 폭이
    모자라면 표가 대신 .screening-table-scroll 안에서 가로 스크롤된다.
    (참고: th min-width 는 열 전체에 적용된다) */
+
 /* 「항목」 열: 남는 폭을 흡수하지 않게 내용 폭만 차지한다(라벨은 한 줄). 그래야
    항목과 기준거리 사이가 벌어지지 않는다. */
+
 .screening-table thead th:nth-child(1) {
   min-width: 320px;
   width: 1%;
 }
 
 /* 라벨은 30자 안에서 줄바꿈해 항목 열이 가장 긴 라벨만큼 벌어지지 않게 한다. */
-.screening-row-label,
-.screening-row-toggle > span {
+
+.screening-row-label, .screening-row-toggle > span {
   display: inline-block;
   max-width: 30ch;
 }
 
-.screening-table thead th:nth-child(2),
-.screening-table thead th:nth-child(3) {
+.screening-table thead th:nth-child(2), .screening-table thead th:nth-child(3) {
   width: 96px;
   text-align: right;
 }
@@ -404,29 +416,30 @@
 
 /* 「근거」 열: 문장이 글자 단위로 눌리지 않게 최소 폭 확보. 남는 폭을 다 먹어
    데이터 열이 오른쪽 끝으로 밀리지 않게 문장 폭은 max-width 로 막는다. */
+
 .screening-table thead th:nth-child(5) {
   min-width: 420px;
   width: 1%;
 }
 
-.screening-row-reason,
-.screening-row-note {
+.screening-row-reason, .screening-row-note {
   width: 44ch;
   max-width: 44ch;
 }
 
 /* 「원천」 열: API·로컬·데모 한 단어. 내용 폭만. */
+
 .screening-table thead th:nth-child(6) {
   width: 1%;
 }
 
 /* 「데이터」 열: 원천 상세 칩. 남는 폭을 받아 근거 바로 옆에서 시작한다. */
+
 .screening-table thead th:nth-child(7) {
   min-width: 168px;
 }
 
-.screening-table tbody td,
-.screening-table tbody th {
+.screening-table tbody td, .screening-table tbody th {
   padding: 9px 10px;
   border-top: 1px solid var(--border);
   text-align: left;
@@ -514,15 +527,13 @@
 }
 
 /* 판정 미적용 · 통과 처리. 흐리게 두되 사유는 반드시 읽히게 남긴다. */
-.screening-row.is-passthrough > th,
-.screening-row.is-passthrough > td {
+
+.screening-row.is-passthrough > th, .screening-row.is-passthrough > td {
   border-top-style: dashed;
   background: color-mix(in srgb, var(--muted) 6%, transparent);
 }
 
-.screening-row.is-passthrough .screening-row-label,
-.screening-row.is-passthrough .screening-row-toggle,
-.screening-row.is-passthrough .screening-row-reason {
+.screening-row.is-passthrough .screening-row-label, .screening-row.is-passthrough .screening-row-toggle, .screening-row.is-passthrough .screening-row-reason {
   color: var(--muted);
 }
 
@@ -557,12 +568,13 @@
 
 /* 「데이터」 열 — 판정에 붙은 원천 칩. API/로컬을 한눈에 가른다. 내용 기준 좁은
    열이라 칩은 줄바꿈을 허용한다. 미연결 항목은 빈 셀이라 여기 아무것도 없다. */
-.screening-data-cell,
-.screening-source-cell {
+
+.screening-data-cell, .screening-source-cell {
   vertical-align: top;
 }
 
 /* 「원천」 열 배지 — 데이터 칩과 같은 색 체계(API 파랑 · 로컬 무채색 · 데모 점선). */
+
 .screening-source-kinds {
   display: flex;
   flex-wrap: wrap;
@@ -618,6 +630,7 @@
 }
 
 /* API 원천: 원천 URL 로 나가는 링크. 파란 계열로 「눌러서 원천 확인」을 알린다. */
+
 .screening-data-chip.is-api {
   color: var(--blue);
   background: color-mix(in srgb, var(--blue) 10%, transparent);
@@ -634,6 +647,7 @@
 }
 
 /* 로컬 납품 파일: 무채색 칩. 링크 없음(교차검증 대상이 아님을 색으로 낮춘다). */
+
 .screening-data-chip.is-local {
   color: var(--muted);
   background: var(--surface-2);
@@ -641,6 +655,7 @@
 }
 
 /* 데모 데이터: 실원천이 아님을 흐린 점선으로 구분한다. */
+
 .screening-data-chip.is-demo {
   color: var(--muted);
   background: color-mix(in srgb, var(--muted) 8%, transparent);
@@ -737,6 +752,7 @@
 
 /* 석유대체연료 용도지역 표시(1차 근거 행). 출처보다 또렷하게 둔다
    (LH 확정 2026-09-11 #5). 일반 em 규칙보다 특이도를 높여 색을 되살린다. */
+
 .screening-facility-list em.screening-facility-zoning {
   color: var(--fg-2);
   font-weight: 700;
@@ -744,6 +760,7 @@
 
 /* 「확인 요청」 배지를 시설 목록 안에서도 기존 배지/톤 색으로 보이게 한다.
    .screening-facility-list em 규칙이 색·글자크기를 덮지 않도록 특이도를 맞춘다. */
+
 .screening-facility-list em.screening-badge {
   color: var(--screening-tone, var(--muted));
   font-size: 13.8px;
@@ -772,11 +789,12 @@
   line-height: 1.55;
 }
 
-
 /* ── C-1. 「주거환경 저해시설」 판정 고지 ────────────────────── */
+
 /* 심사표 2항 15개 항목 중 LH 가 요청한 자동 판정은 이 한 항목뿐이다. 나머지 14개
    항목 목록은 화면에서 뺐고(담당자 서류 확인 대상), 「자동 판정 통과가 매입적격을
    뜻하지 않는다」는 고지만 한 줄로 남긴다. */
+
 .screening-checklist-note {
   margin: 0;
   padding: 10px 12px;
@@ -797,6 +815,7 @@
 }
 
 /* ── D. 2차 생활편의성 ──────────────────────────────────────── */
+
 .screening-score-head {
   display: grid;
   gap: 5px;
@@ -978,57 +997,6 @@
   color: var(--blue);
 }
 
-.screening-group-list {
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 5px;
-  list-style: none;
-}
-
-.screening-group-list > li {
-  --screening-tone: var(--muted);
-  padding: 7px 9px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--screening-tone);
-  border-radius: 8px;
-}
-
-.screening-group-list > li > div {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-}
-
-.screening-group-list > li svg {
-  color: var(--screening-tone);
-}
-
-.screening-group-list strong {
-  font-size: 15px;
-}
-
-.screening-group-list > li > div > b {
-  color: var(--fg-2);
-  font-size: 15px;
-}
-
-.screening-group-list > li > div > span {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 15px;
-}
-
-.screening-group-source {
-  display: block;
-  margin-top: 3px;
-  color: var(--muted-2);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
 .screening-out-of-scope {
   padding: 11px 13px;
   background: var(--surface-2);
@@ -1088,6 +1056,7 @@
 }
 
 /* ── E. 하단 고지 ───────────────────────────────────────────── */
+
 .screening-footer {
   display: grid;
   gap: 7px;
@@ -1138,6 +1107,7 @@
 }
 
 /* ── 결과 이전 안내 ─────────────────────────────────────────── */
+
 .screening-empty {
   margin: 16px;
   display: flex;
@@ -1194,38 +1164,35 @@
   font-style: normal;
 }
 
-@media (max-width: 760px) {
-  .screening-sheet {
+@media (max-width: 760px) {.screening-sheet {
     padding: 12px 12px 22px;
   }
 
-  .screening-head-controls {
+.screening-head-controls {
     width: 100%;
   }
 
-  .screening-select {
+.screening-select {
     min-width: 0;
     width: 100%;
   }
 
-  .screening-field {
+.screening-field {
     flex: 1 1 140px;
   }
 }
 
-@media print {
-  .screening-head-actions,
-  .screening-footer button,
-  .screening-stage-tabs {
+@media print {.screening-head-actions, .screening-footer button, .screening-stage-tabs {
     display: none;
   }
 
-  /* 화면에서는 한 단계씩 보지만 인쇄본은 심사표 한 장이라 둘 다 나와야 한다. */
-  .screening-sheet .screening-section[hidden] {
+/* 화면에서는 한 단계씩 보지만 인쇄본은 심사표 한 장이라 둘 다 나와야 한다. */
+
+.screening-sheet .screening-section[hidden] {
     display: grid;
   }
 
-  .screening-table-scroll {
+.screening-table-scroll {
     overflow-x: visible;
   }
 }
@@ -1233,36 +1200,6 @@
 /* ── 2차 시설군 토글·근거 시설 행(정민재 검증판) ─────────────────────
    시설군 행을 눌러 지도에 전체를 펼치고, 근거 시설마다 측정 기준·문 선택·
    기준점 지정을 제자리에서 다룬다. 지도 없이도 동작한다(카카오 키 없을 때). */
-.screening-group-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  color: var(--fg);
-  background: transparent;
-  border: 0;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-}
-
-.screening-group-toggle.is-static {
-  cursor: default;
-}
-
-.screening-group-toggle:not(.is-static):hover {
-  color: var(--blue);
-}
-
-.screening-group-toggle > svg:first-child {
-  transition: transform 140ms ease;
-}
-
-.screening-group-toggle > svg.is-open {
-  transform: rotate(90deg);
-}
 
 .screening-hit-list {
   margin: 8px 0 0;
@@ -1448,24 +1385,6 @@
   background: var(--blue);
 }
 
-.screening-hit-diff {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 7px 0 0;
-  padding: 6px 9px;
-  color: var(--fg);
-  background: color-mix(in srgb, var(--blue) 12%, transparent);
-  border-radius: 7px;
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-}
-
-.screening-hit-diff > svg {
-  flex: none;
-  color: var(--blue);
-}
-
 .screening-notice-action {
   margin-left: auto;
   padding: 2px 9px;
@@ -1502,14 +1421,14 @@
 }
 
 /* ── 2차 시설군 표 — 1차 판정 표와 같은 열 구조(시설군·건수·최근접·결과·근거·원천·데이터) ── */
+
 .screening-group-label {
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
 
-.screening-group-table .screening-row-toggle svg,
-.screening-group-label svg {
+.screening-group-table .screening-row-toggle svg, .screening-group-label svg {
   color: var(--screening-tone);
 }
 

@@ -1,6 +1,4 @@
-html,
-body,
-#root {
+html, body, #root {
   width: 100%;
   min-width: 320px;
   height: 100%;
@@ -9,6 +7,7 @@ body,
 
 /* 라이트가 기본값이다. 다크는 html[data-theme="dark"] 로만 켜진다.
    두 테마 모두 중립 회색 위에 파랑 하나만 액센트로 쓴다. */
+
 :root {
   color-scheme: light;
   /* 한 벌로 통일한다. Pretendard 는 SIL OFL 1.1 이라 상업 이용에 제약이 없고,
