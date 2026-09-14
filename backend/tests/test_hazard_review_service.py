@@ -709,7 +709,8 @@ class TestImplementationState:
         result = run_review(build_request("house", "multi_child"))
         category = category_for(result, "factory_registered")
         assert category.implementation_state == "not_implemented"
-        assert "factoryON" in category.implementation_note
+        # 로컬 표준본도 산단공 API 도 없을 때의 사유(2026-09-15: API 배선 후 문구 변경).
+        assert "등록공장 원천 없음" in category.implementation_note
 
     def test_dance_academy_adapter_is_ready(self) -> None:
         # 무도학원 엔드포인트는 2026-08-27 실호출로 존재가 확인됐다(`/info` 필요).

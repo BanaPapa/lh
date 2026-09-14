@@ -24,6 +24,7 @@ session-log/
 # 원본 shapefile 로 언제든 재생성하므로 저장소에 두지 않는다.
 # 인허가 원장 스냅샷(60MB). sync_facilities.py 로 재생성한다.
 backend/data/facilities.db
+backend/data/factory_geocode_cache.json
 backend/data/cadastral_*.sqlite
 backend/data/cadastral_*.db
 

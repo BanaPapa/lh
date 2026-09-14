@@ -28,6 +28,7 @@ from app.services.cng import CngStationClient
 from app.services.crematorium import CrematoriumClient
 from app.services.facility_store import FacilityStore
 from app.services.kakao import KakaoClient
+from app.services.factory_registry import FactoryRegistryClient
 from app.services.kgs import KgsLpgClient
 from app.services.local_wiring import (
     LocalSourcesBundle,
@@ -207,6 +208,11 @@ def build_hazard_service(
         ),
         # 소음배출시설(PNU 미보유) 후보에 요청 시점 PNU 확정 → 공장 PNU 대조(라목).
         pnu_resolver=pnu_resolver,
+        # 산단공 공장등록 필지정보 API(15087615). 로컬 factoryON 표준본이 없을 때
+        # 사업지 시군구의 등록공장을 받아 지오코딩해 「공장 있음」 표시를 낸다.
+        factory_registry=FactoryRegistryClient(
+            config.public_data_key, geocoder=geocode_address
+        ),
     )
 
     loader = build_local_sources_loader(

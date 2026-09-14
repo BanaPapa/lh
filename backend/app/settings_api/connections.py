@@ -129,6 +129,11 @@ async def _probe_ncmc(hazard: Any, screening: Any) -> str:
     return f"서울 종합병원 {len(rows)}건"
 
 
+async def _probe_factory_registry(hazard: Any, screening: Any) -> str:
+    rows = await hazard.factory_registry.factories_in_sigungu("11680")  # 서울 강남구
+    return f"강남구 등록공장 {len(rows):,}건"
+
+
 async def _probe_building_register(hazard: Any, screening: Any) -> str:
     result = await hazard.building_register.lookup(PROBE_PNU)
     uses = getattr(result, "uses", None)
@@ -196,6 +201,12 @@ CONNECTION_SPECS: tuple[ConnectionSpec, ...] = (
         "PUBLIC_DATA_SERVICE_KEY",
         lambda h, s: getattr(_amenities(s), "hospital_client", None), _probe_ncmc,
         "공공데이터포털", "https://www.data.go.kr/",
+    ),
+    ConnectionSpec(
+        "factory_registry", "산단공 공장등록 필지정보(15087615)",
+        "1차 「공장 있음」 검토 표시 — 사업지 시군구 등록공장(도로명주소 → 카카오 지오코딩)",
+        "PUBLIC_DATA_SERVICE_KEY", lambda h, s: h.factory_registry, _probe_factory_registry,
+        "공공데이터포털", "https://www.data.go.kr/data/15087615/openapi.do",
     ),
     ConnectionSpec(
         "building_register", "국토부 건축물대장",

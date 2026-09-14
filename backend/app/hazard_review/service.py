@@ -69,6 +69,7 @@ from app.services.geo import (
 from app.services.facility_store import FacilityStore
 from app.services.kakao import KakaoClient
 from app.services.cng import CngStationClient
+from app.services.factory_registry import FactoryRegistryClient
 from app.services.kgs import KgsLpgClient, PublicDataAPIError
 from app.services.localdata import DATASET_BY_KEY
 from app.services.building_register import (
@@ -157,6 +158,7 @@ SOURCE_FAILURE_LABELS: dict[str, str] = {
     "localdata": "행정안전부 지방행정인허가 대장",
     "opinet": "한국석유공사 오피넷",
     "kgs": "한국가스안전공사 LPG 현황",
+    "factory_registry": "한국산업단지공단 공장등록 필지정보",
     "cng": "한국가스안전공사 도시가스(CNG) 충전소 현황",
     "safemap": "생활안전지도 전국 주유시설 현황",
     "crematorium": "보건복지부 전국 화장시설 현황",
@@ -170,7 +172,10 @@ APPLIED_NOT_CONNECTED_NOTE = (
 
 # 공장: factoryON 등록공장 원천이 적재되기 전까지 「공장 있음」 판정 불가.
 # 등록공장 원천이 없으면 공장 소재 여부를 확인할 수 없으므로 dataset_missing 이다.
-FACTORY_REGISTRY_MISSING_NOTE = "factoryON 등록공장 원천 미적재 — 적재 시 판정"
+FACTORY_REGISTRY_MISSING_NOTE = (
+    "등록공장 원천 없음 — 산단공 공장등록 API 키(PUBLIC_DATA_SERVICE_KEY) 또는 "
+    "factoryON 표준본을 연결하면 판정"
+)
 
 # §6.4 단란주점·테마파크: 건축물대장 용도 교차확인이 AND 조건이나 어댑터 미구현.
 # 확인 안 된 조건으로 매입제외를 확정하지 않는다(룰북 §3).
@@ -400,6 +405,7 @@ class HazardReviewService:
         noise_emission: NoiseEmissionClient | None = None,
         pnu_resolver: "PnuResolver | None" = None,
         cng: CngStationClient | None = None,
+        factory_registry: FactoryRegistryClient | None = None,
     ) -> None:
         # kakao 는 필지 확보 흐름에서만 쓰고, 유해요소 판정 후보는 공개원천만 쓴다.
         self.kakao = kakao
@@ -432,6 +438,10 @@ class HazardReviewService:
         # PNU 확정 파이프라인(설계서 §7.2). 시설 쪽 필지 경계·PNU 확정에 쓴다. 공장
         # 판정은 더 이상 소음-공장 PNU 매칭을 하지 않는다(LH 확정 2026-09-11).
         self.pnu_resolver = pnu_resolver
+        # 산단공 공장등록 필지정보 API(15087615). 로컬 factoryON 표준본이 없을 때
+        # 사업지 시군구의 등록공장을 API 로 받아 「공장 있음」 검토 표시를 낸다.
+        # 좌표가 없어 카카오 지오코딩을 거치며, 시설 필지는 좌표로 다시 붙인다.
+        self.factory_registry = factory_registry
 
     @property
     def local_sources(self) -> LocalSourcesBundle:
@@ -787,6 +797,11 @@ class HazardReviewService:
                     request, rule, fetch_limit_m, now, existing=facilities
                 )
             )
+            facilities.extend(
+                await self._factory_api_facilities(
+                    request, rule, fetch_limit_m, now, failed_sources
+                )
+            )
 
         # 판정용 후처리(경계 부착·건축물대장·무도장 병합)는 경계 부착 전 예비검색
         # 범위(판정창 + 예비검색 슬랙) 이내 후보에만 적용한다. 점 거리로 판정창을
@@ -843,6 +858,63 @@ class HazardReviewService:
         await self._attach_facility_boundaries(request, nearby)
         nearby.sort(key=lambda item: item.distance_m)
         return facilities, nearby, failed_sources
+
+    async def _factory_api_facilities(
+        self,
+        request: HazardReviewRequest,
+        rule: Rule,
+        search_limit_m: float,
+        now: datetime,
+        failed_sources: set[str],
+    ) -> list[HazardFacility]:
+        """산단공 공장등록 API 로 사업지 시군구의 등록공장을 「공장 있음」 후보로 만든다.
+
+        로컬 표준본(factory_facilities)이 적재돼 있으면 그쪽이 정본이라 API 는 쓰지
+        않는다. 시군구는 사업지 필지 PNU 앞 5자리에서 얻는다(PNU 가 없으면 조회 불가).
+        매입제외 확정 근거가 아니라 검토 표시이므로(LH 확정 2026-09-11 #1), 조회
+        실패는 failed_sources 로만 남긴다.
+        """
+
+        if rule.rule_id != "RB14-FACTORY" or not self._factory_api_ready():
+            return []
+        if self.local_sources.factory_registry_loaded:
+            return []
+        site_pnu = self._site_pnu(request)
+        if len(site_pnu) < 5:
+            return []
+        radius = search_limit_m + max_extent_multi(
+            request.site.coordinates, self._site_boundaries(request)
+        )
+        try:
+            records = await self.factory_registry.factories_near(
+                request.site.coordinates, radius, site_pnu[:5]
+            )
+        except Exception:  # noqa: BLE001 — 원천 장애는 failed_sources 로 드러낸다
+            failed_sources.add("factory_registry")
+            return []
+        return self._records_to_facilities(
+            request,
+            tuple(records),
+            search_limit_m,
+            now,
+            facility_type="factory",
+            facility_type_label="등록공장",
+            id_prefix="factory-api",
+            source_label="한국산업단지공단 공장등록 필지정보(API)",
+            classification_note=(
+                "산단공 공장등록 원장의 등록공장입니다. 등록 사실만 확인되며 "
+                "대기·소음 배출은 별도 확인이 필요합니다. 좌표는 도로명주소를 "
+                "지오코딩한 값이라 시설 필지로 다시 확인합니다."
+            ),
+            metadata={"factory_registered": True, "factory_and": ""},
+        )
+
+    def _factory_api_ready(self) -> bool:
+        return bool(
+            self.factory_registry
+            and self.factory_registry.enabled
+            and not self.demo_mode
+        )
 
     def _local_source_facilities(
         self,
@@ -1913,11 +1985,11 @@ class HazardReviewService:
         )
 
     def _factory_registry_loaded(self) -> bool:
-        """factoryON 등록공장 원천(PNU 집합)이 적재됐는지. 공장 AND 게이트."""
+        """등록공장 원천이 있는지 — 로컬 factoryON 표준본 또는 산단공 공장등록 API."""
 
         if self.demo_mode:
             return False
-        return self.local_sources.factory_registry_loaded
+        return self.local_sources.factory_registry_loaded or self._factory_api_ready()
 
     def _store_ready(self) -> bool:
         return bool(
@@ -1984,7 +2056,7 @@ class HazardReviewService:
         # 좌표 보유 공장 레코드가 최소 1건은 있어야 연결로 인정한다(없으면
         # dataset_missing). required 게이트(factory_registry PNU)도 위에서 통과해야 한다.
         if category.key == "factory_registered":
-            return bool(self.local_sources.factory_facilities)
+            return bool(self.local_sources.factory_facilities) or self._factory_api_ready()
         # CNG 충전소: 가스안전공사 API(ODcloud 15001508)가 우선, 좌표 보유 CSV(로컬
         # 원천)는 보조. 둘 중 하나라도 붙어 있으면 판정한다.
         if category.key == "cng_station":
@@ -1999,7 +2071,7 @@ class HazardReviewService:
     def _not_connected_note(self, category: Category) -> str:
         """연결되지 않은 종류의 dataset_missing note. 원인을 구분해 드러낸다."""
 
-        # 공장 있음: factoryON 등록공장 원천 미적재가 원인(적재됐으면 이 note 아님).
+        # 공장 있음: 등록공장 원천(로컬 표준본·산단공 API) 둘 다 없을 때의 사유.
         if (
             "factory_registry" in category.required_datasets
             and not self._factory_registry_loaded()
@@ -2181,7 +2253,7 @@ class HazardReviewService:
             "factory_registry" in category.required_datasets
             and not self._factory_registry_loaded()
         ):
-            not_implemented_reasons.append("factoryON 등록공장 원천 미적재")
+            not_implemented_reasons.append("등록공장 원천 없음(API 키·표준본 미연결)")
 
         unverified = [
             DATASET_BY_KEY[key].label
