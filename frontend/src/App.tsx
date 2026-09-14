@@ -174,7 +174,10 @@ function App() {
   const siteParcelRunRef = useRef(0);
 
   /** 검색 직후 지적도 필지를 받아 지도에 경계를 그린다. 분석 실행과 무관하다. */
-  const loadSiteParcel = async (candidate: GeocodeCandidate) => {
+  const loadSiteParcel = async (
+    candidate: GeocodeCandidate,
+    typedQuery: string,
+  ) => {
     const runId = siteParcelRunRef.current + 1;
     siteParcelRunRef.current = runId;
     try {
@@ -182,6 +185,12 @@ function App() {
       // 이미 다른 검색이 이 요청을 밀어냈으면 옛 결과를 버린다.
       if (siteParcelRunRef.current !== runId) return;
       // 대표 필지만 쓰던 것을 응답 필지 전부로 넓힌다(#9 다필지 합집합).
+      // 검색으로 얻은 대표 필지를 기억해, 다른 필지가 대표가 되면 검색창을 그
+      // 필지 주소로 바꾸고 되돌아오면 원래 검색어로 복원한다.
+      searchedRef.current = {
+        query: typedQuery,
+        pnu: resolved.parcels.find((p) => p.geometry.length >= 4)?.pnu ?? "",
+      };
       setHazardParcels(resolved.parcels);
       setParcelNote(resolved.note);
       // 도형 있는 필지를 실제로 확보한 경우에만 그 필지에 맞춰 지도를 처음 잡는다.
@@ -225,6 +234,21 @@ function App() {
   useEffect(() => {
     parcelsLockedRef.current = parcelsLocked;
   }, [parcelsLocked]);
+
+  // 대표 필지(첫 항목)가 검색 지점과 다른 곳으로 바뀌면 검색창에 그 필지의 주소를
+  // 넣는다. 사업지가 실제로 어디인지 검색창만 봐도 알 수 있어야 한다(2026-09-14).
+  // 지우고 다시 검색 지점 필지만 남으면 원래 검색어로 돌아간다.
+  const searchedRef = useRef<{ query: string; pnu: string }>({ query: "", pnu: "" });
+  useEffect(() => {
+    if (!selectedCandidate) return;
+    const representative = hazardParcels.find((p) => p.geometry.length >= 4);
+    if (!representative) return;
+    const nextQuery =
+      representative.pnu === searchedRef.current.pnu
+        ? searchedRef.current.query
+        : representative.address;
+    if (nextQuery) setQuery(nextQuery);
+  }, [hazardParcels, selectedCandidate]);
 
   const applyParcelToggle = useCallback((parcel: HazardParcel) => {
     const now = Date.now();
@@ -329,7 +353,7 @@ function App() {
         if (siteChanged) {
           setHazardParcels([]);
           setParcelNote("");
-          void loadSiteParcel(nextCandidate);
+          void loadSiteParcel(nextCandidate, query);
           setScreeningResult(null);
           setScreeningProgress(null);
           setScreeningError("");
@@ -400,11 +424,16 @@ function App() {
       const siteCoordinates =
         (representative && ringCentroid(representative.geometry)) ||
         selectedCandidate.coordinates;
+      // 주소·이름도 대표 필지를 따른다(검색창과 결과 레일이 같은 곳을 가리키게).
+      const siteAddress =
+        representative?.address ||
+        selectedCandidate.road_address ||
+        selectedCandidate.address ||
+        "";
       const started = await startScreeningJob({
         site: {
-          name: selectedCandidate.name,
-          address:
-            selectedCandidate.road_address || selectedCandidate.address || "",
+          name: representative?.address || selectedCandidate.name,
+          address: siteAddress,
           coordinates: siteCoordinates,
           housing_type: housingType,
           application_type: applicationType,

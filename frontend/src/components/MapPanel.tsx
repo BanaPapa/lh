@@ -1818,11 +1818,14 @@ export function MapPanel({
     visibleScreeningHitRefs.forEach((ref) => {
       const hit = ref.hit;
       if (!hit.coordinates) return;
-      const hitPosition = toMapPosition(
-        runtime,
-        hit.coordinates.lat,
-        hit.coordinates.lng,
-      );
+      // 점으로 재는 시설(버스정류장·역 출입구·대학 정문 좌표)은 측정에 쓴 점에
+      // 마커를 세운다 — 시설 대표점이 아니라 실제로 거리를 잰 자리가 보여야 한다.
+      const pointBased =
+        hit.measurement_tier === "coordinate" ||
+        hit.measurement_tier === "front_door_point";
+      const anchor =
+        (pointBased && hit.nearest_facility_point) || hit.coordinates;
+      const hitPosition = toMapPosition(runtime, anchor.lat, anchor.lng);
       if (ref.isCriterionNearest) bounds.extend(hitPosition);
 
       const selected = hit.name === selectedScreeningHitName;
@@ -1833,10 +1836,9 @@ export function MapPanel({
       // 찾아 칠하고, 타일이 없는 축척에서는 핀으로 물러선다. 점으로 재는 시설
       // (버스정류장·역 출입구 등 measurement_tier=coordinate)은 필지를 칠하지
       // 않는다 — 정류장이 놓인 도로 필지 전체가 파랗게 칠해지면 오해를 낳는다.
-      const hitParcel =
-        hit.measurement_tier === "coordinate"
-          ? null
-          : parcelContaining(hit.coordinates, parcelPool);
+      const hitParcel = pointBased
+        ? null
+        : parcelContaining(hit.coordinates, parcelPool);
       const hitHasArea = Boolean(hitParcel);
       let hitHoverRing: Array<{ lat: number; lng: number }> | null = null;
       if (hitParcel) {
