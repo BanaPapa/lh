@@ -1439,7 +1439,9 @@ export function MapPanel({
       // 1차 유해요소는 색으로 status 를 가르지 않는다. 색만 보고 1차(빨강)를
       // 알아보게 톤을 빨강으로 통일하고, status 구분(!·?·점선 등)은 CSS 의
       // is-${status} 클래스가 채움·글리프로 처리한다. 참고 시설만 회색이다.
-      const markerColor = nearby ? "#94a3b8" : "#dc2626";
+      // 기준 밖 시설도 유해시설이다. 회색이 아니라 연한 빨강으로 두어 축소 축척의
+      // 핀에서도 빨강 계열로 읽히게 한다.
+      const markerColor = nearby ? "#ef4444" : "#dc2626";
       // 같은 규칙에 후보가 여러 개면 누른 것 하나만 강조해야 거리가 구분된다.
       const selected = selectedHazardFacilityId
         ? facility.facility_id === selectedHazardFacilityId

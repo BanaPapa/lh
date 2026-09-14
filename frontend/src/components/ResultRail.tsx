@@ -72,11 +72,19 @@ interface SiteCardProps {
   parcels: HazardParcel[];
   /** 연속지적도가 「외 N필지」를 다 풀지 못했을 때의 안내. */
   parcelNote?: string;
+  /** 심사가 돌았거나 결과가 있어 필지를 바꿀 수 없는 상태. */
+  locked?: boolean;
   onResetParcels: () => void;
 }
 
 /** 사업지와 선택된 필지. */
-function SiteCard({ site, parcels, parcelNote = "", onResetParcels }: SiteCardProps) {
+function SiteCard({
+  site,
+  parcels,
+  parcelNote = "",
+  locked = false,
+  onResetParcels,
+}: SiteCardProps) {
   const totalArea = parcels.reduce(
     (sum, parcel) => sum + (parcel.area_m2 ?? 0),
     0,
@@ -89,7 +97,7 @@ function SiteCard({ site, parcels, parcelNote = "", onResetParcels }: SiteCardPr
           <small>사업지</small>
           <strong>{site.name}</strong>
         </div>
-        {parcels.length > 0 && (
+        {parcels.length > 0 && !locked && (
           <button type="button" className="parcel-reset-button" onClick={onResetParcels}>
             초기화
           </button>
@@ -123,10 +131,17 @@ function SiteCard({ site, parcels, parcelNote = "", onResetParcels }: SiteCardPr
         </>
       )}
       {parcelNote && <p className="site-parcel-note">{parcelNote}</p>}
-      <p className="site-parcel-hint">
-        지도에서 필지를 누르면 사업지에 더하고, 선택된 필지를 다시 누르면 뺍니다.
-        {parcelNote ? " 빠진 필지는 지도에서 눌러 더하세요." : ""}
-      </p>
+      {locked ? (
+        <p className="site-parcel-hint">
+          심사 결과가 있는 동안에는 필지를 바꿀 수 없습니다. 필지를 다시 고르려면
+          주소를 새로 검색하세요.
+        </p>
+      ) : (
+        <p className="site-parcel-hint">
+          지도에서 필지를 누르면 사업지에 더하고, 선택된 필지를 다시 누르면 뺍니다.
+          {parcelNote ? " 빠진 필지는 지도에서 눌러 더하세요." : ""}
+        </p>
+      )}
     </article>
   );
 }
@@ -135,6 +150,7 @@ interface ResultRailProps {
   site: GeocodeCandidate;
   siteParcels: HazardParcel[];
   parcelNote?: string;
+  parcelsLocked?: boolean;
   onResetParcels: () => void;
   onCollapse: () => void;
   screeningResult: ScreeningResult | null;
@@ -158,6 +174,7 @@ export function ResultRail({
   site,
   siteParcels,
   parcelNote = "",
+  parcelsLocked = false,
   onResetParcels,
   onCollapse,
   screeningResult,
@@ -216,6 +233,7 @@ export function ResultRail({
           site={site}
           parcels={siteParcels}
           parcelNote={parcelNote}
+          locked={parcelsLocked}
           onResetParcels={onResetParcels}
         />
 

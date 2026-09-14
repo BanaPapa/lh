@@ -209,6 +209,15 @@ function App() {
     designationTargetRef.current = designationTarget;
   }, [designationTarget]);
 
+  // 다필지 선택은 주소를 검색한 직후에만 한다. 심사가 돌았거나 결과가 있으면
+  // 필지를 바꿀 수 없다 — 결과와 필지가 어긋나는 것을 막는다. 바꾸려면 새로
+  // 검색한다(검색이 결과·필지를 함께 비운다). 지도 클릭 핸들러는 ref 로 읽는다.
+  const parcelsLocked = Boolean(screeningResult) || screeningRunning;
+  const parcelsLockedRef = useRef(false);
+  useEffect(() => {
+    parcelsLockedRef.current = parcelsLocked;
+  }, [parcelsLocked]);
+
   const applyParcelToggle = useCallback((parcel: HazardParcel) => {
     const now = Date.now();
     const previous = lastToggleRef.current;
@@ -235,6 +244,7 @@ function App() {
         });
         return;
       }
+      if (parcelsLockedRef.current) return;
       applyParcelToggle({
         parcel_id: `cadastral:${parcel.pnu}`,
         pnu: parcel.pnu,
@@ -260,6 +270,7 @@ function App() {
         });
         return;
       }
+      if (parcelsLockedRef.current) return;
       try {
         const resolved = await resolveHazardParcelAt(lat, lng);
         const parcel = resolved.parcels[0];
@@ -619,6 +630,7 @@ function App() {
               site={selectedCandidate}
               siteParcels={hazardParcels}
               parcelNote={parcelNote}
+              parcelsLocked={parcelsLocked}
               onResetParcels={() => {
                 setHazardParcels([]);
                 setParcelNote("");
