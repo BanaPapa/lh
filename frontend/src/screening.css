@@ -394,7 +394,7 @@
    항목과 기준거리 사이가 벌어지지 않는다. */
 
 .screening-table thead th:nth-child(1) {
-  min-width: 320px;
+  min-width: 250px;
   width: 1%;
 }
 
@@ -418,13 +418,14 @@
    데이터 열이 오른쪽 끝으로 밀리지 않게 문장 폭은 max-width 로 막는다. */
 
 .screening-table thead th:nth-child(5) {
-  min-width: 420px;
+  min-width: 330px;
   width: 1%;
 }
 
+/* 모달(80vw) 안에 데이터 열까지 들어오도록 근거 문장 폭을 36ch 로 잡는다. */
 .screening-row-reason, .screening-row-note {
-  width: 44ch;
-  max-width: 44ch;
+  width: 36ch;
+  max-width: 36ch;
 }
 
 /* 「원천」 열: API·로컬·데모 한 단어. 내용 폭만. */
