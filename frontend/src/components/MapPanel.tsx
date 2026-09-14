@@ -553,17 +553,32 @@ function addOverlayClick(
   addMapListener(runtime, overlay, "click", listener);
 }
 
-/** 영역(폴리곤)에 마우스를 올리면 이름표를 세우고, 나가면 접는다. */
-function addOverlayHover(
-  runtime: MapRuntime,
-  overlay: any,
-  node: HTMLElement,
+/** 영역으로 그린 시설의 링과 그 이름표 노드. 지도 mousemove 가 호버를 판정한다. */
+interface HoverArea {
+  ring: Array<{ lat: number; lng: number }>;
+  node: HTMLElement;
+  /** 이름표를 세울 때 거리 라벨(zIndex 10·11) 위로 올릴 오버레이. */
+  overlay: any;
+  baseZIndex: number;
+}
+
+// 호버 중 이름표가 거리 라벨(zIndex 10·11) 위에 서도록 올리는 값.
+const HOVER_Z_INDEX = 30;
+
+/**
+ * 포인터 위치로 호버 상태를 다시 계산한다. SDK 의 폴리곤 mouseout 은 커스텀
+ * 오버레이 위로 빠져나갈 때 오지 않아 이름표가 남았다(2026-09-14 검수). 매번
+ * 링 포함 판정으로 세우고 내리므로 남는 이름표가 없다.
+ */
+function applyHover(
+  areas: readonly HoverArea[],
+  point: { lat: number; lng: number } | null,
 ) {
-  addMapListener(runtime, overlay, "mouseover", () => {
-    node.classList.add("is-hover");
-  });
-  addMapListener(runtime, overlay, "mouseout", () => {
-    node.classList.remove("is-hover");
+  areas.forEach(({ ring, node, overlay, baseZIndex }) => {
+    const hovered = point !== null && pointInRing(point, ring);
+    if (node.classList.contains("is-hover") === hovered) return;
+    node.classList.toggle("is-hover", hovered);
+    overlay?.setZIndex?.(hovered ? HOVER_Z_INDEX : baseZIndex);
   });
 }
 
@@ -725,6 +740,9 @@ export function MapPanel({
   // 지도에 영역으로 그린 시설 링(유해시설·2차 근거 시설). 지도 클릭이 영역 안이면
   // 필지 토글·타일 로드를 하지 않는다(영역 클릭은 시설 선택이다).
   const facilityRingsRef = useRef<Array<{ lat: number; lng: number }[]>>([]);
+  // 영역 시설의 링·이름표 쌍. 지도 mousemove 가 이걸로 호버를 판정한다.
+  const hoverAreasRef = useRef<HoverArea[]>([]);
+  const mapHoverListenerRef = useRef<any>(null);
   const onCadastralReviveRef = useRef(onCadastralRevive);
   useEffect(() => {
     onCadastralReviveRef.current = onCadastralRevive;
@@ -1308,6 +1326,19 @@ export function MapPanel({
         runtimeRef.current = createdRuntime;
         mapRef.current = createdMap;
 
+        // 영역 시설 호버: 포인터가 링 안이면 이름표를 세우고, 벗어나면 내린다.
+        mapHoverListenerRef.current = addMapListener(
+          createdRuntime,
+          createdMap,
+          "mousemove",
+          (event) => {
+            applyHover(hoverAreasRef.current, clickCoordinates(event));
+          },
+        );
+        container.addEventListener("pointerleave", () => {
+          applyHover(hoverAreasRef.current, null);
+        });
+
         // 지도 빈 곳을 누르면: 그 자리에 지적도가 깔려 있으면 필지 토글, 없으면
         // 주변 300m 타일을 새로 받는다(심사 뒤라면 App 이 결과를 내려 다시 고르게 한다).
         mapClickListenerRef.current = addMapListener(
@@ -1415,6 +1446,8 @@ export function MapPanel({
         zoomListenerRef.current = null;
         removeMapListener(createdRuntime, mapClickListenerRef.current);
         mapClickListenerRef.current = null;
+        removeMapListener(createdRuntime, mapHoverListenerRef.current);
+        mapHoverListenerRef.current = null;
         window.clearTimeout(cadastralIdleTimer);
         removeMapListener(createdRuntime, cadastralIdleListenerRef.current);
         cadastralIdleListenerRef.current = null;
@@ -1454,6 +1487,7 @@ export function MapPanel({
     overlaysRef.current.forEach((overlay) => overlay.setMap?.(null));
     overlaysRef.current = [];
     facilityRingsRef.current = [];
+    hoverAreasRef.current = [];
     // 시설 영역 후보 필지: 레이어 표시 여부와 무관하게 받아 둔 타일 전체.
     const parcelPool: CadastralParcel[] = [];
     tileCacheRef.current.forEach((parcels) => parcelPool.push(...parcels));
@@ -1611,7 +1645,7 @@ export function MapPanel({
           : (parcelContaining(facility.coordinates, parcelPool)?.geometry ??
             []);
       const hasArea = ring.length >= 4;
-      let facilityPolygonForHover: any = null;
+      let facilityHoverRing: Array<{ lat: number; lng: number }> | null = null;
       if (hasArea) {
         const ringPath = ring.map((point) =>
           toMapPosition(runtime, point.lat, point.lng),
@@ -1635,7 +1669,7 @@ export function MapPanel({
           onSelectHazardFacility?.(facility.facility_id);
         });
         overlaysRef.current.push(facilityPolygon);
-        facilityPolygonForHover = facilityPolygon;
+        facilityHoverRing = ring;
         facilityRingsRef.current.push(ring);
       }
 
@@ -1696,8 +1730,13 @@ export function MapPanel({
         zIndex: selected ? 9 : nearby ? 4 : 6,
       });
       // 영역으로 그린 시설은 핀이 없어 호버할 곳이 없다. 영역 호버가 이름표를 세운다.
-      if (facilityPolygonForHover) {
-        addOverlayHover(runtime, facilityPolygonForHover, markerNode);
+      if (facilityHoverRing) {
+        hoverAreasRef.current.push({
+          ring: facilityHoverRing,
+          node: markerNode,
+          overlay: marker,
+          baseZIndex: selected ? 9 : nearby ? 4 : 6,
+        });
       }
       markerNode.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -1794,7 +1833,7 @@ export function MapPanel({
       // 찾아 칠하고, 타일이 없는 축척에서는 핀으로 물러선다.
       const hitParcel = parcelContaining(hit.coordinates, parcelPool);
       const hitHasArea = Boolean(hitParcel);
-      let hitPolygonForHover: any = null;
+      let hitHoverRing: Array<{ lat: number; lng: number }> | null = null;
       if (hitParcel) {
         const hitPath = hitParcel.geometry.map((point) =>
           toMapPosition(runtime, point.lat, point.lng),
@@ -1815,7 +1854,7 @@ export function MapPanel({
           onSelectScreeningHit?.(selected ? null : hit.name);
         });
         overlaysRef.current.push(hitPolygon);
-        hitPolygonForHover = hitPolygon;
+        hitHoverRing = hitParcel.geometry;
         facilityRingsRef.current.push(hitParcel.geometry);
       }
       const metaText = `${ref.groupLabel} · ${distanceText} · ${measurementShortLabel(
@@ -1855,8 +1894,13 @@ export function MapPanel({
         onSelectScreeningHit?.(selected ? null : hit.name);
       });
       overlaysRef.current.push(screeningMarker);
-      if (hitPolygonForHover) {
-        addOverlayHover(runtime, hitPolygonForHover, markerNode);
+      if (hitHoverRing) {
+        hoverAreasRef.current.push({
+          ring: hitHoverRing,
+          node: markerNode,
+          overlay: screeningMarker,
+          baseZIndex: selected ? 9 : 6,
+        });
       }
 
       // 최단거리선 + 거리 라벨. nearest_boundary_point 가 없으면 사업지 중심에서 긋는다.

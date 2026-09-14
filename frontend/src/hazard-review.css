@@ -362,39 +362,29 @@
   gap: 3px;
   padding: 11px 14px;
   color: var(--fg, #15181e);
-  /* 유리 카드 — 반투명 흰 바탕에 블러, 얇은 흰 테두리와 부드러운 그림자. */
-  background: color-mix(in srgb, var(--raise, #fff) 78%, transparent);
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  border-left: 3px solid var(--hazard-tone);
-  border-radius: 12px;
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.12),
-    0 18px 40px -16px rgba(15, 23, 42, 0.45),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  /* 흰 종이 한 장 — 실선 테두리와 낮은 그림자만. 색띠·블러·확대 등장은 쓰지 않는다. */
+  background: var(--raise, #fff);
+  border: 1px solid var(--border-2, #d0d5dd);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
   opacity: 0;
   visibility: hidden;
-  transform: translate(-50%, 6px) scale(0.96);
-  transform-origin: bottom center;
+  transform: translate(-50%, 0);
   text-align: left;
   pointer-events: none;
   transition:
-    opacity 160ms ease,
-    transform 200ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    visibility 0s linear 160ms;
+    opacity 120ms ease,
+    visibility 0s linear 120ms;
 }
 
+/* 이름표는 호버(포인터가 영역 안)에서만 선다. 선택은 채움·테두리로만 드러난다. */
 .hazard-map-marker:hover .hazard-map-card,
 .hazard-map-marker.is-hover .hazard-map-card,
-.hazard-map-marker.is-selected .hazard-map-card,
 .hazard-map-marker:focus-visible .hazard-map-card {
   opacity: 1;
   visibility: visible;
-  transform: translate(-50%, 0) scale(1);
   transition:
-    opacity 160ms ease,
-    transform 200ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 120ms ease,
     visibility 0s;
 }
 
@@ -419,7 +409,7 @@
   overflow-wrap: anywhere;
 }
 
-/* 고른 마커는 이름표가 계속 서 있으므로 다른 마커 위로 올린다. */
+/* 호버 중인 마커는 이름표가 서 있으므로 다른 마커 위로 올린다. */
 
 .hazard-map-marker.is-selected, .hazard-map-marker.is-hover {
   z-index: 2;

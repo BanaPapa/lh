@@ -85,7 +85,7 @@ export function measurementShortLabel(hit: ScreeningFacilityHit): string {
     case "front_door_point":
       return "정문 좌표";
     case "site_boundary":
-      return "필지경계";
+      return "시설 경계";
     case "coordinate":
       return "시설 좌표";
     default:

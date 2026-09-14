@@ -15,6 +15,7 @@ from app.hazard_review.router import (
     ensure_api_sources_warmup,
     ensure_local_sources_warmup,
     get_hazard_service,
+    get_vworld_client,
 )
 from app.screening.amenities import AmenityCollector
 from app.screening.models import (
@@ -102,6 +103,9 @@ def get_screening_service() -> ScreeningService:
             naver=NaverSearchClient(
                 config.naver_search_client_id, config.naver_search_client_secret
             ),
+            # 초·중·고·공원·상업·문화·공공·버스정류장은 시설 필지경계에서 잰다
+            # (MEASUREMENT.md §3). 1차 판정과 같은 VWorld 클라이언트를 쓴다.
+            vworld=get_vworld_client(),
         ),
         demo_mode=config.demo_mode,
     )

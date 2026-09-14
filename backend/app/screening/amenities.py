@@ -45,6 +45,7 @@ from app.services.kakao import KakaoClient
 from app.services.naver_search import NaverSearchClient
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
+from app.services.vworld import ParcelFeature, VWorldClient
 
 
 # 등급 조건이 쓰는 최대 반경은 3km(주거여건 3km)다. 그보다 넓게 볼 이유가 없다.
@@ -58,6 +59,31 @@ MAX_SUBDIVIDE_DEPTH = 2
 
 # 화면에 근거로 나열할 시설 수 상한. 세는 데 쓰는 거리 목록은 자르지 않는다.
 MAX_HITS_PER_GROUP = 20
+
+# 시설 경계(필지)에서 재는 시설군(docs/hazards/MEASUREMENT.md §3). 역·지하철은
+# 출입구, 대학·종합병원은 정문이라 여기 없다. 버스정류장은 정류장이 속한 필지의
+# 경계에서 잰다(2026-09-14 사용자 결정).
+BOUNDARY_GROUPS: frozenset[str] = frozenset(
+    {
+        "bus_stop",
+        "terminal",
+        "transfer",
+        "retail",
+        "park",
+        "culture",
+        "public",
+        "school_elementary",
+        "school_middle",
+        "school_high",
+    }
+)
+# 시설군마다 필지를 조회할 최근접 시설 수. 경계로 재면 거리는 줄기만 하므로
+# 등급 판정에 쓰이는 최근접 몇 곳만 정확히 재면 되고, 그 뒤는 점 거리로 둔다.
+BOUNDARY_LOOKUP_PER_GROUP = 5
+# 통필지 안전장치가 적용되지 않는 시설군. 버스정류장은 도로 필지에 놓이므로
+# 면적 임계로 거르면 대부분 좌표로 되돌아가 결정과 어긋난다.
+BOUNDARY_NO_AREA_GUARD: frozenset[str] = frozenset({"bus_stop"})
+BOUNDARY_FALLBACK_NOTICE = "시설 경계(필지)를 확인하지 못해 시설 좌표로 쟀습니다."
 
 # 담당자 수기 기준점 지정을 허용하는 역·터미널 계열 시설군(#11 「출구 여럿이면
 # 담당자 선택」). 프런트 DESIGNATABLE_GROUPS 의 역 계열과 같은 집합이다.
@@ -434,8 +460,12 @@ class AmenityCollector:
         front_door_store: FrontDoorStore | None = None,
         cadastral_store: CadastralLocalStore | None = None,
         naver: NaverSearchClient | None = None,
+        vworld: VWorldClient | None = None,
     ) -> None:
         self.kakao = kakao
+        # 시설 경계(필지) 조회. 없거나 키가 없으면 로컬 지적도로, 그것도 없으면
+        # 좌표로 폴백하고 그 사실을 시설마다 적는다.
+        self.vworld = vworld
         self.tago = tago
         self.cache_ttl_seconds = cache_ttl_seconds
         # 지정 원천을 인허가 캐시에서 직접 채우는 시설군(대규모점포 등)에 쓴다.
@@ -488,8 +518,111 @@ class AmenityCollector:
             )
             for group in FACILITY_GROUPS
         }
+        collections = await self._attach_boundaries(collections, valid_rings, center)
         self._cache_set(key, collections)
         return collections
+
+    # -- 시설 경계 측정(초·중·고·공원·상업·문화·공공·버스정류장) ----------------
+    async def _attach_boundaries(
+        self,
+        collections: dict[str, GroupCollection],
+        rings: list[list[Coordinates]],
+        center: Coordinates,
+    ) -> dict[str, GroupCollection]:
+        """BOUNDARY_GROUPS 의 최근접 시설을 필지 경계 기준으로 다시 잰다.
+
+        시설마다 좌표를 품는 필지 1개를 조회해(VWorld → 로컬 지적도) 사업지
+        대지경계 ↔ 시설 필지경계 최단거리로 바꾼다. 조회할 원천이 없으면 거리는
+        그대로 두되, 시설마다 좌표 폴백 사실을 적는다.
+        """
+
+        can_fetch = self._boundary_source_ready()
+        parcel_cache: dict[str, ParcelFeature | None] = {}
+        updated: dict[str, GroupCollection] = {}
+        for key, collection in collections.items():
+            if key not in BOUNDARY_GROUPS or not collection.facilities:
+                updated[key] = collection
+                continue
+            head = collection.facilities[:BOUNDARY_LOOKUP_PER_GROUP]
+            tail = collection.facilities[BOUNDARY_LOOKUP_PER_GROUP:]
+            measured: list[CollectedFacility] = []
+            for facility in head:
+                parcel = (
+                    await self._facility_parcel(facility.coordinates, parcel_cache)
+                    if can_fetch
+                    else None
+                )
+                measured.append(
+                    _measure_to_parcel(
+                        facility,
+                        parcel,
+                        rings,
+                        center,
+                        area_guard=key not in BOUNDARY_NO_AREA_GUARD,
+                    )
+                )
+            facilities = sorted(measured + list(tail), key=lambda f: f.distance_m)
+            shown = len(collection.facilities)
+            distances = sorted(
+                [f.distance_m for f in facilities]
+                + list(collection.distances_m[shown:])
+            )
+            updated[key] = collection._replace(
+                facilities=tuple(facilities), distances_m=tuple(distances)
+            )
+        return updated
+
+    def _boundary_source_ready(self) -> bool:
+        if self.vworld is not None and self.vworld.enabled:
+            return True
+        return self._cadastral_ready()
+
+    def _cadastral_ready(self) -> bool:
+        """로컬 지적도 인덱스가 실제 조회 가능한지(hazard_review 와 같은 판정)."""
+
+        store = self.cadastral_store
+        if store is None:
+            return False
+        try:
+            return bool(store.status().available)
+        except Exception:
+            return False
+
+    async def _facility_parcel(
+        self,
+        coordinates: Coordinates,
+        cache: dict[str, ParcelFeature | None],
+    ) -> ParcelFeature | None:
+        """좌표를 품는 필지. VWorld 우선, 로컬 지적도 폴백. 실패는 None."""
+
+        key = f"{coordinates.lat:.6f}:{coordinates.lng:.6f}"
+        if key in cache:
+            return cache[key]
+        parcel: ParcelFeature | None = None
+        if self.vworld is not None and self.vworld.enabled:
+            try:
+                parcel = await self.vworld.parcel_at(coordinates.lat, coordinates.lng)
+            except Exception:  # VWorldAPIError·네트워크 — 로컬 폴백으로 넘어간다
+                parcel = None
+        if parcel is None and self._cadastral_ready():
+            try:
+                local = await asyncio.to_thread(
+                    self.cadastral_store.parcel_at, coordinates.lat, coordinates.lng
+                )
+            except Exception:
+                local = None
+            if local is not None:
+                parcel = ParcelFeature(
+                    pnu=local.pnu,
+                    address=local.address,
+                    jibun=local.jibun,
+                    ring=list(local.ring),
+                    area_m2=local.area_m2,
+                )
+        if parcel is not None and len(parcel.ring) < 4:
+            parcel = None
+        cache[key] = parcel
+        return parcel
 
     async def _prefetch_front_doors(
         self,
@@ -1374,6 +1507,49 @@ def _distance_m(
     if rings:
         return distance_point_to_polygons_m(point, rings)
     return haversine_meters(center, point)
+
+
+def _measure_to_parcel(
+    facility: CollectedFacility,
+    parcel: ParcelFeature | None,
+    rings: Sequence[Sequence[Coordinates]],
+    center: Coordinates,
+    *,
+    area_guard: bool,
+) -> CollectedFacility:
+    """시설 한 곳을 필지 경계 기준으로 바꾼 새 값. 못 바꾸면 사유만 적어 돌려준다."""
+
+    if parcel is None:
+        return facility._replace(front_door_notice=BOUNDARY_FALLBACK_NOTICE)
+    if area_guard and parcel.area_m2 >= CAMPUS_PARCEL_MAX_AREA_M2:
+        # 좌표가 떨어진 필지가 통필지(하천·단지 전체 등)면 경계가 시설 실체보다
+        # 훨씬 넓어 거리가 부당하게 줄어든다. 좌표 기준을 유지하고 사유를 적는다.
+        notice = (
+            f"통필지({parcel.area_m2:,.0f}㎡ ≥ {CAMPUS_PARCEL_MAX_AREA_M2:,.0f}㎡)라 "
+            "시설 경계로 재지 않고 시설 좌표로 쟀습니다."
+        )
+        return facility._replace(front_door_notice=notice)
+    site_token = "대지경계" if rings else "주소점"
+    if rings:
+        measured = distance_polygons_to_polygon_m(rings, parcel.ring)
+        distance = measured.distance_m
+        facility_point: Coordinates | None = measured.nearest_b
+        boundary_point: Coordinates | None = measured.nearest_a
+    else:
+        distance = distance_point_to_polygon_m(center, parcel.ring)
+        facility_point = None
+        boundary_point = None
+    notice = f"시설 필지 PNU {parcel.pnu}" if parcel.pnu else "시설 필지"
+    if parcel.jibun:
+        notice += f" · 지번 {parcel.jibun}"
+    return facility._replace(
+        distance_m=distance,
+        measurement_tier="site_boundary",
+        measurement_label=f"({site_token} ↔ 시설 경계)",
+        front_door_notice=notice,
+        nearest_facility_point=facility_point or facility.nearest_facility_point,
+        nearest_boundary_point=boundary_point or facility.nearest_boundary_point,
+    )
 
 
 def _anchor_for(

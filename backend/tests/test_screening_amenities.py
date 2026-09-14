@@ -606,3 +606,138 @@ class TestHospitalNcmc:
         assert hospital.state != "connected"
         # 조회 자체를 못 했으므로 병원 원장을 부르지 않았다.
         assert hospital_client.seen_sido is None
+
+
+# ---------------------------------------------------------------------------
+# 시설 경계 측정 — 초·중·고·공원·상업·문화·공공은 시설 필지경계에서 잰다
+# (docs/hazards/MEASUREMENT.md §3). 정문·출구 예외군은 손대지 않는다.
+# ---------------------------------------------------------------------------
+
+
+def square_ring(center: Coordinates, half: float) -> list[Coordinates]:
+    return [
+        offset_coordinates(center, -half, -half),
+        offset_coordinates(center, -half, half),
+        offset_coordinates(center, half, half),
+        offset_coordinates(center, half, -half),
+        offset_coordinates(center, -half, -half),
+    ]
+
+
+class FakeVWorld:
+    """좌표를 품는 필지를 정해진 반폭의 정사각형으로 돌려주는 대역."""
+
+    enabled = True
+
+    def __init__(self, half: float = 30.0, fail: bool = False, area_m2: float = 3600.0) -> None:
+        self.half = half
+        self.fail = fail
+        self.area_m2 = area_m2
+        self.calls: list[tuple[float, float]] = []
+
+    async def parcel_at(self, lat: float, lng: float):
+        from app.services.vworld import ParcelFeature
+
+        self.calls.append((lat, lng))
+        if self.fail:
+            raise RuntimeError("VWorld 장애")
+        return ParcelFeature(
+            pnu="4511300000000000001",
+            address="",
+            jibun="100-1",
+            ring=square_ring(Coordinates(lat=lat, lng=lng), self.half),
+            area_m2=self.area_m2,
+        )
+
+
+@pytest.mark.asyncio
+async def test_school_is_measured_to_its_parcel_boundary() -> None:
+    site = square_ring(CENTER, 20.0)
+    kakao = FakeKakao(categories={"SC4": [place("전주초등학교", 400, "교육,학문 > 학교 > 초등학교")]})
+    vworld = FakeVWorld(half=30.0)
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=vworld)
+
+    result = await collector.collect([site], CENTER)
+
+    group = result["school_elementary"]
+    facility = group.facilities[0]
+    # 점 기준 400 − 사업지 반폭 20 − 시설 필지 반폭 30 = 350.
+    assert facility.distance_m == pytest.approx(350, abs=3)
+    assert group.distances_m[0] == pytest.approx(facility.distance_m)
+    assert facility.measurement_tier == "site_boundary"
+    assert "시설 경계" in facility.measurement_label
+    assert "100-1" in facility.front_door_notice
+    assert facility.nearest_facility_point is not None
+    assert facility.nearest_boundary_point is not None
+
+
+@pytest.mark.asyncio
+async def test_exception_groups_keep_their_point_basis() -> None:
+    site = square_ring(CENTER, 20.0)
+    kakao = FakeKakao(categories={"SW8": [place("판교역", 400)]})
+    vworld = FakeVWorld(half=30.0)
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=vworld)
+
+    result = await collector.collect([site], CENTER)
+
+    facility = result["subway"].facilities[0]
+    assert facility.measurement_tier == "coordinate"
+    assert facility.distance_m == pytest.approx(380, abs=3)
+    assert vworld.calls == []
+
+
+@pytest.mark.asyncio
+async def test_vworld_failure_falls_back_to_coordinate_measurement() -> None:
+    site = square_ring(CENTER, 20.0)
+    kakao = FakeKakao(categories={"SC4": [place("전주초등학교", 400, "교육,학문 > 학교 > 초등학교")]})
+    collector = AmenityCollector(
+        kakao=kakao, tago=FakeTago([]), vworld=FakeVWorld(fail=True)
+    )
+
+    result = await collector.collect([site], CENTER)
+
+    facility = result["school_elementary"].facilities[0]
+    assert facility.measurement_tier == "coordinate"
+    assert facility.distance_m == pytest.approx(380, abs=3)
+    assert "시설 경계" in facility.front_door_notice  # 폴백 사실을 숨기지 않는다
+
+
+@pytest.mark.asyncio
+async def test_boundary_lookup_is_limited_to_nearest_facilities() -> None:
+    from app.screening.amenities import BOUNDARY_LOOKUP_PER_GROUP
+
+    site = square_ring(CENTER, 20.0)
+    rows = [
+        place(f"공원{i}", 300 + 100 * i, "여행 > 관광,명소 > 공원")
+        for i in range(BOUNDARY_LOOKUP_PER_GROUP + 3)
+    ]
+    kakao = FakeKakao(keywords={"공원": rows})
+    vworld = FakeVWorld(half=30.0)
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=vworld)
+
+    result = await collector.collect([site], CENTER)
+
+    group = result["park"]
+    assert len(vworld.calls) == BOUNDARY_LOOKUP_PER_GROUP
+    assert len(group.distances_m) == len(rows)
+    assert list(group.distances_m) == sorted(group.distances_m)
+    tiers = [f.measurement_tier for f in group.facilities]
+    assert tiers[:BOUNDARY_LOOKUP_PER_GROUP] == ["site_boundary"] * BOUNDARY_LOOKUP_PER_GROUP
+    assert tiers[BOUNDARY_LOOKUP_PER_GROUP:] == ["coordinate"] * 3
+
+
+@pytest.mark.asyncio
+async def test_oversized_parcel_keeps_point_basis_with_notice() -> None:
+    from app.screening.front_door import CAMPUS_PARCEL_MAX_AREA_M2
+
+    site = square_ring(CENTER, 20.0)
+    kakao = FakeKakao(categories={"SC4": [place("전주초등학교", 400, "교육,학문 > 학교 > 초등학교")]})
+    vworld = FakeVWorld(half=300.0, area_m2=CAMPUS_PARCEL_MAX_AREA_M2 * 2)
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=vworld)
+
+    result = await collector.collect([site], CENTER)
+
+    facility = result["school_elementary"].facilities[0]
+    assert facility.measurement_tier == "coordinate"
+    assert facility.distance_m == pytest.approx(380, abs=3)
+    assert "통필지" in facility.front_door_notice
