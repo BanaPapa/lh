@@ -746,3 +746,66 @@ async def test_oversized_parcel_keeps_point_basis_with_notice() -> None:
     assert facility.measurement_tier == "coordinate"
     assert facility.distance_m == pytest.approx(380, abs=3)
     assert "통필지" in facility.front_door_notice
+
+
+# ---------------------------------------------------------------------------
+# 역 출입구 — 카카오 「{역명} N번출구」로 전 출구를 모으고, 노선 꼬리가 붙은 역명도 같은 역으로 본다
+# ---------------------------------------------------------------------------
+
+
+def exit_place(name: str, offset_m: float) -> dict[str, Any]:
+    return place(name, offset_m, "교통,수송 > 지하철,전철 > 지하철출구")
+
+
+@pytest.mark.asyncio
+async def test_station_exits_come_from_numbered_kakao_queries() -> None:
+    from app.screening.amenities import station_base
+
+    assert station_base("건대입구역 2호선") == "건대입구역"
+    assert station_base("어린이대공원역(세종대)") == "어린이대공원역"
+
+    kakao = FakeKakao(
+        categories={"SW8": [place("건대입구역 2호선", 400), place("건대입구역 7호선", 330)]},
+        keywords={
+            "건대입구역 1번출구": [exit_place("건대입구역 2호선 1번출구", 300)],
+            "건대입구역 2번출구": [exit_place("건대입구역 2호선 2번출구", 60)],
+            "건대입구역 3번출구": [exit_place("건대입구역 7호선 3번출구", 250)],
+            # 4~6번은 비어 있음 → 연속 3회 공백에서 멈춘다
+        },
+    )
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]))
+
+    result = await collector.collect([], CENTER)
+
+    subway = result["subway"]
+    # 두 노선 place 모두 같은 역의 최근접 출구(2번, 60m)로 잰다.
+    assert all(d == pytest.approx(60, abs=3) for d in subway.distances_m)
+    labels = {c.label for c in subway.facilities[0].front_door_candidates}
+    assert labels == {
+        "건대입구역 2호선 1번출구",
+        "건대입구역 2호선 2번출구",
+        "건대입구역 7호선 3번출구",
+    }
+    numbered = [k for k in kakao.calls if k.endswith("번출구")]
+    assert numbered == [f"건대입구역 {n}번출구" for n in range(1, 7)]
+
+
+@pytest.mark.asyncio
+async def test_station_exit_lookup_ignores_other_stations_and_shops() -> None:
+    kakao = FakeKakao(
+        categories={"SW8": [place("판교역", 400)]},
+        keywords={
+            "판교역 1번출구": [
+                place("컴포즈커피 판교역1번출구점", 50, "음식점 > 카페"),
+                exit_place("서현역 1번출구", 80),
+                exit_place("판교역 신분당선 1번출구", 350),
+            ],
+        },
+    )
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]))
+
+    result = await collector.collect([], CENTER)
+
+    facility = result["subway"].facilities[0]
+    assert facility.distance_m == pytest.approx(350, abs=3)
+    assert [c.label for c in facility.front_door_candidates] == ["판교역 신분당선 1번출구"]

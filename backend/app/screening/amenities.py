@@ -82,6 +82,24 @@ BOUNDARY_GROUPS: frozenset[str] = frozenset(
 BOUNDARY_LOOKUP_PER_GROUP = 5
 BOUNDARY_FALLBACK_NOTICE = "시설 경계(필지)를 확인하지 못해 시설 좌표로 쟀습니다."
 
+# 역 출입구 조회(카카오 「{역명} N번출구」). 네이버 지역검색은 한 질의에 5건(무작위)만
+# 돌려줘 출구가 여섯 이상인 역에서 가장 가까운 출구가 빠졌다(2026-09-14 건대입구역:
+# 2번출구가 사업지 옆인데 5·1·3번만 와서 역 대표점 330m 로 쟀다). 카카오는 출구를
+# 「지하철출구」 분류로 번호마다 정확히 돌려주므로 번호를 올리며 묻고, 연속으로
+# 비면 그 역의 출구가 끝난 것으로 본다.
+STATION_EXIT_CATEGORY = "지하철출구"
+STATION_EXIT_MAX_NUMBER = 16
+STATION_EXIT_MISS_STREAK = 3
+STATION_EXIT_SEARCH_RADIUS_M = 1500
+
+
+def station_base(name: str) -> str:
+    """역 이름에서 노선 꼬리(「2호선」·「(세종대)」)를 뗀 역명. 「건대입구역 2호선」→「건대입구역」."""
+
+    stripped = name.strip()
+    idx = stripped.find("역")
+    return stripped[: idx + 1] if idx > 0 else stripped
+
 # 담당자 수기 기준점 지정을 허용하는 역·터미널 계열 시설군(#11 「출구 여럿이면
 # 담당자 선택」). 프런트 DESIGNATABLE_GROUPS 의 역 계열과 같은 집합이다.
 _STATION_LIKE_DESIGNATABLE = ("railway", "subway", "terminal", "transfer")
@@ -347,15 +365,16 @@ GROUP_SPECS: dict[str, GroupSpec] = {
     "subway": GroupSpec(
         ("subway",),
         "connected",
-        "역 출입구 좌표를 네이버 지역검색으로 확인해 기준점으로 씁니다. "
-        "출입구를 찾지 못한 역은 역 대표점으로 잽니다.",
+        "역 출입구 좌표를 지도 검색(카카오 출구 번호별 조회 + 네이버 보충)으로 "
+        "모아 가장 가까운 출입구를 기준점으로 씁니다. 출입구를 찾지 못한 역은 "
+        "역 대표점으로 잽니다.",
     ),
     "railway": GroupSpec(
         ("railway",),
         "substituted",
         "한국철도공사 역위치 정보 대신 지도 검색으로 근사했습니다. "
-        "출입구 좌표는 네이버 지역검색으로 확인해 기준점으로 쓰고, "
-        "찾지 못한 역은 역 대표점으로 잽니다.",
+        "출입구 좌표는 지도 검색(카카오 출구 번호별 조회 + 네이버 보충)으로 모아 "
+        "가장 가까운 출입구를 기준점으로 쓰고, 찾지 못한 역은 역 대표점으로 잽니다.",
         keep=_is_railway,
     ),
     "bus_stop": GroupSpec(
@@ -484,6 +503,8 @@ class AmenityCollector:
         # 역명 → 출구 후보들(label, 좌표). 역은 대표점이 아니라 출입구에서 재야 한다
         # (LH 과업내용서 예외기준: 지하철=출입구). 출입구가 여럿이면 사업지에서
         # 가장 가까운 것을 쓴다 — 실제 접근 경로가 그렇고, 하나뿐이면 결과가 같다.
+        # 키는 노선 꼬리를 뗀 역명(station_base). 환승역은 노선별 place 가 따로
+        # 오지만 출구는 역 하나의 것이므로 함께 쓴다.
         self._station_doors: dict[str, tuple[tuple[str, Coordinates], ...]] = {}
         # 좌표·반경이 같은 재조회를 막는다. analysis 의 TTLCache 와 같은 방식이다.
         self._cache: dict[str, tuple[float, dict[str, GroupCollection]]] = {}
@@ -684,36 +705,83 @@ class AmenityCollector:
         (인근 주차장·건물 출구)는 버린다.
         """
 
-        if self.naver is None or not self.naver.enabled:
+        use_kakao = self.kakao.enabled
+        use_naver = self.naver is not None and self.naver.enabled
+        if not (use_kakao or use_naver):
             return
-        names: list[str] = []
+        stations: dict[str, Coordinates] = {}
         for feed in ("railway", "subway"):
             result = results.get(feed)
             if not isinstance(result, FeedResult):
                 continue
             for place in result.places:
-                name = place.name.strip()
-                if name and name not in self._station_doors and name not in names:
-                    names.append(name)
-        if not names:
-            return
+                base = station_base(place.name)
+                if base and base not in self._station_doors and base not in stations:
+                    stations[base] = place.coordinates
 
-        async def one(name: str) -> None:
+        async def one(base: str, at: Coordinates) -> None:
+            doors: list[tuple[str, Coordinates]] = []
+            if use_kakao:
+                doors.extend(await self._kakao_station_exits(base, at))
+            if use_naver:
+                doors.extend(await self._naver_station_exits(base))
+            merged = _dedupe_doors(doors)
+            if merged:
+                self._station_doors[base] = tuple(merged)
+
+        await asyncio.gather(
+            *(one(b, at) for b, at in stations.items()), return_exceptions=True
+        )
+
+    async def _kakao_station_exits(
+        self, base: str, at: Coordinates
+    ) -> list[tuple[str, Coordinates]]:
+        """「{역명} N번출구」를 번호 순으로 물어 「지하철출구」 분류 결과만 모은다."""
+
+        squashed_base = "".join(base.split())
+        doors: list[tuple[str, Coordinates]] = []
+        misses = 0
+        for number in range(1, STATION_EXIT_MAX_NUMBER + 1):
             try:
-                places = await self.naver.local(f"{name} 출구")
+                documents = await self.kakao.search_keyword(
+                    f"{base} {number}번출구",
+                    at.lat,
+                    at.lng,
+                    STATION_EXIT_SEARCH_RADIUS_M,
+                    max_pages=1,
+                )
             except Exception:
-                return  # 못 얻으면 종전대로 역 대표점에서 잰다
-            core = "".join(name.split())
-            doors = tuple(
-                (p.name.strip(), p.coordinates)
-                for p in places
-                if any(t in p.name for t in STATION_DOOR_TOKENS)
-                and core in "".join(p.name.split())
-            )
-            if doors:
-                self._station_doors[name] = doors
+                break  # 조회 장애 — 지금까지 모은 출구(또는 네이버 보충)로 간다
+            found = False
+            for document in documents:
+                place = _kakao_place(document)
+                if place is None:
+                    continue
+                if STATION_EXIT_CATEGORY not in place.category_name:
+                    continue
+                if squashed_base not in "".join(place.name.split()):
+                    continue
+                doors.append((place.name.strip(), place.coordinates))
+                found = True
+            misses = 0 if found else misses + 1
+            if misses >= STATION_EXIT_MISS_STREAK:
+                break
+        return doors
 
-        await asyncio.gather(*(one(n) for n in names), return_exceptions=True)
+    async def _naver_station_exits(self, base: str) -> list[tuple[str, Coordinates]]:
+        """네이버 「{역명} 출구」 보충(최대 5건·무작위). 역명을 품은 출구만 남긴다."""
+
+        try:
+            places = await self.naver.local(f"{base} 출구")
+        except Exception:
+            return []
+        squashed_base = "".join(base.split())
+        return [
+            (p.name.strip(), p.coordinates)
+            for p in places
+            if any(t in p.name for t in STATION_DOOR_TOKENS)
+            and squashed_base in "".join(p.name.split())
+        ]
 
     def _with_station_entrance(
         self,
@@ -722,7 +790,7 @@ class AmenityCollector:
     ) -> RawPlace:
         """역 대표점을 가장 가까운 출입구 좌표로 바꾼다. 없으면 그대로 둔다."""
 
-        doors = self._station_doors.get(place.name.strip())
+        doors = self._station_doors.get(station_base(place.name))
         if not doors:
             return place
         _, nearest = min(doors, key=lambda item: haversine_meters(center, item[1]))
@@ -736,7 +804,7 @@ class AmenityCollector:
     ) -> tuple[MeasuredDoor, ...]:
         """역 출구 후보를 사업지 기준 거리로 매긴다(#11). 기본 selected = 최근접."""
 
-        doors = self._station_doors.get(station_name.strip())
+        doors = self._station_doors.get(station_base(station_name))
         if not doors:
             return ()
         measured = [
@@ -1470,6 +1538,19 @@ def _front_door_group_notice(facilities: Sequence[CollectedFacility]) -> str:
         if note and note not in seen:
             seen.append(note)
     return " / ".join(seen)
+
+
+def _dedupe_doors(
+    doors: Sequence[tuple[str, Coordinates]],
+) -> list[tuple[str, Coordinates]]:
+    """같은 출구(좌표 ≈ 같음)가 카카오·네이버에서 겹치면 먼저 온 것만 남긴다."""
+
+    kept: list[tuple[str, Coordinates]] = []
+    for label, coords in doors:
+        if any(haversine_meters(coords, seen) <= 15 for _, seen in kept):
+            continue
+        kept.append((label, coords))
+    return kept
 
 
 def _dedupe(places: Sequence[RawPlace]) -> list[RawPlace]:
