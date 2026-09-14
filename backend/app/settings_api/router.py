@@ -14,6 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.settings_api.connections import (
+    ConnectionsResponse,
+    build_connections,
+    check_connections,
+)
 from app.settings_api.store import (
     DEMO_MODE_KEY,
     SERVER_KEY_SPECS,
@@ -205,3 +210,48 @@ async def update_keys(payload: KeysUpdateRequest) -> KeysStatusResponse:
         _clear_caches()
 
     return _build_status()
+
+
+# ---------------------------------------------------------------------------
+# API 연결 현황·점검 — 설정 패널의 「API 연결」 표
+# ---------------------------------------------------------------------------
+
+
+def _services() -> tuple[object, object, bool]:
+    # 지연 임포트로 순환 참조를 피한다(설정 갱신이 이 팩토리들의 캐시를 비운다).
+    from app.hazard_review.router import get_hazard_service
+    from app.screening.router import get_screening_service
+
+    return get_hazard_service(), get_screening_service(), get_settings().demo_mode
+
+
+class ConnectionsCheckRequest(BaseModel):
+    # 비우면 키가 있는 원천 전부를 점검한다.
+    ids: list[str] | None = None
+
+
+@router.get(
+    "/connections",
+    response_model=ConnectionsResponse,
+    dependencies=[Depends(require_loopback)],
+)
+async def read_connections() -> ConnectionsResponse:
+    """키 유무와 마지막 점검 결과. 원격 호출은 하지 않는다."""
+
+    hazard, screening, demo = _services()
+    return build_connections(hazard, screening, demo)
+
+
+@router.post(
+    "/connections/check",
+    response_model=ConnectionsResponse,
+    dependencies=[Depends(require_loopback)],
+)
+async def check_connections_endpoint(
+    payload: ConnectionsCheckRequest | None = None,
+) -> ConnectionsResponse:
+    """키가 있는 원천을 실제로 호출해 응답 여부를 확인한다."""
+
+    hazard, screening, demo = _services()
+    only = set(payload.ids) if payload and payload.ids else None
+    return await check_connections(hazard, screening, demo, only)

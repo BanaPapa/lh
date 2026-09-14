@@ -1,6 +1,16 @@
-import { ClipboardCheck, Moon, Printer, RotateCcw, Search, Sun } from "lucide-react";
+import {
+  ClipboardCheck,
+  Moon,
+  Plug,
+  Printer,
+  RotateCcw,
+  Search,
+  Sun,
+} from "lucide-react";
+import { useState } from "react";
 import type { MapProvider } from "../types";
 import type { ThemeMode } from "../theme";
+import { ApiKeysPanel } from "./ApiKeysPanel";
 import { SettingsMenu } from "./SettingsMenu";
 
 interface TopSearchBarProps {
@@ -47,6 +57,8 @@ export function TopSearchBar({
   theme,
   onToggleTheme,
 }: TopSearchBarProps) {
+  // API 연결 패널(상단 바 전용 버튼이 연다).
+  const [apiOpen, setApiOpen] = useState(false);
   return (
     <header className="solo-topbar">
       <div className="solo-bar-primary">
@@ -130,6 +142,16 @@ export function TopSearchBar({
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           </button>
 
+          <button
+            type="button"
+            className={`solo-icon-button ${apiOpen ? "is-active" : ""}`}
+            onClick={() => setApiOpen(true)}
+            aria-label="API 연결"
+            title="API 연결"
+          >
+            <Plug size={18} />
+          </button>
+
           <SettingsMenu
             mapProvider={mapProvider}
             onMapProviderChange={onMapProviderChange}
@@ -147,6 +169,7 @@ export function TopSearchBar({
           </button>
         </div>
       </div>
+      <ApiKeysPanel open={apiOpen} onClose={() => setApiOpen(false)} />
     </header>
   );
 }

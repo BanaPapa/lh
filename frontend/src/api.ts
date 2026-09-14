@@ -49,7 +49,40 @@ export interface KeysUpdatePayload {
   naver_search_client_secret?: string | null;
   vworld_api_key?: string | null;
   opinet_api_key?: string | null;
+  safemap_api_key?: string | null;
   demo_mode?: boolean;
+}
+
+/** 외부 API 연결 한 줄. 키 유무(configured)와 실제 응답(state) 을 구분한다. */
+export interface ConnectionStatus {
+  id: string;
+  label: string;
+  purpose: string;
+  key_name: string;
+  configured: boolean;
+  /** missing_key | ready | ok | failed */
+  state: "missing_key" | "ready" | "ok" | "failed";
+  detail: string;
+  checked_at: number | null;
+  issuer_name: string;
+  issuer_url: string;
+}
+
+export interface ConnectionsResponse {
+  connections: ConnectionStatus[];
+  demo_mode: boolean;
+}
+
+export function getConnections(): Promise<ConnectionsResponse> {
+  return request<ConnectionsResponse>("/api/settings/connections");
+}
+
+/** 키가 있는 원천을 실제로 호출해 본다. ids 를 주면 그 원천만. */
+export function checkConnections(ids?: string[]): Promise<ConnectionsResponse> {
+  return request<ConnectionsResponse>("/api/settings/connections/check", {
+    method: "POST",
+    body: JSON.stringify({ ids: ids ?? null }),
+  });
 }
 
 export interface HealthResponse {

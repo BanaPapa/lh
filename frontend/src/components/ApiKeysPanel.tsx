@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertCircle,
   Check,
   ExternalLink,
@@ -6,8 +7,8 @@ import {
   EyeOff,
   Globe,
   Info,
-  KeyRound,
   Loader2,
+  Plug,
   RotateCcw,
   Server,
   Trash2,
@@ -16,10 +17,12 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  getHealth,
+  checkConnections,
+  getConnections,
   getSettingsKeys,
   updateSettingsKeys,
-  type HealthResponse,
+  type ConnectionStatus,
+  type ConnectionsResponse,
   type KeysStatusResponse,
   type KeysUpdatePayload,
   type ServerKeyStatus,
@@ -63,13 +66,21 @@ const BROWSER_KEYS: BrowserKeyMeta[] = [
   },
 ];
 
-// 서버 헬스에서 연결 상태를 읽어 화면에 칩으로 보여준다.
-const HEALTH_ITEMS: { key: keyof HealthResponse; label: string }[] = [
-  { key: "kakao_configured", label: "카카오 주소검색" },
-  { key: "tago_configured", label: "TAGO 대중교통" },
-  { key: "public_data_configured", label: "공공데이터포털" },
-  { key: "naver_search_configured", label: "네이버 검색" },
-];
+// 연결 상태 표기. 키 유무와 실제 응답을 구분한다.
+const CONNECTION_STATE_LABEL: Record<ConnectionStatus["state"], string> = {
+  missing_key: "키 없음",
+  ready: "미점검",
+  ok: "정상",
+  failed: "실패",
+};
+
+function formatCheckedAt(seconds: number | null): string {
+  if (!seconds) return "";
+  const date = new Date(seconds * 1000);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")} 점검`;
+}
 
 // demo_mode 를 뺀 문자열 키 필드만. 서버 키는 모두 여기에 속한다.
 type ServerKeyField = Exclude<keyof KeysUpdatePayload, "demo_mode">;
@@ -81,7 +92,8 @@ function payloadField(spec: ServerKeyStatus): ServerKeyField {
 
 export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
   const [status, setStatus] = useState<KeysStatusResponse | null>(null);
-  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
+  const [checking, setChecking] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingBrowser, setSavingBrowser] = useState(false);
   const [savingServer, setSavingServer] = useState(false);
@@ -106,12 +118,12 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
     setLoading(true);
     setError("");
     try {
-      const [keys, healthResponse] = await Promise.all([
+      const [keys, connectionsResponse] = await Promise.all([
         getSettingsKeys(),
-        getHealth(),
+        getConnections(),
       ]);
       setStatus(keys);
-      setHealth(healthResponse);
+      setConnections(connectionsResponse);
       setDemoMode(keys.demo_mode);
     } catch (caught) {
       setError(
@@ -177,11 +189,11 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
       const updated = await updateSettingsKeys(payload);
       setStatus(updated);
       setDemoMode(updated.demo_mode);
-      // 키가 먹었는지 바로 알 수 있게 헬스를 다시 읽는다.
+      // 키가 먹었는지 바로 알 수 있게 연결 현황을 다시 읽는다.
       try {
-        setHealth(await getHealth());
+        setConnections(await getConnections());
       } catch {
-        // 헬스 갱신 실패는 저장 자체를 무효로 하지 않는다.
+        // 현황 갱신 실패는 저장 자체를 무효로 하지 않는다.
       }
       setServerInputs({});
       setNotice(successMessage);
@@ -207,6 +219,24 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
     void sendServerUpdate(payload, "서버 키를 저장했습니다.");
   };
 
+  /** 키가 있는 원천 전부(또는 하나)를 실제로 호출해 본다. */
+  const handleCheckConnections = async (ids?: string[]) => {
+    setChecking(true);
+    setError("");
+    try {
+      setConnections(await checkConnections(ids));
+      setNotice(
+        ids ? "선택한 API 연결을 점검했습니다." : "모든 API 연결을 점검했습니다.",
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "연결 점검에 실패했습니다.",
+      );
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const handleDeleteServerKey = (spec: ServerKeyStatus) => {
     void sendServerUpdate(
       { [payloadField(spec)]: null } as KeysUpdatePayload,
@@ -225,14 +255,14 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
         className="api-keys-modal"
         role="dialog"
         aria-modal="true"
-        aria-label="API 키 설정"
+        aria-label="API 연결"
       >
         <header className="api-keys-head">
           <div>
             <h2>
-              <KeyRound size={18} aria-hidden="true" /> API 키 설정
+              <Plug size={18} aria-hidden="true" /> API 연결
             </h2>
-            <p>지도 SDK 브라우저 키와 서버 데이터 키를 넣습니다.</p>
+            <p>앱이 쓰는 외부 API 를 한 곳에서 확인하고 키를 관리합니다.</p>
           </div>
           <button
             type="button"
@@ -257,6 +287,109 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
               <span>{notice}</span>
             </div>
           )}
+
+          {/* ── 연결 현황 ──────────────────────────────── */}
+          <section className="api-keys-group is-status">
+            <header className="api-keys-group-head">
+              <span className="api-keys-badge is-health">
+                <Activity size={13} aria-hidden="true" /> 연결 현황
+              </span>
+              <div className="api-conn-actions">
+                <span
+                  className={`api-keys-chip ${
+                    connections?.demo_mode ? "is-warn" : "is-on"
+                  }`}
+                >
+                  <i aria-hidden="true" />
+                  {connections?.demo_mode ? "데모 모드" : "실데이터 모드"}
+                </span>
+                <button
+                  type="button"
+                  className="api-keys-refresh"
+                  onClick={() => void loadState()}
+                  disabled={loading || checking}
+                >
+                  <RotateCcw size={13} aria-hidden="true" /> 새로고침
+                </button>
+                <button
+                  type="button"
+                  className="api-keys-btn is-primary is-small"
+                  onClick={() => void handleCheckConnections()}
+                  disabled={loading || checking || !connections}
+                >
+                  {checking ? (
+                    <Loader2 size={13} className="api-keys-spin" aria-hidden="true" />
+                  ) : (
+                    <Activity size={13} aria-hidden="true" />
+                  )}
+                  전체 점검
+                </button>
+              </div>
+            </header>
+            {connections ? (
+              <table className="api-conn-table">
+                <thead>
+                  <tr>
+                    <th>원천 · 쓰임</th>
+                    <th>상태</th>
+                    <th aria-label="점검" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {connections.connections.map((row) => (
+                    <tr key={row.id} className={`is-${row.state}`}>
+                      <td className="api-conn-label">
+                        <strong>{row.label}</strong>
+                        <span className="api-conn-purpose">{row.purpose}</span>
+                        <span className="api-conn-meta">
+                          <code>{row.key_name}</code>
+                          {row.issuer_url && (
+                            <a
+                              href={row.issuer_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="api-keys-issuer"
+                            >
+                              <ExternalLink size={11} aria-hidden="true" />
+                              {row.issuer_name || "발급처"}
+                            </a>
+                          )}
+                        </span>
+                      </td>
+                      <td className="api-conn-state">
+                        <span className={`api-keys-chip is-${row.state}`}>
+                          <i aria-hidden="true" />
+                          {CONNECTION_STATE_LABEL[row.state]}
+                        </span>
+                        {row.detail && <small>{row.detail}</small>}
+                        {row.checked_at && (
+                          <small className="api-conn-time">
+                            {formatCheckedAt(row.checked_at)}
+                          </small>
+                        )}
+                      </td>
+                      <td className="api-conn-check">
+                        <button
+                          type="button"
+                          className="api-keys-icon-btn"
+                          onClick={() => void handleCheckConnections([row.id])}
+                          disabled={!row.configured || checking}
+                          aria-label={`${row.label} 점검`}
+                          title="이 원천만 점검"
+                        >
+                          <Activity size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="api-conn-empty">
+                {loading ? "연결 현황을 불러오는 중…" : "연결 현황을 불러오지 못했습니다."}
+              </p>
+            )}
+          </section>
 
           {/* ── A. 브라우저 키 ─────────────────────────── */}
           <section className="api-keys-group">
@@ -458,42 +591,6 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
             </div>
           </section>
 
-          {/* ── 연결 상태 ──────────────────────────────── */}
-          <section className="api-keys-group is-status">
-            <header className="api-keys-group-head">
-              <span className="api-keys-badge is-health">연결 상태</span>
-              <button
-                type="button"
-                className="api-keys-refresh"
-                onClick={() => void loadState()}
-                disabled={loading}
-              >
-                <RotateCcw size={13} aria-hidden="true" /> 새로고침
-              </button>
-            </header>
-            <div className="api-keys-chips">
-              {HEALTH_ITEMS.map((item) => {
-                const on = Boolean(health?.[item.key]);
-                return (
-                  <span
-                    key={String(item.key)}
-                    className={`api-keys-chip ${on ? "is-on" : "is-off"}`}
-                  >
-                    <i aria-hidden="true" />
-                    {item.label}
-                  </span>
-                );
-              })}
-              <span
-                className={`api-keys-chip ${
-                  health?.demo_mode ? "is-warn" : "is-on"
-                }`}
-              >
-                <i aria-hidden="true" />
-                {health?.demo_mode ? "데모 모드 켜짐" : "실데이터 모드"}
-              </span>
-            </div>
-          </section>
         </div>
       </section>
     </div>,

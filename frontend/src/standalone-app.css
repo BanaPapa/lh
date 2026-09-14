@@ -698,7 +698,7 @@
 
 .api-keys-modal {
   box-sizing: border-box;
-  width: min(620px, 100%);
+  width: min(760px, 100%);
   max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
@@ -1256,3 +1256,136 @@
     filter: brightness(1.25);
   }
 }
+
+/* ── API 연결 현황 표 ───────────────────────────────────────── */
+.api-conn-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.api-keys-btn.is-small {
+  padding: 5px 10px;
+  font-size: 13.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.api-conn-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.api-conn-table th {
+  text-align: left;
+  padding: 6px 8px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.api-conn-table td {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.api-conn-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.api-conn-label strong {
+  display: block;
+  font-size: 14.5px;
+}
+
+.api-conn-label .api-keys-issuer {
+  margin-top: 3px;
+  font-size: 12.5px;
+}
+
+.api-conn-purpose {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.api-conn-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.api-conn-meta code {
+  font-size: 12px;
+  padding: 2px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.api-conn-meta .api-keys-issuer {
+  margin-top: 0;
+  font-size: 12.5px;
+}
+
+.api-conn-state {
+  min-width: 180px;
+  width: 220px;
+}
+
+.api-conn-state small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.api-conn-state .api-conn-time {
+  color: var(--muted-2);
+}
+
+.api-conn-check {
+  width: 36px;
+  text-align: right;
+}
+
+.api-conn-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* 상태 색: 키 없음(회색)·미점검(파랑 테두리)·정상(초록)·실패(빨강) */
+.api-keys-chip.is-missing_key {
+  color: var(--muted);
+}
+
+.api-keys-chip.is-ready > i {
+  background: var(--blue);
+}
+
+.api-keys-chip.is-ok > i {
+  background: #22c55e;
+}
+
+.api-keys-chip.is-failed {
+  color: #dc2626;
+}
+
+.api-keys-chip.is-failed > i {
+  background: #dc2626;
+}
+
+

@@ -242,3 +242,57 @@ def test_hydrate_process_env_lifts_legal_dong_path(tmp_path, monkeypatch) -> Non
 
     assert "LH_LEGAL_DONG_PATH" in filled
     assert os.environ["LH_LEGAL_DONG_PATH"] == "/srv/lh/legal_dong_codes.xlsx"
+
+
+# ---------------------------------------------------------------------------
+# API 연결 현황 — 모든 원천이 한 표에 나오고, 키 없는 원천은 missing_key 다
+# ---------------------------------------------------------------------------
+
+
+def test_connections_list_every_source_without_calling_out(env_file) -> None:
+    from app.settings_api.connections import CONNECTION_SPECS
+
+    client = loopback_client()
+    response = client.get("/api/settings/connections")
+    assert response.status_code == 200
+    body = response.json()
+    ids = [row["id"] for row in body["connections"]]
+    assert ids == [spec.id for spec in CONNECTION_SPECS]
+    for row in body["connections"]:
+        assert row["state"] in {"missing_key", "ready", "ok", "failed"}
+        assert row["purpose"]
+        assert row["key_name"]
+        # 키 원문은 어디에도 없다.
+        assert "serviceKey" not in row["detail"]
+
+
+def test_connections_check_records_probe_results(env_file, monkeypatch) -> None:
+    from app.settings_api import connections as mod
+
+    async def fake_ok(hazard, screening):
+        return "12건"
+
+    async def fake_fail(hazard, screening):
+        raise RuntimeError("401 Unauthorized https://api?serviceKey=SECRET")
+
+    class Client:
+        enabled = True
+
+    specs = (
+        mod.ConnectionSpec("a", "A", "용도", "K", lambda h, s: Client(), fake_ok),
+        mod.ConnectionSpec("b", "B", "용도", "K", lambda h, s: Client(), fake_fail),
+        mod.ConnectionSpec("c", "C", "용도", "K", lambda h, s: None, fake_ok),
+    )
+    monkeypatch.setattr(mod, "CONNECTION_SPECS", specs)
+    monkeypatch.setattr(mod, "_last_results", {})
+
+    client = loopback_client()
+    body = client.post("/api/settings/connections/check", json={}).json()
+    by_id = {row["id"]: row for row in body["connections"]}
+    assert by_id["a"]["state"] == "ok" and by_id["a"]["detail"] == "12건"
+    assert by_id["b"]["state"] == "failed"
+    assert "SECRET" not in by_id["b"]["detail"]
+    assert by_id["c"]["state"] == "missing_key"
+
+    # 비-루프백은 점검도 못 한다.
+    assert TestClient(app, client=NON_LOOPBACK).get("/api/settings/connections").status_code == 403

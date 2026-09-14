@@ -1,7 +1,6 @@
-import { ChevronRight, KeyRound, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { MapProvider } from "../types";
-import { ApiKeysPanel } from "./ApiKeysPanel";
 
 interface SettingsMenuProps {
   mapProvider: MapProvider;
@@ -10,14 +9,14 @@ interface SettingsMenuProps {
 
 /**
  * 상단 우측 설정 메뉴.
- * 지도 유형처럼 한 번 정해 두고 자주 바꾸지 않는 값과 API 키 설정을 모은다.
+ * 지도 유형처럼 한 번 정해 두고 자주 바꾸지 않는 값을 모은다. API 연결은 상단 바의
+ * 전용 버튼(TopSearchBar)이 연다.
  */
 export function SettingsMenu({
   mapProvider,
   onMapProviderChange,
 }: SettingsMenuProps) {
   const [open, setOpen] = useState(false);
-  const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
@@ -80,31 +79,8 @@ export function SettingsMenu({
             </div>
           </section>
 
-          <section className="solo-settings-section">
-            <header>
-              <h3>API 연결</h3>
-              <p>지도·데이터 키를 넣습니다. 로컬에서만 씁니다.</p>
-            </header>
-            <button
-              type="button"
-              className="solo-settings-link"
-              onClick={() => {
-                setApiKeysOpen(true);
-                setOpen(false);
-              }}
-            >
-              <KeyRound size={16} aria-hidden="true" />
-              <span>
-                <strong>API 키 설정</strong>
-                <small>브라우저 키·서버 키 관리</small>
-              </span>
-              <ChevronRight size={15} aria-hidden="true" />
-            </button>
-          </section>
         </div>
       )}
-
-      <ApiKeysPanel open={apiKeysOpen} onClose={() => setApiKeysOpen(false)} />
     </div>
   );
 }
