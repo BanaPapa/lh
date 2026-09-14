@@ -1,0 +1,818 @@
+/* 결과 섹션·유해요소 카드의 공통 표현.
+   화면 골격(상단 검색 바 + 지도 + 우측 레일)은 standalone-app.css 에 있다. */
+
+/* ── 결과 레일 (헤더 레이아웃은 standalone-app.css) ───────── */
+.result-drawer-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.result-drawer-actions button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.result-drawer-actions button:hover {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+.result-section-list {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.result-section {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.result-section > button {
+  width: 100%;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  color: var(--fg);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.result-section > button > strong {
+  font-size: 21.2px;
+}
+
+.result-section-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  border-radius: 9px;
+}
+
+.result-section-badge {
+  padding: 3px 9px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  border-radius: 999px;
+  font-size: 18.8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.result-section.is-ready .result-section-icon,
+.result-section.is-ready .result-section-badge {
+  color: var(--blue);
+}
+
+.result-section.is-ready .result-section-badge {
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+}
+
+.result-section.is-warning .result-section-icon,
+.result-section.is-warning .result-section-badge {
+  color: var(--amber);
+}
+
+.result-section.is-warning .result-section-badge {
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+}
+
+.result-section.is-danger .result-section-icon,
+.result-section.is-danger .result-section-badge {
+  color: #ef5f5f;
+}
+
+.result-section.is-danger .result-section-badge {
+  background: color-mix(in srgb, #ef5f5f 14%, transparent);
+}
+
+.result-section.is-open {
+  border-color: var(--blue);
+}
+
+.result-section.is-open .result-section-chevron {
+  transform: rotate(180deg);
+}
+
+.result-section-body {
+  padding: 0 12px 12px;
+  border-top: 1px dashed var(--border-2);
+}
+
+.result-score-row,
+.result-stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 11px 0;
+}
+
+.result-stat-row {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.result-score-row > div,
+.result-stat-row > div {
+  padding: 8px 4px;
+  text-align: center;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  border-radius: 7px;
+}
+
+.result-score-row strong,
+.result-stat-row strong {
+  display: block;
+  font-size: 25px;
+  font-weight: 800;
+}
+
+.result-score-row small,
+.result-stat-row small {
+  color: var(--muted);
+  font-size: 17.5px;
+}
+
+.result-note,
+.result-footnote,
+.result-error {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 18.8px;
+  line-height: 1.6;
+}
+
+.result-footnote {
+  font-size: 17.5px;
+}
+
+.result-error {
+  color: #ef5f5f;
+  font-weight: 700;
+}
+
+.result-detail-button {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--fg-2);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
+  border-radius: 8px;
+  font-size: 18.8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.result-detail-button:hover {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+.result-finding-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 9px;
+}
+
+.result-finding-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--fg);
+  text-align: left;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.result-finding-list button.is-active {
+  border-color: var(--blue);
+}
+
+.result-finding-list span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.result-finding-list strong {
+  font-size: 20px;
+}
+
+.result-finding-list small {
+  color: var(--muted);
+  font-size: 17.5px;
+}
+
+.result-finding-list em {
+  color: var(--muted);
+  font-size: 18.8px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* ── 모듈 상세 오버레이 ─────────────────────────────────────── */
+.module-detail-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.module-detail-overlay > header {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--raise);
+  border-bottom: 1px solid var(--border);
+}
+
+.module-detail-overlay > header strong {
+  font-size: 17.5px;
+}
+
+.module-detail-overlay > header button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.module-detail-body {
+  flex: 1;
+  position: relative;
+  overflow-y: auto;
+}
+
+
+/* 상세 오버레이 안의 유해시설 드로어는 지도 위 우측 패널이 아니라
+   오버레이 본문이므로 전체 폭을 쓴다. 그대로 두면 좌측이 텅 빈다. */
+/* ── 사업지 필지 목록 (결과 레일 맨 위 카드) ────────────────── */
+/* 사업지가 여러 지번에 걸칠 수 있어 선택된 필지를 눈으로 확인시킨다. */
+.parcel-reset-button {
+  padding: 2px 8px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.parcel-reset-button:hover {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+.site-parcel-total {
+  margin: 6px 0 0;
+  color: var(--fg-2);
+  font-size: 16.2px;
+  font-weight: 600;
+}
+
+.site-parcel-list {
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 132px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.site-parcel-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-2);
+  font-size: 15px;
+}
+
+.site-parcel-list li:last-child {
+  border-bottom: none;
+}
+
+.site-parcel-list li span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-parcel-list li span:last-child {
+  flex: none;
+  color: var(--muted);
+}
+
+.site-parcel-hint {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* 선택된 시설 행. 지도 마커와 짝을 이룬다. */
+/* 유해요소 종류 카드의 후보 개수 배지 */
+.result-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  color: #fff;
+  background: var(--blue);
+  border-radius: 9px;
+  font-size: 13.8px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* 후보가 없는 종류는 눈에 덜 띄게 */
+.result-finding-list .is-no_conflict_in_snapshot .result-category-main small,
+.result-finding-list .is-dataset_missing .result-category-main small,
+.result-finding-list .is-not_applicable .result-category-main small {
+  opacity: 0.72;
+}
+
+/* ── 유해요소 종류 카드 (결과 패널) ─────────────────────────── */
+/* 한 줄에 다 보여주고, 접었다 펴는 건 후보가 있는 '검토 필요'뿐이다.
+   규칙과 자료출처는 줄을 늘리지 않게 마우스를 얹었을 때만 띄운다. */
+.result-category {
+  position: relative;
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+}
+
+.result-category + .result-category {
+  margin-top: 6px;
+}
+
+.result-category-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px;
+}
+
+.result-category-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 6px 11px 14px;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 9px 0 0 9px;
+  text-align: left;
+  font: inherit;
+}
+
+button.result-category-main {
+  cursor: pointer;
+}
+
+button.result-category-main:hover,
+.result-category.is-open button.result-category-main {
+  background: var(--surface-2);
+}
+
+.result-category.is-open button.result-category-main {
+  border-radius: 9px 0 0 0;
+}
+
+.result-category-main > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.result-category strong {
+  display: block;
+  font-size: 18.8px;
+}
+
+.result-category small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 16.2px;
+}
+
+.result-category-main > em {
+  flex: none;
+  font-size: 16.2px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.result-category-chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 140ms ease;
+}
+
+.result-category.is-open .result-category-chevron {
+  transform: rotate(180deg);
+}
+
+.result-category.is-review_required em {
+  color: #f59e0b;
+}
+
+.result-category.is-exclusion_match em {
+  color: var(--red, #dc2626);
+}
+
+.result-category.is-geometry_missing em {
+  color: #eab308;
+}
+
+.result-category.is-no_conflict_in_snapshot em {
+  color: #16a34a;
+}
+
+.result-category.is-dataset_missing em,
+.result-category.is-not_applicable em {
+  color: var(--muted);
+}
+
+.result-category.is-not_applicable {
+  opacity: 0.66;
+}
+
+/* 룰북 §6 data_state 뱃지 */
+.hazard-data-state {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 13.1px;
+  font-weight: 700;
+  font-style: normal;
+  vertical-align: middle;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+}
+
+.hazard-data-state.is-applied {
+  color: #16a34a;
+  background: color-mix(in srgb, #16a34a 12%, transparent);
+  border-color: color-mix(in srgb, #16a34a 30%, transparent);
+}
+
+.hazard-data-state.is-partial {
+  color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  border-color: color-mix(in srgb, #f59e0b 30%, transparent);
+}
+
+.hazard-data-state.is-approximate {
+  color: #0ea5e9;
+  background: color-mix(in srgb, #0ea5e9 12%, transparent);
+  border-color: color-mix(in srgb, #0ea5e9 30%, transparent);
+}
+
+.hazard-data-state.is-manual,
+.hazard-data-state.is-missing {
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  border-color: color-mix(in srgb, #ef4444 30%, transparent);
+}
+
+.hazard-data-state.is-negotiate {
+  color: #8b5cf6;
+  background: color-mix(in srgb, #8b5cf6 12%, transparent);
+  border-color: color-mix(in srgb, #8b5cf6 30%, transparent);
+}
+
+/* 근거 문서 번호(docs/hazards/H-*.md) 칩 */
+/* 구현/확정/검증 축 배지. data_state 배지와 시각적으로 구분한다. */
+/* 미구현: 어댑터/파이프라인 없음. 가장 강하게(빨강). */
+/* 미확정: LH/팀 확인 대기(진한 주황). */
+/* 검증필요: 등록됐으나 실응답 미확인(앰버). */
+/* 판정 제외(군부대·사격장). 일반 '미적용'과 구분되게 점선 테두리로 표시. */
+/* 수기확인·미적용 사유 플래그 */
+.result-category-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0 14px 10px;
+}
+
+.hazard-flag {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 13.8px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.hazard-flag.is-manual {
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+}
+
+.hazard-flag.is-na {
+  color: var(--muted);
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+/* 미구현/미확정/검증필요의 한 줄 사유. */
+.hazard-flag.is-impl-note {
+  color: #b45309;
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  font-weight: 600;
+}
+
+/* 룰북상 판정적용이지만 원천만 아직 안 붙은 경우. 배지 모순을 풀어 주는 안내. */
+.hazard-flag.is-pending-source {
+  color: #b45309;
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+}
+
+/* 룰북 §11 스냅샷 고지 */
+.hazard-snapshot-notice {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  color: #15803d;
+  background: color-mix(in srgb, #16a34a 10%, transparent);
+  border: 1px solid color-mix(in srgb, #16a34a 26%, transparent);
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+/* 룰북 §8 미확정 사항 패널 */
+.hazard-pending-panel {
+  margin: 10px 0;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+}
+
+.hazard-pending-panel > strong {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 16.2px;
+}
+
+.hazard-pending-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 5px;
+}
+
+.hazard-pending-panel li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.hazard-pending-panel li span {
+  color: var(--fg-2);
+}
+
+.hazard-pending-panel li em {
+  flex: none;
+  color: var(--amber);
+  font-style: normal;
+  font-weight: 600;
+}
+
+/* 원천이 붙어 있으면 상태만, 안 붙어 있으면 연결 버튼이 선다. */
+.result-source-state {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 7px;
+  color: #16a34a;
+  background: color-mix(in srgb, #16a34a 12%, transparent);
+  border-radius: 6px;
+  font-size: 14.4px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.result-source-add {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: transparent;
+  border: 1px dashed var(--border-2);
+  border-radius: 7px;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.result-source-add:hover {
+  color: var(--blue);
+  background: var(--blue-dim);
+  border-color: var(--blue);
+}
+
+.result-source-add.is-open {
+  color: var(--blue);
+  border-style: solid;
+  border-color: var(--blue);
+  transform: rotate(45deg);
+}
+
+.result-source-connect {
+  margin: 0 10px 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+
+.result-source-connect strong {
+  font-size: 16.2px;
+}
+
+.result-source-connect p {
+  margin: 5px 0 0;
+  color: var(--fg-2);
+  font-size: 15.6px;
+  line-height: 1.6;
+}
+
+.result-source-connect code {
+  display: block;
+  margin-top: 8px;
+  padding: 7px 9px;
+  color: var(--fg);
+  background: var(--raise);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  font-size: 15px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.result-source-connect small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14.4px;
+  line-height: 1.5;
+}
+
+/* 마우스를 얹었을 때만 뜨는 규칙·출처 쪽지. 펼친 카드에는 띄우지 않는다. */
+.result-category-tip {
+  position: absolute;
+  top: calc(100% - 4px);
+  left: 10px;
+  right: 10px;
+  z-index: 30;
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  color: var(--fg-2);
+  background: var(--raise);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  font-size: 15px;
+  line-height: 1.5;
+  opacity: 0;
+  visibility: hidden;
+  /* 아래 카드를 덮고 있어도 클릭은 그대로 통과해야 한다. */
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    visibility 120ms ease;
+}
+
+/* 목록 맨 아래 카드는 쪽지를 아래로 띄우면 잘린다. 위로 뒤집는다. */
+.result-category:last-child > .result-category-tip {
+  top: auto;
+  bottom: calc(100% - 4px);
+}
+
+.result-category-tip b {
+  margin-right: 6px;
+  color: var(--muted);
+  font-size: 13.8px;
+  font-weight: 700;
+}
+
+.result-category:not(.is-open):hover > .result-category-tip,
+.result-category:not(.is-open):focus-within > .result-category-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 연결 안내를 펼친 동안에는 쪽지가 그 위를 덮지 않게 한다. */
+.result-category:has(.result-source-connect) > .result-category-tip {
+  display: none;
+}
+
+.result-category-detail {
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--border-2);
+}
+
+.result-category-detail > p {
+  margin: 10px 0 12px;
+  font-size: 17.5px;
+}
+
+.result-facility-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result-facility-list button {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.result-facility-list li + li {
+  margin-top: 5px;
+}
+
+.result-facility-list button:hover,
+.result-facility-list button.is-active {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+}
+
+.result-facility-list b {
+  flex: none;
+  min-width: 52px;
+  color: var(--blue);
+  font-size: 17.5px;
+}
+
+.result-facility-list strong {
+  display: block;
+  font-size: 17.5px;
+}
+
+.result-facility-list small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 15px;
+}

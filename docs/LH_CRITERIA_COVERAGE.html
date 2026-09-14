@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LH 심사기준 시설군 원천·연결 현황</title>
+<style>
+:root{
+  --bg:#f7f8fa; --surface:#ffffff; --surface-2:#f1f3f6; --border:#dde1e7;
+  --fg:#1a1d21; --fg-2:#5b6570; --fg-3:#8a939e;
+  --accent:#2b6cb0;
+  --ok-bg:#e3f5e8; --ok-fg:#1a6b35; --ok-bd:#a8ddb8;
+  --warn-bg:#fff3d9; --warn-fg:#8a5a00; --warn-bd:#f0d091;
+  --hold-bg:#fdeadd; --hold-fg:#9a4a12; --hold-bd:#f2c2a0;
+  --bad-bg:#fde8e8; --bad-fg:#96272b; --bad-bd:#f2b8ba;
+  --mute-bg:#eceef1; --mute-fg:#5b6570; --mute-bd:#d5dae0;
+  --off-bg:#f2f3f5; --off-fg:#9aa2ab; --off-bd:#e0e3e8;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#15181c; --surface:#1c2025; --surface-2:#22272d; --border:#333a42;
+    --fg:#e6e9ed; --fg-2:#a6b0bb; --fg-3:#78828d;
+    --accent:#77aee8;
+    --ok-bg:#12301c; --ok-fg:#7fd39a; --ok-bd:#255433;
+    --warn-bg:#332708; --warn-fg:#e8c169; --warn-bd:#5a4614;
+    --hold-bg:#33200f; --hold-fg:#e8a172; --hold-bd:#5c3a1d;
+    --bad-bg:#361618; --bad-fg:#e79094; --bad-bd:#5e292c;
+    --mute-bg:#262b31; --mute-fg:#a6b0bb; --mute-bd:#3a424b;
+    --off-bg:#20242a; --off-fg:#6b747e; --off-bd:#2e343b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15181c; --surface:#1c2025; --surface-2:#22272d; --border:#333a42;
+  --fg:#e6e9ed; --fg-2:#a6b0bb; --fg-3:#78828d;
+  --accent:#77aee8;
+  --ok-bg:#12301c; --ok-fg:#7fd39a; --ok-bd:#255433;
+  --warn-bg:#332708; --warn-fg:#e8c169; --warn-bd:#5a4614;
+  --hold-bg:#33200f; --hold-fg:#e8a172; --hold-bd:#5c3a1d;
+  --bad-bg:#361618; --bad-fg:#e79094; --bad-bd:#5e292c;
+  --mute-bg:#262b31; --mute-fg:#a6b0bb; --mute-bd:#3a424b;
+  --off-bg:#20242a; --off-fg:#6b747e; --off-bd:#2e343b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);
+     font-size:14px;line-height:1.6;-webkit-text-size-adjust:100%}
+.wrap{max-width:1440px;margin:0 auto;padding:28px 20px 80px}
+header.top{border-bottom:1px solid var(--border);padding-bottom:18px;margin-bottom:24px}
+h1{font-size:23px;margin:0 0 6px;letter-spacing:-.01em}
+.sub{color:var(--fg-2);font-size:13px;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:12px;color:var(--fg-3)}
+.meta code{font-family:var(--mono);color:var(--fg-2)}
+h2{font-size:17px;margin:34px 0 4px;letter-spacing:-.01em}
+h2 .cnt{font-size:12px;font-weight:400;color:var(--fg-3);margin-left:8px}
+h3{font-size:14px;margin:26px 0 8px;color:var(--fg);font-weight:650}
+h3 .rule{font-weight:400;color:var(--fg-3);font-size:12px;margin-left:6px}
+p.note{color:var(--fg-2);font-size:12.5px;margin:6px 0 12px}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px;margin:16px 0 8px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px 13px}
+.card .n{font-size:22px;font-weight:680;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.card .l{font-size:11.5px;color:var(--fg-2);margin-top:1px}
+
+.toolbar{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin:18px 0 10px;
+         position:sticky;top:0;z-index:5;background:var(--bg);padding:9px 0;border-bottom:1px solid var(--border)}
+.toolbar .lbl{font-size:11.5px;color:var(--fg-3);margin-right:2px}
+button.f{font:inherit;font-size:12px;padding:4px 10px;border-radius:999px;cursor:pointer;
+         border:1px solid var(--border);background:var(--surface);color:var(--fg-2)}
+button.f[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+input.q{font:inherit;font-size:12.5px;padding:5px 10px;border-radius:7px;border:1px solid var(--border);
+        background:var(--surface);color:var(--fg);min-width:190px;flex:1;max-width:280px}
+
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:1080px;font-size:12.5px}
+th,td{padding:8px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--border)}
+thead th{background:var(--surface-2);font-size:11.5px;font-weight:650;color:var(--fg-2);
+         white-space:nowrap;position:sticky;top:0;z-index:1}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+td.num{font-variant-numeric:tabular-nums;color:var(--fg-3);width:38px;text-align:right;font-family:var(--mono)}
+td.grp{font-weight:600;min-width:180px}
+td.src{font-family:var(--mono);font-size:11px;color:var(--fg-2);word-break:break-all;min-width:210px}
+td.blk{min-width:130px;color:var(--fg)}
+td.rmk{color:var(--fg-2);min-width:250px;font-size:11.5px}
+td.dash{color:var(--fg-3)}
+tr.hide{display:none}
+
+.b{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:640;
+   white-space:nowrap;border:1px solid}
+.b-ok{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-bd)}
+.b-appr{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-bd)}
+.b-hold{background:var(--hold-bg);color:var(--hold-fg);border-color:var(--hold-bd)}
+.b-bad{background:var(--bad-bg);color:var(--bad-fg);border-color:var(--bad-bd)}
+.b-mute{background:var(--mute-bg);color:var(--mute-fg);border-color:var(--mute-bd)}
+.b-off{background:var(--off-bg);color:var(--off-fg);border-color:var(--off-bd)}
+.b-wire{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-bd);border-style:dashed}
+.sub-b{display:block;font-size:10.5px;color:var(--fg-3);margin-top:3px;font-weight:400}
+
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:7px 20px;
+        background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:13px 15px;margin:14px 0 4px}
+.legend div{font-size:12px;color:var(--fg-2)}
+.legend .b{margin-right:7px}
+.callout{background:var(--surface-2);border:1px solid var(--border);
+         border-radius:9px;padding:13px 16px;margin:16px 0;font-size:12.5px;color:var(--fg-2)}
+.callout strong{color:var(--fg)}
+.callout code{font-family:var(--mono);font-size:11px}
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--border);
+       color:var(--fg-3);font-size:11.5px}
+a{color:var(--accent)}
+@media print{
+  .toolbar{display:none} body{background:#fff;font-size:10px}
+  .tw{overflow:visible;border:none} table{min-width:0} tr.hide{display:table-row}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>LH 심사기준 — 시설군별 원천·연결 현황</h1>
+  <p class="sub">다른 구현(LH 납품본 · 타 개발자)과 1:1 대조하기 위한 기준표. 실제 엔드포인트 · 파일명 · 연결상태만 적는다.</p>
+  <div class="meta">
+    <span>기준일 <code>2026-08-29</code></span>
+    <span>저장소 <code>BanaPapa/lh_mvp</code></span>
+    <span>브랜치 <code>feat/lh-screening-engine</code></span>
+    <span>연결상태 실호출 검증 <code>2026-08-29</code></span>
+  </div>
+</header>
+
+<div class="callout">
+  <strong>2026-08-29 최종 실측 — 공장 다목 배선 완료본.</strong> 8/28 배선에 더해 <strong>공장 다목이 판정에 들어왔다</strong>. 박진주 대표님 표준 데이터셋 제작 절차(설계서 §7.2)를 <code>pnu_resolver.py</code>로 구현해 factoryON·표준본 공장·소음 원천에 PNU 를 부여했다 — <strong>법정동코드로 PNU 를 결정적으로 조립하고 좌표를 연속지적도 단일 필지에 얹어 확정</strong>하는, 외부 조회 없이 재현되는 절차다. 표준본 공장 PNU <strong>577 → 5,582개</strong>(고시업종 공장 2,837), factoryON 7,378/7,983(92.4%). 연속지적도 인덱스(<strong>3,888,333필지 · R-Tree 적용 후 2.50GB</strong>)로 사업지·시설 경계가 실제 지적경계로 판정된다. 판정 1회는 성능 개선(SSL 컨텍스트 공유·지적도 R-Tree·PNU 캐시)으로 <strong>298.1초 → 7~8초</strong>(정상 상태 실측 7.3·7.6초. 프로세스 기동 후 첫 판정은 외부 API 콜드 DNS+TLS 연결로 30초대). 백엔드 테스트 <strong>411 통과</strong>.
+  <br><br><strong>정정 — 다목 「배선 보류」는 오독이었다.</strong> 종전 문서는 factoryON↔표준본 공장 연결키가 지번 주소뿐이라 §3(문자열 유사매칭 확정 금지) 위반으로 봤다. 그러나 §7.2 절차는 문자열 매칭이 아니라 <strong>§3 이 요구하는 PNU 우선키를 만들어내는 절차</strong>다. 따라서 다목(4·5·6)은 이제 조건 성립 시 <code>exclusion_match</code>다. 라목(7·8)만 소음 스키마에 소음도·방음시설 필드가 없어(스키마 한계) <code>review_required</code>로 남는다.
+  <br><br><strong>전주시청 실판정.</strong> 사업지 필지 <code>parcel_polygon</code> · 실제 지적경계 · 경계커버리지 100 · <code>geometry_missing</code> 0. 룰북 카테고리(29종) 기준 <strong>연결 18 / 29</strong>(2026-08-29 다목 배선 반영). 8/28 상태분포(매입제외 0·저촉없음 16·검토필요 1·데이터결손 10)는 다목 배선 전 값이며 다목이 판정에 들어와 데이터결손이 줄었다 — 정확한 재산정 분포는 <em>미측정</em>.
+  <br><br><strong>두 개의 「연결」 숫자를 혼동하지 마라.</strong> 아래 표의 <strong>62행</strong>은 시설군 세부항목을 <em>원천(적재·배선) 기준</em>으로 센 것이라 「연결 30」이다. 위 전주 실판정의 「연결 18」은 <em>룰북 판정 카테고리 29종 기준</em>이다 — 세부항목 여럿이 한 카테고리로 묶인다.
+  <br><br><strong>남은 상태를 구분해 읽어야 한다.</strong> <em>연결</em>은 지금 판정에 쓰인다. <em>모듈 완성·미배선</em>으로 남은 4항목은 좌표(지오코딩) 또는 추가 원천이 필요해 이번 배선에서 빠졌다. <em>대체</em>는 카카오 지도 근사다. <em>미확보</em>는 공개 원천이 없어 LH 협의 대상이다.
+  <br><br><strong>확정과 실동작 구분.</strong> 시설 다필지 최소값 규칙은 확정됐으나(룰북 §3), 점유 필지를 열거해주는 원천이 없어 <strong>실판정은 아직 단일 필지</strong>로 동작한다. 열거 원천 확보는 후속 과제다.
+</div>
+<div class="callout">
+  <strong>원천 이원화 — 이 표를 읽는 기준.</strong>
+  <br><br>
+  <strong>제출본은 CSV 정본을 쓴다.</strong> LH 내부망에서 외부 API 를 호출할 수 없으므로,
+  납품본의 판정 원천은 박진주 대표님 표준 데이터셋(<code>delivery/standardized/facilities.xlsx</code>)과
+  체크리스트가 지정한 원본 파일이다. 표의 <strong>「원천(데이터셋)」 열이 제출본 기준</strong>이다.
+  <br><br>
+  <strong>제출 후 실운영은 API 직결로 전환한다.</strong> 「원천(API)」 열은 그 전환 대상이자,
+  지금 이 앱이 교차검증 도구로서 CSV 정본의 누락·오류를 잡는 데 쓰는 경로다.
+  두 원천이 같은 시설을 다르게 보고하면 그 차이 자체가 검증 결과다.
+  <br><br>
+  <strong>따라서 원천이 다른 것은 결함이 아니라 설계다.</strong> 예를 들어 주유소는
+  제출본이 산업통상부 전국 주유소 등록현황 CSV 를 쓰고, 이 앱은 생활안전지도
+  <code>IF_0033</code> 로 독립 조회한다. 대조 시 두 열을 함께 봐야 한다.
+</div>
+
+<div class="cards">
+<div class="card"><div class="n">62</div><div class="l">전체 시설군</div></div>
+<div class="card"><div class="n">41</div><div class="l">1차 매입제외</div></div>
+<div class="card"><div class="n">21</div><div class="l">2차 생활편의성</div></div>
+<div class="card"><div class="n">17<span style="font-size:13px;font-weight:400">종</span></div><div class="l">데이터셋 적재 · 172,749건</div></div>
+<div class="card"><div class="n">30</div><div class="l">연결 (원천기준 62행 중)</div></div>
+<div class="card"><div class="n">13</div><div class="l">매입제외 확정가능</div></div>
+<div class="card"><div class="n">3.89<span style="font-size:13px;font-weight:400">M</span></div><div class="l">연속지적도 필지 (실경계)</div></div>
+</div>
+<div class="legend">
+<div><span class="b b-ok">연결</span>적재·직결·배선 완료 · 판정에 실제 사용중 (30항목 + 연속지적도)</div>
+<div><span class="b b-wire">모듈 완성·미배선</span>어댑터 완성 · 좌표(지오코딩) 또는 추가원천 대기 (4항목)</div>
+<div><span class="b b-mute">대체</span>심사표 지정 원천 아님 · 카카오 근사 (17항목)</div>
+<div><span class="b b-bad">미확보</span>공개 원천 없음 · 신청으로 해결 안 됨 (9항목)</div>
+<div><span class="b b-off">판정 제외</span>협의로 판정에서 제외 (2항목)</div>
+<div class="dash" style="color:var(--fg-3)">「승인·미적재」·「미적재」 상태는 2026-08-28 sync 적재로 모두 「연결」로 넘어갔다.</div>
+</div>
+<div class="toolbar">
+  <span class="lbl">연결여부</span>
+  <button class="f" data-f="all" aria-pressed="true">전체</button>
+  <button class="f" data-f="ok" aria-pressed="false">연결</button>
+  <button class="f" data-f="wire" aria-pressed="false">미배선</button>
+  <button class="f" data-f="sub" aria-pressed="false">대체</button>
+  <button class="f" data-f="none" aria-pressed="false">미확보·미구현</button>
+  <input class="q" type="search" placeholder="시설군·원천·비고 검색" aria-label="검색">
+  <span class="lbl" id="shown"></span>
+</div>
+<h2>1차 판정 — 매입제외 (주거환경 저해시설)<span class="cnt">41항목 · 1~41</span></h2>
+<p class="note">근거: 주택건설기준 등에 관한 규정 제9조의2 · LH 매입공고 제5조4항. 거리는 주택유형 × 신청유형 매트릭스를 따른다. 주거용 오피스텔은 공장·위험물·주유소·위락·숙박이 미적용이고 화장장 500m만 적용된다.</p>
+<h3>1-A. 공장<span class="rule">50m · 제9조의2 제1항 제1호 가~라목 · 10항목</span></h3>
+<div class="tw"><table><thead><tr><th>#</th><th>시설군</th><th>원천(API)</th><th>원천(데이터셋)</th><th>연결여부</th><th>막고있는 판정</th><th>비고</th></tr></thead><tbody>
+<tr data-s="none"><td class="num">1</td><td class="grp">가. 특정대기유해물질 배출공장</td><td class="src dash">—</td><td class="src">미확보</td><td><span class="b b-bad">미확보</span></td><td class="blk">가목 전체</td><td class="rmk">박진주 대표님 8/20 «특정 유해물질 배출시설만 뽑는 건 불가능». LH 요청2 승인 — 판정 미적용 · 별도 수기 확인</td></tr>
+<tr data-s="ok"><td class="num">2</td><td class="grp">나-①. 대기오염물질배출시설 1~3종</td><td class="src">apis.data.go.kr/1741000/air_pollution_facility_installation/info</td><td class="src">04_05_air_pollution_facilities.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">63,146건</span></td><td class="blk dash">—</td><td class="rmk"><strong>나목 확정 가능.</strong> 표준본 공장 PNU 5,582개가 배선돼 3번과 AND 성립. 대기오염 1~3종 AND 공장등록으로 매입제외 확정</td></tr>
+<tr data-s="ok"><td class="num">3</td><td class="grp">나-②. 공장 등록 <em>(AND)</em></td><td class="src dash">—</td><td class="src">03_06_09_factory_registry.xlsx <span class='sub-b'>PNU 5,582개</span></td><td><span class="b b-ok">연결</span><span class="sub-b">PNU 5,582</span></td><td class="blk dash">—</td><td class="rmk"><code>local_sources.py</code>·<code>pnu_resolver.py</code>·<code>cadastral_local</code> 배선 완료. 표준본 공장 PNU <strong>577 → 5,582개</strong>(설계서 §7.2 결정적 PNU 조립+공간조인, 그중 고시업종 공장 2,837). 연속지적도로 필지경계 조회. 2·9번과 직결</td></tr>
+<tr data-s="ok"><td class="num">4</td><td class="grp">다-①. 대기오염물질배출시설 4~5종</td><td class="src">apis.data.go.kr/1741000/air_pollution_facility_installation/info</td><td class="src">04_05_air_pollution_facilities.xlsx</td><td><span class="b b-ok">연결</span></td><td class="blk"><strong>다목 확정 가능</strong></td><td class="rmk">나목과 동일 원천 적재. 5번 고시업종·6번 공장과 PNU AND 성립 시 매입제외 확정</td></tr>
+<tr data-s="ok"><td class="num">5</td><td class="grp">다-②. 국토부 고시업종 <em>(AND)</em></td><td class="src dash">—</td><td class="src">factory_prohibit_list.csv <span class='sub-b'>202개 KSIC</span></td><td><span class="b b-ok">연결</span><span class="sub-b">고시업종 공장 2,837</span></td><td class="blk"><strong>다목 판정 가능</strong></td><td class="rmk">KSIC 202개 파싱 완료. <strong>정정(2026-08-29): 종전 「주소매칭 §3 위반 배선 보류」는 설계서 §7.2 절차를 문자열 매칭으로 오독한 것.</strong> §7.2 는 법정동코드로 PNU 를 결정적으로 조립하고 좌표를 연속지적도 단일 필지에 얹어 확정하는 절차라, §3 이 요구하는 PNU 우선키를 만들어낸다. <code>pnu_resolver.py</code> 로 배선 — factoryON 7,378/7,983(92.4%)·고시업종 공장 2,837개 확정. 다목이 판정에 들어온다</td></tr>
+<tr data-s="ok"><td class="num">6</td><td class="grp">다-③. 공장 등록 <em>(AND)</em></td><td class="src dash">—</td><td class="src">03_06_09_factory_registry.xlsx <span class='sub-b'>PNU 5,582개</span></td><td><span class="b b-ok">연결</span></td><td class="blk"><strong>다목 확정 가능</strong></td><td class="rmk">3번과 동일 원천 배선. 5번 고시업종과 PNU AND 로 확정 경로 성립</td></tr>
+<tr data-s="ok"><td class="num">7</td><td class="grp">라-①. 소음배출시설</td><td class="src">api.data.go.kr/openapi/tn_pubr_public_noise_vibration_emission_fclt_api <span class='sub-b'>403 미승인</span></td><td class="src">08_noise_vibration_facilities.csv <span class='sub-b'>전북 146건 보조</span></td><td><span class="b b-ok">연결</span><span class="sub-b">CSV 보조 · PNU 109/146</span></td><td class="blk"><strong>라목 (review_required)</strong></td><td class="rmk">어댑터 배선·전북 CSV 146건 보조 동작. 소음 원천도 PNU 확정(146건 중 109건)돼 공장 AND 는 성립. <strong>그러나 API 403 미승인이고, 스키마에 소음도·방음시설 컬럼이 없어(<code>noisVbrtMainCn</code> 146건 전건 공란) 50dB·방음시설 예외를 확인할 수 없다 → exclusion_match 도달 불가, review_required 가 정상.</strong> 라목은 매칭이 아니라 스키마 한계로 막힌다</td></tr>
+<tr data-s="ok"><td class="num">8</td><td class="grp">라-②. 공장 등록 <em>(AND)</em></td><td class="src dash">—</td><td class="src">03_06_09_factory_registry.xlsx <span class='sub-b'>PNU 5,582개</span></td><td><span class="b b-ok">연결</span></td><td class="blk"><strong>라목 (review_required)</strong></td><td class="rmk">3번과 동일 원천 배선. 라목은 7번 50dB 예외를 확인할 수 없어 확정 불가</td></tr>
+<tr data-s="ok"><td class="num">9</td><td class="grp">공장 인접 (정밀조사 요구)</td><td class="src dash">—</td><td class="src">03_06_09_factory_registry.xlsx <span class='sub-b'>PNU 5,582개</span></td><td><span class="b b-ok">연결</span></td><td class="blk">공장 인접 표시</td><td class="rmk">배선 완료. LH 8/25 회신대로 «공장 인접 여부만 판정하고 정밀조사 요구 메시지». <strong>설계상 review_required 로 남겨 매입제외 확정에서 제외.</strong> 연결 판정은 「파일 존재」가 아니라 «좌표·PNU 유효 레코드 1건 이상» 기준으로 강화 — 나·다목 factoryON AND 게이트도 동일</td></tr>
+<tr data-s="wire"><td class="num">10</td><td class="grp">(추가기준) 지식산업센터 제외</td><td class="src dash">—</td><td class="src">10_knowledge_industry_centers.csv <span class='sub-b'>20건</span></td><td><span class="b b-wire">모듈 완성·미배선</span></td><td class="blk">지산 예외 처리</td><td class="rmk">정민재 이사님 8/18 — 상층부 지원시설은 건축법상 공장 아님. 동일 PNU면 거리 0m라도 제외. 좌표 없어 지오코딩 필요 — 이번 배선 범위 밖</td></tr>
+</tbody></table></div>
+<p class="note"><strong>공장 소계 10항목 · 확정 가능 2항목</strong>(나목 = 2·3, 다목 = 4·5·6). 나목·다목·공장인접(9)은 표준본 공장 PNU 5,582(고시업종 2,837) + 연속지적도로 배선 완료. <strong>다목은 2026-08-29 배선으로 판정에 들어온다</strong> — 종전 「주소매칭 §3 위반 보류」는 설계서 §7.2(결정적 PNU 조립+공간조인)를 문자열 매칭으로 오독한 것이라 정정. <strong>라목(7·8)만 50dB·방음시설 예외 확인 원천이 없어(스키마 한계) review_required 가 정상</strong>. 10번(지산)만 좌표 미보유로 미배선.</p>
+<h3>1-B. 위험물 저장 및 처리시설<span class="rule">50m · 제9조의2 제1항 제2호 · 12항목</span></h3>
+<div class="tw"><table><thead><tr><th>#</th><th>시설군</th><th>원천(API)</th><th>원천(데이터셋)</th><th>연결여부</th><th>막고있는 판정</th><th>비고</th></tr></thead><tbody>
+<tr data-s="ok"><td class="num">11</td><td class="grp">나-①. LPG 충전소</td><td class="src">safemap.go.kr/openapi2/IF_0033 <span class='sub-b'>lpg_yn·gpoll_div_co 로 판별</span> · apis.data.go.kr/B410019/kgsapi <span class='sub-b'>보조</span></td><td class="src">13_lpg_charging_stations.csv <span class='sub-b'>139건 · 4건 좌표오류 격리</span></td><td><span class="b b-ok">연결</span><span class="sub-b">API 직결</span></td><td class="blk dash">—</td><td class="rmk">생활안전지도 전국 14,417건. EPSG:3857→WGS84 역산 검증. http→https 302 처리 필수. <strong>상표·<code>lpg_yn</code>이 전부 공란인 미분류 행은 충전소로 단정하지 않고 「알 수 없음」으로 분리</strong> — 임계거리 이내여도 exclusion 대신 review_required + 「원천에 시설 구분 정보 없음」 note</td></tr>
+<tr data-s="wire"><td class="num">12</td><td class="grp">나-②. LPG 판매소</td><td class="src dash">—</td><td class="src">14_lpg_retailers.csv <span class='sub-b'>313건 · cp949 · 좌표없음</span></td><td><span class="b b-wire">모듈 완성·미배선</span></td><td class="blk">LPG 판매소 50m</td><td class="rmk"><code>local_sources.py</code> 완성. 좌표 없어 배선 시 지오코딩 필요</td></tr>
+<tr data-s="none"><td class="num">13</td><td class="grp">나-③. LPG 저장소</td><td class="src dash">—</td><td class="src">미확보</td><td><span class="b b-bad">미확보</span></td><td class="blk">LPG 저장소 50m</td><td class="rmk">박진주 대표님 8/18 «저장소 데이터는 찾지못함»</td></tr>
+<tr data-s="none"><td class="num">14</td><td class="grp">다. 위험물 제조소·저장소·취급소</td><td class="src dash">—</td><td class="src">미확보</td><td><span class="b b-bad">미확보</span></td><td class="blk">다목 전체</td><td class="rmk">박진주 대표님 8/18 — LOCALDATA·소방청·행안부 모두 정확한 위치정보 없음. 정민재 이사님 8/18 — 전남은 제공·전북은 개수만. «없다» 단정 대신 LH 협의 필요</td></tr>
+<tr data-s="ok"><td class="num">15</td><td class="grp">라-①. 일반도시가스업</td><td class="src">apis.data.go.kr/1741000/city_gas_companies/info</td><td class="src">17_city_gas_companies.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">70건</span></td><td class="blk">라목 (액화가스 취급소)</td><td class="rmk">법령해석상 액화가스 = 도시가스 + 고압가스. LPG는 나목에서 이미 포함. sync 적재·배선 완료</td></tr>
+<tr data-s="ok"><td class="num">16</td><td class="grp">라-②. 고압가스업</td><td class="src">apis.data.go.kr/1741000/high_pressure_gas/info</td><td class="src">18_20_high_pressure_gas.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">15,690건</span></td><td class="blk">라목</td><td class="rmk">15·18번과 함께 high_pressure_gas 카테고리 구성</td></tr>
+<tr data-s="none"><td class="num">17</td><td class="grp">마. 유독물 보관·저장·판매시설</td><td class="src dash">—</td><td class="src">미확보</td><td><span class="b b-bad">미확보</span></td><td class="blk">마목 전체</td><td class="rmk">박진주 대표님 — 찾지못함</td></tr>
+<tr data-s="ok"><td class="num">18</td><td class="grp">바. 고압가스 충전소·판매소·저장소</td><td class="src">apis.data.go.kr/1741000/high_pressure_gas/info · apis.data.go.kr/1741000/specific_high_pressure_gas/info</td><td class="src">18_20_high_pressure_gas.xlsx · 18_20_specific_high_pressure_gas.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">특정 6,978건</span></td><td class="blk">바목 (부분)</td><td class="rmk">특정고압가스업 6,978건 적재·배선. LNG 충전소·판매소·저장소는 미확보</td></tr>
+<tr data-s="ok"><td class="num">19</td><td class="grp">사. 도료류 판매소</td><td class="src">apis.data.go.kr/1741000/petroleum_alt_fuel_retailers/info</td><td class="src">21_petroleum_alt_fuel_retailers.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">707건</span></td><td class="blk">사목 전체</td><td class="rmk">체크리스트 «부분가능». sync 적재·배선 완료 (석유대체연료 원장 공유)</td></tr>
+<tr data-s="wire"><td class="num">20</td><td class="grp">아. 도시가스 제조시설</td><td class="src dash">—</td><td class="src">22_gas_product_manufacturers.csv <span class='sub-b'>28건 · 좌표없음</span></td><td><span class="b b-wire">모듈 완성·미배선</span></td><td class="blk">아목 전체</td><td class="rmk"><code>local_sources.py</code> 완성. 좌표 없어 지오코딩 필요 — 이번 배선 범위 밖</td></tr>
+<tr data-s="none"><td class="num">21</td><td class="grp">자. 화약류 저장소</td><td class="src dash">—</td><td class="src">미확보</td><td><span class="b b-bad">미확보</span></td><td class="blk">자목 전체</td><td class="rmk">경찰청 「총포 및 화약류 관리 현황」은 연도별 개수만. LH 요청4 승인 — 판정 미적용 · 수기 확인</td></tr>
+<tr data-s="none"><td class="num">22</td><td class="grp">차. 그 밖에 가~자목과 비슷한 것</td><td class="src dash">—</td><td class="src">미확보</td><td><span class="b b-bad">미확보</span></td><td class="blk">차목 전체</td><td class="rmk">대상 범위 자체가 미정의</td></tr>
+</tbody></table></div>
+<p class="note"><strong>위험물 소계 12항목 · 확정 가능 1항목</strong>(11 LPG충전소). 15·16·18·19번은 적재·배선 완료로 연결됐다. 12·20번(LPG판매소·도시가스제조)은 좌표 미보유로 지오코딩 대기, 13·14·17·21·22번은 미확보(LH 협의).</p>
+<h3>1-C. 주유소·석유판매·자동차용 천연가스충전소<span class="rule">25m · 5항목</span></h3>
+<p class="note">LH 최기헌 박사님 8/20 회신 — 위험시설은 원칙 50m이나 이 3종은 도심 위치를 감안해 <strong>25m 초과 시 매입 가능</strong>.</p>
+<div class="tw"><table><thead><tr><th>#</th><th>시설군</th><th>원천(API)</th><th>원천(데이터셋)</th><th>연결여부</th><th>막고있는 판정</th><th>비고</th></tr></thead><tbody>
+<tr data-s="ok"><td class="num">23</td><td class="grp">가-①. 주유소</td><td class="src">safemap.go.kr/openapi2/IF_0033 <span class='sub-b'>poll_div_co 로 판별</span> · opinet.co.kr/api/aroundAll.do <span class='sub-b'>보조</span></td><td class="src">11_gas_stations.csv <span class='sub-b'>산업통상부 · 719건 · 제출본 정본</span></td><td><span class="b b-ok">연결</span><span class="sub-b">API 직결</span></td><td class="blk dash">—</td><td class="rmk"><strong>오피넷 인증 파라미터 버그 수정</strong>(<code>code</code>→<code>certkey</code>). 전주 5km 0건→72건. <strong>생활안전지도 미분류(<code>poll_div_co</code> 공란) 행은 주유소로 단정하지 않고 review_required 로 분리 — 매입제외 오확정 제거.</strong> CSV는 변동사유 이력이라(폐업188·취소8 제외, 휴업458 검토) 최신 이벤트 채택 처리가 별도 필요</td></tr>
+<tr data-s="ok"><td class="num">24</td><td class="grp">가-②. 석유판매업</td><td class="src">apis.data.go.kr/1741000/oil_retailers/info</td><td class="src">12_oil_retailers.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">12,498건</span></td><td class="blk dash">—</td><td class="rmk dash">—</td></tr>
+<tr data-s="ok"><td class="num">25</td><td class="grp">가-③. 석유대체연료 판매업</td><td class="src">apis.data.go.kr/1741000/petroleum_alt_fuel_retailers/info</td><td class="src">21_petroleum_alt_fuel_retailers.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">707건</span></td><td class="blk dash">—</td><td class="rmk">LH 요청3 회신 — <strong>포함 확정</strong>. sync 적재·배선 완료</td></tr>
+<tr data-s="ok"><td class="num">26</td><td class="grp">(LH기준) 자동차용 천연가스충전소</td><td class="src dash">—</td><td class="src">25_cng_stations.csv <span class='sub-b'>8건 · cp949 · 좌표보유</span></td><td><span class="b b-ok">연결</span><span class="sub-b">좌표 직결</span></td><td class="blk dash">—</td><td class="rmk">공개 API 없음. 좌표 보유분을 배선 완료 — <strong>CNG 25m 매입제외 확정 가능</strong></td></tr>
+<tr data-s="none"><td class="num">27</td><td class="grp">└ LNG 충전소</td><td class="src dash">—</td><td class="src">미확보</td><td><span class="b b-bad">미확보</span></td><td class="blk">LNG 충전소</td><td class="rmk">박진주 대표님 — 찾지못함</td></tr>
+</tbody></table></div>
+<p class="note"><strong>주유·석유·가스 소계 5항목 · 확정 가능 3항목</strong>(23 주유소 · 24 석유판매업 · 26 CNG). 25 석유대체연료는 연결됐고 24 석유판매 판정에 함께 반영된다. 27 LNG 만 미확보.</p>
+<h3>1-D. 일반숙박시설<span class="rule">25m · 다자녀 · 1항목</span></h3>
+<div class="tw"><table><thead><tr><th>#</th><th>시설군</th><th>원천(API)</th><th>원천(데이터셋)</th><th>연결여부</th><th>막고있는 판정</th><th>비고</th></tr></thead><tbody>
+<tr data-s="ok"><td class="num">28</td><td class="grp">일반숙박시설</td><td class="src">apis.data.go.kr/1741000/lodgings/info</td><td class="src">27_lodgings.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">30,107건</span></td><td class="blk dash">—</td><td class="rmk">LH 8/20 — 취사 불가한 일반숙박(모텔·호텔·여인숙)만. <strong>취사 가능 콘도 제외.</strong> LH 8/24 정정 — 관광숙박시설 8종(관광호텔·수상관광호텔·한국전통호텔·가족호텔·호스텔·소형호텔·의료관광호텔·휴양콘도미니엄) <strong>제외 확정</strong></td></tr>
+</tbody></table></div>
+<h3>1-E. 위락시설<span class="rule">25m · 주택 다자녀 · 10항목</span></h3>
+<div class="tw"><table><thead><tr><th>#</th><th>시설군</th><th>원천(API)</th><th>원천(데이터셋)</th><th>연결여부</th><th>막고있는 판정</th><th>비고</th></tr></thead><tbody>
+<tr data-s="ok"><td class="num">29</td><td class="grp">가-①. 단란주점</td><td class="src">apis.data.go.kr/1741000/singing_bars/info</td><td class="src">28_singing_bars.csv</td><td><span class="b b-ok">연결</span><span class="sub-b">11,313건</span></td><td class="blk">150㎡ 면적은 확인불가</td><td class="rmk"><strong>건축물대장(30) 배선으로 가목 확정 경로 성립.</strong> 단 단란주점 150㎡ 기준은 표제부에 용도별 바닥면적이 없어 <code>확인불가</code>로 남는다(전유부·층별개요 별도 조회 필요)</td></tr>
+<tr data-s="ok"><td class="num">30</td><td class="grp">가-②. 제2종 근린생활시설 비해당 <em>(AND)</em></td><td class="src">apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo</td><td class="src">29_34_building_register.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">3값 판정</span></td><td class="blk"><strong>150㎡ 면적 확인불가</strong></td><td class="rmk"><code>building_register.py</code> 배선(32 테스트, 전북 PNU 실호출 200·resultCode 00). <strong>해당/비해당/확인불가 3값을 note 로 내보낸다.</strong> 다만 표제부에 용도별 바닥면적이 없어(건물 전체 면적만) 150㎡ 종속 판정은 <code>확인불가</code> 유지</td></tr>
+<tr data-s="ok"><td class="num">31</td><td class="grp">나. 유흥주점</td><td class="src">apis.data.go.kr/1741000/entertainment_bars/info</td><td class="src">30_entertainment_bars.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">24,836건</span></td><td class="blk dash">—</td><td class="rmk">건축물대장 AND 조건 없음</td></tr>
+<tr data-s="ok"><td class="num">32</td><td class="grp">다-①. 종합테마파크업</td><td class="src">apis.data.go.kr/1741000/comprehensive_amusement_facilities/info</td><td class="src">31_comprehensive_theme_parks.csv</td><td><span class="b b-ok">연결</span><span class="sub-b">32건</span></td><td class="blk dash">—</td><td class="rmk">sync 적재·배선 완료. 건축물대장(35) AND 배선으로 다목 확정 경로 성립</td></tr>
+<tr data-s="ok"><td class="num">33</td><td class="grp">다-②. 일반테마파크업</td><td class="src">apis.data.go.kr/1741000/general_amusement_facilities/info</td><td class="src">32_general_theme_parks.csv</td><td><span class="b b-ok">연결</span><span class="sub-b">79건</span></td><td class="blk dash">—</td><td class="rmk">sync 적재·배선 완료</td></tr>
+<tr data-s="ok"><td class="num">34</td><td class="grp">다-③. 기타테마파크업</td><td class="src">apis.data.go.kr/1741000/amusement_facilities_other/info</td><td class="src">33_other_theme_parks.csv</td><td><span class="b b-ok">연결</span><span class="sub-b">211건</span></td><td class="blk dash">—</td><td class="rmk">sync 적재·배선 완료</td></tr>
+<tr data-s="ok"><td class="num">35</td><td class="grp">다-④. 제2종 근생·운동시설 비해당 <em>(AND)</em></td><td class="src">apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo</td><td class="src">29_34_building_register.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">3값 판정</span></td><td class="blk">면적 종속은 확인불가</td><td class="rmk">30번과 동일 어댑터 배선. 운동시설 비해당도 함께 판정. 면적 종속 항목은 확인불가 유지</td></tr>
+<tr data-s="ok"><td class="num">36</td><td class="grp">마-①. 무도장</td><td class="src">apis.data.go.kr/1741000/dance_halls/info</td><td class="src">35_dance_halls.xlsx</td><td><span class="b b-ok">연결</span><span class="sub-b">34건</span></td><td class="blk">마-1</td><td class="rmk">건축물대장 AND 조건 없음. sync 적재·배선 완료</td></tr>
+<tr data-s="ok"><td class="num">37</td><td class="grp">마-②. 무도학원</td><td class="src">apis.data.go.kr/1741000/dance_academies/info</td><td class="src">36_dance_academies.csv</td><td><span class="b b-ok">연결</span><span class="sub-b">127건</span></td><td class="blk">마-2</td><td class="rmk">건축물대장 AND 조건 없음. sync 적재·배선 완료</td></tr>
+<tr data-s="none"><td class="num">38</td><td class="grp">바. 카지노영업소</td><td class="src dash">—</td><td class="src">미확보</td><td><span class="b b-bad">미확보</span></td><td class="blk">바목 전체</td><td class="rmk">박진주 대표님 — 찾지못함</td></tr>
+</tbody></table></div>
+<p class="note"><strong>위락 소계 10항목 · 확정 가능 5항목</strong>(29 단란주점 · 31 유흥주점 · 32·33·34 테마파크 3종). 29·30·35번 건축물대장이 배선돼 가·다목 확정 경로가 열렸다 — 단 <strong>단란주점 150㎡ 등 면적 종속 판정은 표제부에 용도별 바닥면적이 없어 확인불가로 남는다</strong>. 36·37(무도장·무도학원)은 연결됐다. 38 카지노만 미확보.</p>
+<h3>1-F. 화장장 · 군부대 · 사격장<span class="rule">500m · 전 유형 · 3항목</span></h3>
+<div class="tw"><table><thead><tr><th>#</th><th>시설군</th><th>원천(API)</th><th>원천(데이터셋)</th><th>연결여부</th><th>막고있는 판정</th><th>비고</th></tr></thead><tbody>
+<tr data-s="ok"><td class="num">39</td><td class="grp">화장장</td><td class="src">apis.data.go.kr/1352000/ODMS_DATA_05_1/callData05_1Api <span class='sub-b'>보건복지부 · 데이터 15122369</span></td><td class="src">01_crematorium.csv <span class='sub-b'>전북 5건 · 제출본 정본</span></td><td><span class="b b-ok">연결</span><span class="sub-b">API 직결</span><span class="sub-b">전국 62건</span></td><td class="blk dash">—</td><td class="rmk">활용신청 2026-08-08 승인. <strong>허용 파라미터가 serviceKey·pageNo·numOfRows·apiType 뿐</strong>이라 다른 파라미터를 하나라도 붙이면 INVALID_REQUEST_PARAMETER_ERROR. 좌표 없어 카카오 지오코딩 — 샘플 8/8 성공</td></tr>
+<tr data-s="none"><td class="num">40</td><td class="grp">군부대</td><td class="src dash">—</td><td class="src">체크리스트에 항목 없음</td><td><span class="b b-off">판정 제외</span></td><td class="blk dash">—</td><td class="rmk">룰북 v1.4 매트릭스에는 있으나 박진주 대표님 체크리스트에 부재. 2026-08-27 협의로 판정 제외. 목록에는 표시하되 집계·종합상태에 불참</td></tr>
+<tr data-s="none"><td class="num">41</td><td class="grp">사격장</td><td class="src dash">—</td><td class="src">체크리스트에 항목 없음</td><td><span class="b b-off">판정 제외</span></td><td class="blk dash">—</td><td class="rmk">정민재 이사님 8/18 «사격장·화장장 500m» 근거는 있으나 원천 미확보. 40번과 동일 처리</td></tr>
+</tbody></table></div>
+<div class="callout">
+  <strong>1차 합계 41항목.</strong> 연결 28(2·3·4·5·6·7·8·9 등) · 모듈 완성·미배선 3(10·12·20) · 미확보 8(1·13·14·17·21·22·27·38) · 판정 제외 2(40·41).
+  <br><br><strong>매입제외를 실제로 확정할 수 있는 것은 13항목</strong> — 나목 공장(2·3) · 다목 공장(4·5·6) · 11 LPG충전소 · 23 주유소 · 24 석유판매업 · 26 CNG · 28 일반숙박 · 29 단란주점 · 31 유흥주점 · 32·33·34 테마파크 3종 · 39 화장장. 직전 12항목에서 <strong>다목 공장 1항목이 추가</strong>됐다(2026-08-29 배선).
+  <br><br><strong>확정에서 빠지는 근거</strong> — 라목(7·8)은 50dB·방음시설 예외 확인 원천이 없어(스키마 한계) review_required 가 정상, 공장 인접(9)은 설계상 review_required. 단란주점 150㎡ 등 면적 종속 판정은 표제부에 용도별 바닥면적이 없어 확인불가로 남는다. <strong>다목은 종전 §3 위반 보류 서술을 정정해 이번에 확정 경로로 편입됐다.</strong>
+</div>
+<h2>2차 판정 — 생활편의성<span class="cnt">21항목 · 42~62</span></h2>
+<p class="note">배점 40점 + 역세권 가점 5점. 신청유형 5종이 심사표 3장으로 접힌다 — 일반·다자녀·신혼(교통 15 · 주거 15 · 교육 10) · 청년(20 · 15 · 5 대학교) · 고령자(20 · 20 · 없음).</p>
+<h3>2-A. 대중교통 접근성<span class="rule">6항목</span></h3>
+<div class="tw"><table><thead><tr><th>#</th><th>시설군</th><th>원천(API)</th><th>원천(데이터셋)</th><th>연결여부</th><th>막고있는 판정</th><th>비고</th></tr></thead><tbody>
+<tr data-s="sub"><td class="num">42</td><td class="grp">지하철역 (도시철도 출입구)</td><td class="src">data.kric.go.kr <span class='sub-b'>국토교통부 레일포털</span></td><td class="src">46_metro_exits.xlsx</td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 SW8</span></td><td class="blk">거리 정확도</td><td class="rmk">기준점이 출입구가 아닌 역 대표점. 전북에는 도시철도 없음 — 서울 확장 대비</td></tr>
+<tr data-s="sub"><td class="num">43</td><td class="grp">철도역</td><td class="src dash">—</td><td class="src">48_railway_stations.csv <span class='sub-b'>한국철도공사</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 키워드</span></td><td class="blk">거리 정확도</td><td class="rmk">이름이 ‘역’으로 끝나는 것만 남기는 필터로 역 앞 상가 배제</td></tr>
+<tr data-s="sub"><td class="num">44</td><td class="grp">KTX역</td><td class="src dash">—</td><td class="src">49_ktx_stations.csv</td><td><span class="b b-mute">대체</span></td><td class="blk">거리 정확도</td><td class="rmk">43번에 포함해 처리</td></tr>
+<tr data-s="sub"><td class="num">45</td><td class="grp">버스정류장</td><td class="src">국토교통부 TAGO 정류소 근접조회</td><td class="src">47_bus_stops.csv <span class='sub-b'>표준본 13,180건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">TAGO</span></td><td class="blk"><strong>운행주기 15분 요건</strong></td><td class="rmk">심사표는 운행주기 15분 이내만 인정. 확인 원천이 없어 전체 정류장을 셈 → <strong>과대평가 여지</strong>. TAGO는 명세상 500m 근접검색이라 1km·1.5km 구간은 카카오 폴백</td></tr>
+<tr data-s="sub"><td class="num">46</td><td class="grp">대중교통터미널</td><td class="src">bigdata-forest.kr <span class='sub-b'>산림빅데이터거래소</span></td><td class="src">50_bus_terminals.csv</td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 키워드</span></td><td class="blk">거리 정확도</td><td class="rmk dash">—</td></tr>
+<tr data-s="none"><td class="num">47</td><td class="grp">환승시설</td><td class="src dash">—</td><td class="src">체크리스트에 항목 없음</td><td><span class="b b-bad">미확보</span></td><td class="blk">대중교통 등급 · 역세권 가점</td><td class="rmk">간선급행버스체계법 §2-3-다 정의. 원천을 특정하지 못함</td></tr>
+</tbody></table></div>
+<h3>2-B. 주거여건<span class="rule">11항목</span></h3>
+<p class="note">등급이 <code>상업시설 AND/OR 의료시설</code> 조합과 <code>공원·문화·공공</code> 종류 수로 갈린다.</p>
+<div class="tw"><table><thead><tr><th>#</th><th>시설군</th><th>원천(API)</th><th>원천(데이터셋)</th><th>연결여부</th><th>막고있는 판정</th><th>비고</th></tr></thead><tbody>
+<tr data-s="ok"><td class="num">48</td><td class="grp">상업시설 — 대규모점포</td><td class="src">apis.data.go.kr/1741000/large_scale_retail_stores/info</td><td class="src">41_large_retail_stores.xlsx <span class='sub-b'>표준본 74건</span></td><td><span class="b b-ok">연결</span><span class="sub-b">2,491건</span></td><td class="blk dash">—</td><td class="rmk"><strong>sync 적재·배선 완료(2,491건).</strong> LH 8/24 — 대규모점포로 조회되는 것만 인정. 아울렛도 조회되면 포함, 조회 안 되면 제외. 주거여건 상업시설 산정 개시</td></tr>
+<tr data-s="wire"><td class="num">49</td><td class="grp">상업시설 — 전통시장</td><td class="src dash">—</td><td class="src">42_traditional_markets.xlsx <span class='sub-b'>표준본 57건 · 좌표+PNU 보유</span></td><td><span class="b b-wire">모듈 완성·미배선</span></td><td class="blk"><strong>주거여건 전체</strong></td><td class="rmk">LH 8/24 — 전통시장통통에서 지자체 인정 시설로 조회되는 경우만. <code>local_sources.py</code> 완성</td></tr>
+<tr data-s="ok"><td class="num">50</td><td class="grp">의료시설 — 종합병원</td><td class="src">apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncListInfoInqire <span class='sub-b'>국립중앙의료원</span></td><td class="src">00_hospitals.csv <span class='sub-b'>표준본 14건</span></td><td><span class="b b-ok">연결</span><span class="sub-b">API 직결</span></td><td class="blk dash">—</td><td class="rmk">2026-08-28 승인·연결. <code>dutyDivNam</code> 종합병원/상급종합만 필터, <code>is_tertiary</code> 로 구분. 상급종합 인정 여부는 LH 미확정이라 함께 계산하되 구분 가능하게 유지. <strong>카카오 역지오코딩 실패 시 빈 피드가 아니라 실패로 처리 — 「병원 없음」과 「조회 못 함」을 구분(missing).</strong></td></tr>
+<tr data-s="sub"><td class="num">51</td><td class="grp">공원 — 국공립공원</td><td class="src dash">—</td><td class="src">53_national_public_parks.shp <span class='sub-b'>브이월드 · 표준본 203건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 분류</span></td><td class="blk">주거여건 정확도</td><td class="rmk">SHP 폴리곤 보유. 배선 시 면 기준 거리 가능</td></tr>
+<tr data-s="sub"><td class="num">52</td><td class="grp">공원 — 생활권공원</td><td class="src dash">—</td><td class="src">54_neighborhood_parks.xlsx <span class='sub-b'>표준본 653건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 분류</span></td><td class="blk">주거여건 정확도</td><td class="rmk dash">—</td></tr>
+<tr data-s="sub"><td class="num">53</td><td class="grp">문화시설 — 공연장</td><td class="src">apis.data.go.kr/1741000/performance_halls/info</td><td class="src">38_performance_halls.xlsx <span class='sub-b'>표준본 74건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 CT1</span></td><td class="blk">주거여건 정확도</td><td class="rmk">API 원천이 있는데 앱에 미등록 — 카카오로 근사 중</td></tr>
+<tr data-s="sub"><td class="num">54</td><td class="grp">문화시설 — 박물관·미술관</td><td class="src">apis.data.go.kr/1741000/museums_and_art_galleries/info</td><td class="src">39_museums_galleries.xlsx <span class='sub-b'>표준본 67건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 CT1</span></td><td class="blk">주거여건 정확도</td><td class="rmk">API 원천이 있는데 앱에 미등록 — 카카오로 근사 중</td></tr>
+<tr data-s="sub"><td class="num">55</td><td class="grp">문화시설 — 영화상영관</td><td class="src">apis.data.go.kr/1741000/movie_theaters/info</td><td class="src">40_movie_theaters.xlsx <span class='sub-b'>표준본 130건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 CT1</span></td><td class="blk">주거여건 정확도</td><td class="rmk">API 원천이 있는데 앱에 미등록 — 카카오로 근사 중</td></tr>
+<tr data-s="sub"><td class="num">56</td><td class="grp">공공시설 — 관공서</td><td class="src dash">—</td><td class="src">43_government_offices.csv <span class='sub-b'>전북특별자치도 · 표준본 17건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 PO3</span></td><td class="blk">주거여건 정확도</td><td class="rmk">체크리스트상 <strong>전북 데이터만 존재(jb)</strong> — 타지역 확장 시 결손</td></tr>
+<tr data-s="sub"><td class="num">57</td><td class="grp">공공시설 — 행정복지센터</td><td class="src dash">—</td><td class="src">44_admin_centers.csv <span class='sub-b'>표준본 242건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 PO3</span></td><td class="blk">주거여건 정확도</td><td class="rmk dash">—</td></tr>
+<tr data-s="sub"><td class="num">58</td><td class="grp">공공시설 — 도서관</td><td class="src dash">—</td><td class="src">45_public_libraries.xlsx <span class='sub-b'>표준본 65건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 + 분류필터</span></td><td class="blk">주거여건 정확도</td><td class="rmk">‘도서관’ 키워드가 영어학원·화장실을 물어와 분류 필터로 거름</td></tr>
+</tbody></table></div>
+<p class="note"><strong>주거여건 소계 11항목.</strong> 48 대규모점포(적재·배선)와 50 종합병원(API 직결)이 연결돼 상업·의료 두 축이 산정된다. 49 전통시장(좌표·PNU 보유)만 미배선으로 남았고, 공원·문화·공공(51~58)은 카카오 근사(대체)다.</p>
+<h3>2-C. 교육여건<span class="rule">4항목</span></h3>
+<div class="tw"><table><thead><tr><th>#</th><th>시설군</th><th>원천(API)</th><th>원천(데이터셋)</th><th>연결여부</th><th>막고있는 판정</th><th>비고</th></tr></thead><tbody>
+<tr data-s="sub"><td class="num">59</td><td class="grp">초등학교</td><td class="src dash">—</td><td class="src">51_schools.csv <span class='sub-b'>교육데이터플랫폼 · 표준본 748건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 SC4</span></td><td class="blk">정확도</td><td class="rmk">이름 토큰으로 분리</td></tr>
+<tr data-s="sub"><td class="num">60</td><td class="grp">중학교</td><td class="src dash">—</td><td class="src">51_schools.csv <span class='sub-b'>교육데이터플랫폼 · 표준본 748건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 SC4</span></td><td class="blk">정확도</td><td class="rmk dash">—</td></tr>
+<tr data-s="sub"><td class="num">61</td><td class="grp">고등학교</td><td class="src dash">—</td><td class="src">51_schools.csv <span class='sub-b'>교육데이터플랫폼 · 표준본 748건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 SC4</span></td><td class="blk">정확도</td><td class="rmk dash">—</td></tr>
+<tr data-s="sub"><td class="num">62</td><td class="grp">대학교 (정문)</td><td class="src dash">—</td><td class="src">52_university.xlsx <span class='sub-b'>대학알리미 · 표준본 70건</span></td><td><span class="b b-mute">대체</span><span class="sub-b">카카오 SC4</span></td><td class="blk"><strong>청년 교육여건 5점 정확도</strong></td><td class="rmk"><strong>정문 3단 기준 배선(2026-08-29)</strong>: 정문 &gt; 부지경계 &gt; 좌표 폴백. 통필지 5만㎡ 이상이면 좌표 자동 폴백·고지, 출처 라벨 명기(<code>GET/POST/DELETE /api/screening/front-doors</code>). <strong>남은 리스크</strong>: 통필지 안전장치 역작동·수기 지정 대학명이 카카오 <code>place_name</code> 과 다르면 조용히 무시(수정 중)</td></tr>
+</tbody></table></div>
+<div class="callout">
+  <strong>2차 합계 21항목.</strong> 연결 2 (48 대규모점포 · 50 종합병원) · 모듈 완성·미배선 1 (49 전통시장) · 대체 17 · 미확보 1 (47 환승시설).
+  <br><br>대체 17항목은 카카오 지도로 근사 중이며 <strong>LH 납품본과 값이 갈릴 수 있는 지점</strong>이다. 표준 데이터셋(<code>facilities.xlsx</code> 생활편의시설 15,679행)에 좌표·PNU 가 전건 붙어 있어, 배선하면 지정 원천으로 전환할 수 있다.
+</div>
+<h2>사업지 Polygon — 연속지적도<span class="cnt">전 항목 공통</span></h2>
+<p class="note">룰북 §10 「사업지 Polygon = 신청 필지 전체 실제 대지경계」. 시설군 번호가 붙지 않지만 <strong>62항목 전부의 판정 정확도를 좌우한다</strong>.</p>
+<div class="tw"><table><thead><tr><th>#</th><th>시설군</th><th>원천(API)</th><th>원천(데이터셋)</th><th>연결여부</th><th>막고있는 판정</th><th>비고</th></tr></thead><tbody>
+<tr data-s="ok"><td class="num">—</td><td class="grp">전북 연속지적도</td><td class="src dash">—</td><td class="src">LSMD_CONT_LDREG_52_202608.shp → cadastral_jeonbuk.sqlite <span class='sub-b'>R-Tree 후 2.50GB</span></td><td><span class="b b-ok">연결</span><span class="sub-b">3,888,333필지</span></td><td class="blk dash">—</td><td class="rmk"><strong>배선 완료 — 사업지·시설 경계가 실제 지적경계로 판정된다.</strong> 3,888,333필지 인덱스(SQLite, R-Tree 적용 후 2.50GB). EPSG:5186 → WGS84, EUC-KR, PNU 컬럼 보유. <strong>R-Tree 적용으로 필지 조회 1,204.9ms → 6.14ms</strong>(2026-08-29, 결과 동일·실파일 사본 300지점 누락 0). 전주시청 실판정에서 사업지 필지가 <code>parcel_polygon</code> 으로 잡혔고 경계커버리지 100 · <code>geometry_missing 0</code></td></tr>
+</tbody></table></div>
+
+<h2>자동 판정 대상이 아닌 항목<span class="cnt">카운팅 제외 · 참고</span></h2>
+<p class="note">데이터를 확보해도 좌표로 판정할 수 없다. 위 62항목 집계에 넣지 않는다.</p>
+
+<h3>매입제외 체크리스트 15항목 중 수기 심사 14항목</h3>
+<p class="note">자동 판정은 4번 「주거환경 저해시설」 하나뿐이며, 그것이 위 1차 41항목이다.</p>
+<div class="tw"><table style="min-width:520px">
+<thead><tr><th>#</th><th>항목</th><th>확인 방법</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="grp">개발이 예정된 지구(지역) 내 주택</td><td class="rmk">고시 확인</td></tr>
+<tr><td class="num">2</td><td class="grp">최저주거기준 미달 또는 전용면적 기준 미충족</td><td class="rmk">설계도서</td></tr>
+<tr><td class="num">3</td><td class="grp">도시가스 및 상하수도 미설치 지역</td><td class="rmk">현장·공부</td></tr>
+<tr><td class="num">4</td><td class="grp"><strong>주거환경 저해시설</strong></td><td class="rmk"><strong>← 이 앱이 자동 판정</strong></td></tr>
+<tr><td class="num">5</td><td class="grp">지하(반지하 포함) 세대 계획</td><td class="rmk">설계도서</td></tr>
+<tr><td class="num">6</td><td class="grp">불법건축물 및 치유불가한 법률상 제한사유</td><td class="rmk">등기·대장</td></tr>
+<tr><td class="num">7</td><td class="grp">타인 소유 시설물에 의한 부속토지 점유</td><td class="rmk">현장</td></tr>
+<tr><td class="num">8</td><td class="grp">진입도로 미확보 또는 사도</td><td class="rmk">지적·도로대장</td></tr>
+<tr><td class="num">9</td><td class="grp">외벽 마감재료 준불연·불연 성능 미충족</td><td class="rmk">자재 성능</td></tr>
+<tr><td class="num">10</td><td class="grp">엘리베이터 미설치</td><td class="rmk">설계도서</td></tr>
+<tr><td class="num">11</td><td class="grp">세대별 전기·수도계량기 미설치</td><td class="rmk">설계도서</td></tr>
+<tr><td class="num">12</td><td class="grp">매도신청인이 전·현직 직원 또는 직계존비속·배우자</td><td class="rmk">인적 확인</td></tr>
+<tr><td class="num">13</td><td class="grp">부정행위로 제재받은 행위자의 신청</td><td class="rmk">제재 이력</td></tr>
+<tr><td class="num">14</td><td class="grp">미분양아파트</td><td class="rmk">물건 성격</td></tr>
+<tr><td class="num">15</td><td class="grp">기타사유</td><td class="rmk">심사자 기재</td></tr>
+</tbody></table></div>
+
+<h3>심사표 배점 중 산정 대상 아님 6종 (60점)</h3>
+<div class="tw"><table style="min-width:520px">
+<thead><tr><th>항목</th><th>배점</th><th>사유</th></tr></thead>
+<tbody>
+<tr><td class="grp">공가율</td><td class="num">20</td><td class="rmk">GIS자산관리정보시스템 조회값</td></tr>
+<tr><td class="grp">주민등록세대수 증가율</td><td class="num">10</td><td class="rmk">국가통계포털 시·군 증감률</td></tr>
+<tr><td class="grp">지원단가 대비 탁감가액 비율</td><td class="num">15</td><td class="rmk">감정평가 결과</td></tr>
+<tr><td class="grp">접면도로 넓이</td><td class="num">10</td><td class="rmk">사업부지 접도 실측</td></tr>
+<tr><td class="grp">주차대수</td><td class="num">5</td><td class="rmk">설계도서</td></tr>
+<tr><td class="grp">정책사업(뉴빌리지)</td><td class="num">5</td><td class="rmk">사업지 여부</td></tr>
+</tbody></table></div>
+<p class="note">총점 100점 중 좌표로 산정 가능한 것은 생활편의성 40점(+역세권 가점 5점)뿐이다. 합격선은 70점.</p>
+
+
+<h2>무엇이 끝났고 무엇이 남았는가</h2>
+<div class="tw"><table style="min-width:760px">
+<thead><tr><th>구분</th><th>조치</th><th>대상 항목</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td class="grp">완료</td><td class="grp">모듈 배선 <span class="sub-b">building_register · cadastral_local · local_sources · pnu_resolver · safemap</span></td>
+    <td class="rmk">2·3·4·5·6·7·8·9·26·30·32·33·34·35·48 + 사업지 Polygon</td>
+    <td class="rmk"><span class="b b-ok">배선 완료</span> 표준본 공장 PNU 5,582(고시업종 2,837) · 다목 배선 · 건축물대장 · CNG · 소음(보조) · 연속지적도 실경계</td></tr>
+<tr><td class="grp">완료</td><td class="grp">sync 적재 <span class="sub-b">python -m app.sync_facilities</span></td>
+    <td class="rmk">15·16·18·19·25·36·37 + 위 테마파크·대규모점포</td>
+    <td class="rmk"><span class="b b-ok">적재 완료</span> 17종 · 172,749건</td></tr>
+<tr><td class="grp">잔여</td><td class="grp">좌표 지오코딩 후 배선</td>
+    <td class="rmk">10 지산 · 12 LPG판매소 · 20 도시가스제조 · 49 전통시장</td>
+    <td class="rmk"><span class="b b-wire">미배선</span> 원천에 좌표가 없어 지오코딩 필요 (49는 좌표·PNU 보유)</td></tr>
+<tr><td class="grp">잔여</td><td class="grp">소음진동배출시설 활용신청</td>
+    <td class="rmk">7 라-①</td>
+    <td class="rmk"><span class="b b-appr">외부</span> API 403 미승인 — 활용신청 필요. 현재 전북 CSV 146건 보조로 동작</td></tr>
+<tr><td class="grp">잔여</td><td class="grp">2차 지정 원천 전환</td><td class="rmk">42~46 · 51~62</td>
+    <td class="rmk"><span class="b b-mute">대체 17</span> 카카오 근사 → 심사표 지정 원천으로. 표준셋에 좌표·PNU 전건 보유</td></tr>
+<tr><td class="grp">협의</td><td class="grp">LH 협의 (§ 아래 회신 대기)</td><td class="rmk">1·13·14·17·21·22·27·38·47 + 다목 주소매칭 · 라목 50dB · 별표1 세부업종</td>
+    <td class="rmk"><span class="b b-bad">LH</span> 공개 원천 부재 또는 정책 판단 필요</td></tr>
+</tbody></table></div>
+
+<div class="callout">
+  <strong>이번 세션(2026-08-29)에 공장 다목이 배선됐다.</strong> 설계서 §7.2 결정적 PNU 조립으로 factoryON·표준본 공장·소음 원천에 PNU 를 부여해 AND 를 성립시켰다. 사업지·시설 경계는 실제 연속지적도 경계로 판정되며 전주시청 실판정에서 <code>geometry_missing 0</code> · 경계커버리지 100 을 확인했다. 판정 1회는 성능 개선으로 <strong>298.1초 → 7~8초</strong>(정상 상태 실측 7.3·7.6초. 프로세스 기동 후 첫 판정은 외부 API 콜드 DNS+TLS 연결로 30초대). 남은 것은 좌표 없는 3항목(10·12·20 지오코딩) + 전통시장(49, 좌표 보유·미배선) · 소음 API 활용신청 · 2차 지정 원천 전환 · LH 정책 협의뿐이다.
+  <br><br><strong>확정과 실동작 구분.</strong> 시설 다필지 최소값 규칙(§3)은 확정됐으나 점유 필지를 열거해주는 원천이 없어 <strong>실판정은 아직 단일 필지</strong>로 동작한다. 열거 원천 확보가 후속 과제다.
+</div>
+
+<h2>LH 회신 대기<span class="cnt">판정을 막고 있는 것</span></h2>
+<div class="tw"><table style="min-width:600px">
+<thead><tr><th>#</th><th>질의</th><th>막고 있는 것</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="grp">주택유형·신청유형 입력 방식 <span class="sub-b">8/25 요청 · 미회신</span></td><td class="rmk"><strong>매트릭스 6열 중 위락·숙박 2열 전체</strong></td></tr>
+<tr><td class="num">2</td><td class="grp">기숙사형 1차 매트릭스</td><td class="rmk">청년·기숙사형 1차</td></tr>
+<tr><td class="num">3</td><td class="grp">휴업·영업상태 공란 처리</td><td class="rmk">판정 대상 범위. 주유소 CSV 만 해도 휴업 458건</td></tr>
+<tr><td class="num">4</td><td class="grp">상급종합병원을 2차 의료시설로 인정하는가</td><td class="rmk">주거여건 등급. 현재 함께 계산하되 구분 유지</td></tr>
+<tr><td class="num">5</td><td class="grp">단란주점 150㎡ 판정을 전유부·층별개요 조회까지 해서 할지</td><td class="rmk">위락 가목. 표제부에 용도별 바닥면적이 없어 현재 확인불가</td></tr>
+<tr><td class="num">6</td><td class="grp">다필지 — 대표필지 vs 최근접 필지</td><td class="rmk">거리 산정 기준</td></tr>
+<tr><td class="num">7</td><td class="grp"><s>공장 다목·라목 — 지번 주소 매칭</s> <strong>해소(2026-08-29)</strong></td><td class="rmk">설계서 §7.2 결정적 PNU 조립으로 다목 AND 확정. 주소 매칭 불필요 — 종전 §3 충돌 서술은 오독 정정. 라목만 #8 로 남음</td></tr>
+<tr><td class="num">8</td><td class="grp">라목 50dB 이하·방음시설 예외를 무엇으로 확인할지 <span class="sub-b">현장확인? 인허가 서류?</span></td><td class="rmk">소음 원천 스키마에 소음도·방음시설 필드가 없어 exclusion 불가. 라목만 남은 진짜 장벽</td></tr>
+<tr><td class="num">9</td><td class="grp">건축법 별표1 세부업종의 근생 구분 확정 <span class="sub-b">판정규칙 담당</span></td><td class="rmk">기타용도 세부업종명만 있는 경우의 제1·2종 근생 매핑 (현재 확인불가)</td></tr>
+<tr><td class="num">10</td><td class="grp">소음진동배출시설 활용신청 <span class="sub-b">외부 조치</span></td><td class="rmk">라목 원천 API 403 승인 대기</td></tr>
+</tbody></table></div>
+
+<footer>
+  <p><strong>근거</strong> —
+  박진주 대표님 확정 체크리스트 <code>jeonbuk_checklist_260826.xlsx</code> · 표준 데이터셋 <code>delivery/standardized/facilities.xlsx</code>(유해 5,198 · 편의 15,679행) ·
+  <code>backend/app/hazard_review/rulebook.py</code>(1차 29종) ·
+  <code>backend/app/screening/amenities.py</code> GROUP_SPECS(2차 14종) ·
+  <code>backend/app/services/localdata.py</code> + <code>data/facilities.db</code>(연결여부 실측) ·
+  LH 최기헌 박사님 회신 8/20 · 8/24 · 8/25 · 정민재 이사님 검토의견 8/18 · 박진주 대표님 데이터 회신 8/18 · 8/20 · 8/26.</p>
+  <p>연결여부는 2026-08-29 실호출·실판정으로 검증했다. 데이터 적재는 <code>data/facilities.db</code> 17종·172,749건, 연속지적도는 <code>data/cadastral_jeonbuk.sqlite</code> 3,888,333필지(R-Tree 후 2.50GB)로 실측했다. 공장 PNU 확정은 <code>data/factory_pnu_resolution.v1.json</code>(factoryON 7,378/7,983·표준본 공장 PNU 5,582).
+  추정 엔드포인트는 이 표에 넣지 않는다. 백엔드 테스트 <strong>411 통과</strong> 기준.</p>
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var rows = Array.prototype.slice.call(document.querySelectorAll('tbody tr[data-s]'));
+  var btns = Array.prototype.slice.call(document.querySelectorAll('button.f'));
+  var q = document.querySelector('input.q');
+  var shown = document.getElementById('shown');
+  var filter = 'all';
+
+  function apply(){
+    var term = (q.value || '').trim().toLowerCase();
+    var n = 0;
+    rows.forEach(function(tr){
+      var okState = (filter === 'all') || (tr.getAttribute('data-s') === filter);
+      var okTerm = !term || tr.textContent.toLowerCase().indexOf(term) !== -1;
+      var vis = okState && okTerm;
+      tr.classList.toggle('hide', !vis);
+      if (vis) n++;
+    });
+    shown.textContent = n + ' / ' + rows.length + ' 항목';
+  }
+
+  btns.forEach(function(b){
+    b.addEventListener('click', function(){
+      filter = b.getAttribute('data-f');
+      btns.forEach(function(o){ o.setAttribute('aria-pressed', String(o === b)); });
+      apply();
+    });
+  });
+  q.addEventListener('input', apply);
+  apply();
+})();
+</script>
+</body>
+</html>

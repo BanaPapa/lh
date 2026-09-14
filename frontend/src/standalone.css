@@ -1,0 +1,83 @@
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  margin: 0;
+}
+
+/* 라이트가 기본값이다. 다크는 html[data-theme="dark"] 로만 켜진다.
+   두 테마 모두 중립 회색 위에 파랑 하나만 액센트로 쓴다. */
+:root {
+  color-scheme: light;
+  /* 한 벌로 통일한다. Pretendard 는 SIL OFL 1.1 이라 상업 이용에 제약이 없고,
+     한글 자소와 라틴 자소의 굵기·높이가 맞아 숫자표에서도 줄이 흔들리지 않는다. */
+  --font-sans:
+    "Pretendard Variable", Pretendard, system-ui, -apple-system,
+    "Segoe UI", "Malgun Gothic", sans-serif;
+  --bg: #eceef2;
+  --bg-grad-1: #f4f5f8;
+  --bg-grad-2: #e7eaef;
+  --surface: rgba(17, 24, 39, 0.035);
+  --surface-2: #f4f6f9;
+  --surface-3: #ffffff;
+  --raise: #ffffff;
+  --border: rgba(17, 24, 39, 0.1);
+  --border-2: rgba(17, 24, 39, 0.16);
+  --fg: #15181e;
+  --fg-2: #3c4453;
+  --muted: #667085;
+  --muted-2: #98a1b0;
+  --teal: #0f766e;
+  --teal-dim: rgba(15, 118, 110, 0.11);
+  --blue: #2563eb;
+  --blue-dim: rgba(37, 99, 235, 0.1);
+  --purple: #6d5ae0;
+  --purple-dim: rgba(109, 90, 224, 0.12);
+  --amber: #b45309;
+  --red: #d92d3f;
+  --red-dim: rgba(217, 45, 63, 0.1);
+  --shadow:
+    0 1px 2px rgba(16, 24, 40, 0.05),
+    0 16px 40px -16px rgba(16, 24, 40, 0.22);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0f19;
+  --bg-grad-1: #0c1322;
+  --bg-grad-2: #090c15;
+  --surface: rgba(255, 255, 255, 0.03);
+  --surface-2: rgba(255, 255, 255, 0.05);
+  --surface-3: #141b2b;
+  --raise: #161e30;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-2: rgba(255, 255, 255, 0.14);
+  --fg: #e8ecf5;
+  --fg-2: #c2cad9;
+  --muted: #9aa4b8;
+  --muted-2: #757f95;
+  --teal: #2dd4bf;
+  --teal-dim: rgba(45, 212, 191, 0.14);
+  --blue: #6197ff;
+  --blue-dim: rgba(97, 151, 255, 0.16);
+  --purple: #a78bfa;
+  --purple-dim: rgba(167, 139, 250, 0.16);
+  --amber: #f5b85c;
+  --red: #fb6b7c;
+  --red-dim: rgba(251, 107, 124, 0.14);
+  --shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 24px 60px -20px rgba(0, 0, 0, 0.6);
+}
+
+body {
+  overflow: hidden;
+  font-family: var(--font-sans);
+  color: var(--fg);
+  background: linear-gradient(180deg, var(--bg-grad-1), var(--bg-grad-2));
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}

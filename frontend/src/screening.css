@@ -1,0 +1,1518 @@
+/* LH 신축매입약정 서류심사표 화면.
+   hazard-review.css 와 같은 규칙을 따른다: 클래스 접두사 하나(.screening-*),
+   색은 standalone.css 의 토큰(--red/--amber/--teal/--muted)만 쓰고,
+   톤은 `--screening-tone` 한 변수로 모아 `.tone-*` 가 값만 갈아끼운다.
+   토큰이 라이트/다크에서 각각 정의돼 있으므로 테마 분기 규칙은 두지 않는다. */
+
+.screening-sheet {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px 26px;
+  color: var(--fg);
+}
+
+/* ── 톤 ─────────────────────────────────────────────────────── */
+.screening-sheet .tone-danger {
+  --screening-tone: var(--red);
+}
+
+.screening-sheet .tone-warning {
+  --screening-tone: var(--amber);
+}
+
+.screening-sheet .tone-success {
+  --screening-tone: var(--teal);
+}
+
+.screening-sheet .tone-muted {
+  --screening-tone: var(--muted);
+}
+
+/* 숫자 열은 자릿수가 흔들리면 표로 읽히지 않는다. */
+.screening-sheet .is-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── A. 머리말 ──────────────────────────────────────────────── */
+.screening-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.screening-head-title {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.screening-head-title small {
+  color: var(--blue);
+  font-size: 13.8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.screening-head-title h2 {
+  margin: 0;
+  font-size: 27.5px;
+}
+
+.screening-head-title p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 16.2px;
+}
+
+.screening-head-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.screening-field {
+  display: grid;
+  gap: 4px;
+}
+
+.screening-field > span {
+  color: var(--muted);
+  font-size: 13.8px;
+  font-weight: 700;
+}
+
+.screening-select {
+  min-width: 148px;
+  min-height: 34px;
+  padding: 0 9px;
+  color: var(--fg);
+  background: var(--surface-3);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 16.2px;
+  cursor: pointer;
+}
+
+.screening-select:focus-visible {
+  border-color: var(--blue);
+  outline: 2px solid var(--blue-dim);
+  outline-offset: 1px;
+}
+
+.screening-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.screening-head-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.screening-head-actions button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--fg-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.screening-head-actions button:hover {
+  color: #fff;
+  background: var(--blue-dim);
+  border-color: var(--blue);
+}
+
+.screening-rulepack {
+  margin: 0;
+  padding: 7px 10px;
+  color: var(--fg-2);
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--blue) 20%, var(--border));
+  border-radius: 8px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 공용 고지 문구 ─────────────────────────────────────────── */
+.screening-notice {
+  --screening-tone: var(--muted);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  color: var(--screening-tone);
+  background: color-mix(in srgb, var(--screening-tone) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--screening-tone) 30%, transparent);
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.screening-notice svg {
+  flex: 0 0 auto;
+}
+
+/* ── B. 종합 판정 배너 ──────────────────────────────────────── */
+.screening-verdict {
+  --screening-tone: var(--muted);
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 14px;
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--screening-tone);
+  border-radius: 12px;
+}
+
+.screening-verdict > span {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--screening-tone);
+  border-radius: 14px;
+}
+
+.screening-verdict > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  align-content: center;
+}
+
+.screening-verdict small {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.screening-verdict strong {
+  color: var(--screening-tone);
+  font-size: 37.5px;
+  line-height: 1.15;
+}
+
+.screening-verdict p {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 17.5px;
+  line-height: 1.55;
+}
+
+/* 부적격 사유. 화면에서 가장 중요한 블록이라 접지 않는다. */
+.screening-reasons {
+  --screening-tone: var(--red);
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--screening-tone) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--screening-tone) 34%, transparent);
+  border-radius: 10px;
+}
+
+.screening-reasons.is-review {
+  --screening-tone: var(--amber);
+}
+
+.screening-reasons > header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--screening-tone);
+}
+
+.screening-reasons > header strong {
+  font-size: 18.8px;
+}
+
+.screening-reasons > header b {
+  margin-left: auto;
+  font-size: 16.2px;
+}
+
+.screening-reasons ol {
+  margin: 9px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  color: var(--fg);
+  font-size: 17.5px;
+  line-height: 1.6;
+}
+
+/* ── 섹션 공통 ──────────────────────────────────────────────── */
+.screening-section {
+  display: grid;
+  gap: 10px;
+}
+
+/* display 를 지정한 요소에는 브라우저 기본 [hidden] 규칙이 지므로 명시한다.
+   이게 없으면 탭을 눌러도 두 단계가 함께 보인다. */
+.screening-sheet .screening-section[hidden] {
+  display: none;
+}
+
+.screening-section-heading {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.screening-section-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.screening-section-heading span {
+  padding: 2px 7px;
+  color: var(--blue);
+  background: var(--blue-dim);
+  border-radius: 999px;
+  font-size: 13.8px;
+  font-weight: 900;
+}
+
+.screening-section-heading strong {
+  font-size: 21.2px;
+}
+
+.screening-section-heading small {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* ── C. 단계 탭 ─────────────────────────────────────────────── */
+/* 1차와 2차를 한 장에 쏟으면 지금 어느 쪽을 읽는지 알 수 없고 스크롤만 길다.
+   인쇄할 때는 두 장이 다 나와야 하므로 아래 @media print 에서 되돌린다. */
+.screening-stage-tabs {
+  display: flex;
+  margin: 2px 0 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.screening-stage-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease;
+}
+
+.screening-stage-tabs button:hover {
+  color: var(--fg);
+}
+
+.screening-stage-tabs button.is-active {
+  color: var(--fg);
+  border-bottom-color: var(--blue);
+}
+
+.screening-stage-tabs button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -4px;
+}
+
+.screening-stage-tabs b {
+  color: var(--muted-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.screening-stage-tabs button.is-active b {
+  color: var(--blue);
+}
+
+/* ── C-1. 1차 매입제외 표 ───────────────────────────────────── */
+.screening-table-scroll {
+  overflow-x: auto;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.screening-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 20.2px;
+}
+
+.screening-table thead th {
+  padding: 9px 10px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  font-size: 17.8px;
+  font-weight: 800;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* 모바일 폭에서 브라우저가 열을 최대한 눌러 「근거」·「데이터」 문장이 몇 글자마다
+   줄바꿈되는 것을 막는다. th 에 min-width 를 주면 열 전체 최소 폭이 되고, 폭이
+   모자라면 표가 대신 .screening-table-scroll 안에서 가로 스크롤된다.
+   (참고: th min-width 는 열 전체에 적용된다) */
+/* 「항목」 열: 남는 폭을 흡수하지 않게 내용 폭만 차지한다(라벨은 한 줄). 그래야
+   항목과 기준거리 사이가 벌어지지 않는다. */
+.screening-table thead th:nth-child(1) {
+  min-width: 320px;
+  width: 1%;
+}
+
+/* 라벨은 30자 안에서 줄바꿈해 항목 열이 가장 긴 라벨만큼 벌어지지 않게 한다. */
+.screening-row-label,
+.screening-row-toggle > span {
+  display: inline-block;
+  max-width: 30ch;
+}
+
+.screening-table thead th:nth-child(2),
+.screening-table thead th:nth-child(3) {
+  width: 96px;
+  text-align: right;
+}
+
+.screening-table thead th:nth-child(4) {
+  width: 132px;
+}
+
+/* 「근거」 열: 문장이 글자 단위로 눌리지 않게 최소 폭 확보. 남는 폭을 다 먹어
+   데이터 열이 오른쪽 끝으로 밀리지 않게 문장 폭은 max-width 로 막는다. */
+.screening-table thead th:nth-child(5) {
+  min-width: 420px;
+  width: 1%;
+}
+
+.screening-row-reason,
+.screening-row-note {
+  width: 44ch;
+  max-width: 44ch;
+}
+
+/* 「원천」 열: API·로컬·데모 한 단어. 내용 폭만. */
+.screening-table thead th:nth-child(6) {
+  width: 1%;
+}
+
+/* 「데이터」 열: 원천 상세 칩. 남는 폭을 받아 근거 바로 옆에서 시작한다. */
+.screening-table thead th:nth-child(7) {
+  min-width: 168px;
+}
+
+.screening-table tbody td,
+.screening-table tbody th {
+  padding: 9px 10px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+}
+
+.screening-table tbody td.is-num {
+  text-align: right;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+.screening-row {
+  --screening-tone: var(--muted);
+  box-shadow: inset 3px 0 0 var(--screening-tone);
+}
+
+.screening-row > th {
+  min-width: 168px;
+}
+
+.screening-row > th small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-2);
+  font-size: 16.5px;
+}
+
+.screening-row-label {
+  color: var(--fg);
+  font-size: 20.2px;
+  font-weight: 700;
+}
+
+.screening-row-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  font-size: 20.2px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.screening-row-toggle:hover {
+  color: var(--blue);
+}
+
+.screening-row-toggle svg {
+  flex: 0 0 auto;
+  transition: transform 140ms ease;
+}
+
+.screening-row-toggle svg.is-open {
+  transform: rotate(90deg);
+}
+
+.screening-row-toggle b {
+  padding: 1px 6px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-radius: 999px;
+  font-size: 16.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.screening-row-reason {
+  display: block;
+  color: var(--fg-2);
+  line-height: 1.5;
+}
+
+.screening-row-note {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--amber);
+  font-size: 17.8px;
+  line-height: 1.5;
+}
+
+/* 판정 미적용 · 통과 처리. 흐리게 두되 사유는 반드시 읽히게 남긴다. */
+.screening-row.is-passthrough > th,
+.screening-row.is-passthrough > td {
+  border-top-style: dashed;
+  background: color-mix(in srgb, var(--muted) 6%, transparent);
+}
+
+.screening-row.is-passthrough .screening-row-label,
+.screening-row.is-passthrough .screening-row-toggle,
+.screening-row.is-passthrough .screening-row-reason {
+  color: var(--muted);
+}
+
+.screening-badge {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 4px 3px 0;
+  padding: 2px 7px;
+  color: var(--screening-tone, var(--muted));
+  background: color-mix(
+    in srgb,
+    var(--screening-tone, var(--muted)) 13%,
+    transparent
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--screening-tone, var(--muted)) 32%, transparent);
+  border-radius: 999px;
+  font-size: 17.8px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.screening-badge.is-passthrough {
+  --screening-tone: var(--muted);
+  border-style: dashed;
+}
+
+.screening-badge.is-bonus {
+  --screening-tone: var(--purple);
+}
+
+/* 「데이터」 열 — 판정에 붙은 원천 칩. API/로컬을 한눈에 가른다. 내용 기준 좁은
+   열이라 칩은 줄바꿈을 허용한다. 미연결 항목은 빈 셀이라 여기 아무것도 없다. */
+.screening-data-cell,
+.screening-source-cell {
+  vertical-align: top;
+}
+
+/* 「원천」 열 배지 — 데이터 칩과 같은 색 체계(API 파랑 · 로컬 무채색 · 데모 점선). */
+.screening-source-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.screening-source-kind {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 16.5px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.screening-source-kind.is-api {
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--blue) 30%, var(--border));
+}
+
+.screening-source-kind.is-local {
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.screening-source-kind.is-demo {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--muted) 34%, var(--border));
+}
+
+.screening-data-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.screening-data-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 16.5px;
+  line-height: 1.5;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* API 원천: 원천 URL 로 나가는 링크. 파란 계열로 「눌러서 원천 확인」을 알린다. */
+.screening-data-chip.is-api {
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--blue) 30%, var(--border));
+}
+
+.screening-data-chip.is-api:hover {
+  text-decoration: underline;
+}
+
+.screening-data-chip.is-api:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+/* 로컬 납품 파일: 무채색 칩. 링크 없음(교차검증 대상이 아님을 색으로 낮춘다). */
+.screening-data-chip.is-local {
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+/* 데모 데이터: 실원천이 아님을 흐린 점선으로 구분한다. */
+.screening-data-chip.is-demo {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--muted) 34%, var(--border));
+}
+
+.screening-row-detail > td {
+  background: var(--surface-2);
+}
+
+.screening-facility-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  list-style: none;
+}
+
+.screening-facility-list li {
+  display: block;
+}
+
+.screening-facility-list li > button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  color: inherit;
+  text-align: left;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+.screening-facility-list li > button:hover:not(:disabled) {
+  background: var(--blue-dim);
+  border-color: color-mix(in srgb, var(--blue) 38%, transparent);
+}
+
+.screening-facility-list li > button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.screening-facility-list li > button:disabled {
+  cursor: default;
+}
+
+.screening-facility-list li.is-active > button {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+}
+
+.screening-facility-list svg {
+  color: var(--muted);
+}
+
+.screening-facility-list span {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.screening-facility-list strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screening-facility-list small {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.screening-facility-list b {
+  color: var(--fg-2);
+  font-size: 15px;
+}
+
+.screening-facility-list em {
+  color: var(--muted-2);
+  font-size: 12.5px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+/* 석유대체연료 용도지역 표시(1차 근거 행). 출처보다 또렷하게 둔다
+   (LH 확정 2026-09-11 #5). 일반 em 규칙보다 특이도를 높여 색을 되살린다. */
+.screening-facility-list em.screening-facility-zoning {
+  color: var(--fg-2);
+  font-weight: 700;
+}
+
+/* 「확인 요청」 배지를 시설 목록 안에서도 기존 배지/톤 색으로 보이게 한다.
+   .screening-facility-list em 규칙이 색·글자크기를 덮지 않도록 특이도를 맞춘다. */
+.screening-facility-list em.screening-badge {
+  color: var(--screening-tone, var(--muted));
+  font-size: 13.8px;
+}
+
+.screening-passthrough-notes {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-2);
+  border-radius: 9px;
+}
+
+.screening-passthrough-notes strong {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.screening-passthrough-notes ul {
+  margin: 7px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--fg-2);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+
+/* ── C-1. 「주거환경 저해시설」 판정 고지 ────────────────────── */
+/* 심사표 2항 15개 항목 중 LH 가 요청한 자동 판정은 이 한 항목뿐이다. 나머지 14개
+   항목 목록은 화면에서 뺐고(담당자 서류 확인 대상), 「자동 판정 통과가 매입적격을
+   뜻하지 않는다」는 고지만 한 줄로 남긴다. */
+.screening-checklist-note {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.screening-table-caption {
+  caption-side: top;
+  padding: 0 0 6px;
+  color: var(--muted);
+  font-size: 14.4px;
+  text-align: left;
+}
+
+/* ── D. 2차 생활편의성 ──────────────────────────────────────── */
+.screening-score-head {
+  display: grid;
+  gap: 5px;
+  padding: 13px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.screening-score-head > div {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.screening-score-head small {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.screening-score-head strong {
+  color: var(--fg);
+  font-size: 32.5px;
+}
+
+.screening-score-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.8px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.screening-criteria {
+  display: grid;
+  gap: 9px;
+}
+
+.screening-criterion {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.screening-criterion.is-undetermined {
+  border-color: color-mix(in srgb, var(--amber) 34%, var(--border));
+  background: color-mix(in srgb, var(--amber) 5%, var(--surface-3));
+}
+
+.screening-criterion.is-bonus {
+  border-color: color-mix(in srgb, var(--purple) 30%, var(--border));
+}
+
+.screening-criterion > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.screening-criterion > header > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.screening-criterion > header strong {
+  font-size: 18.8px;
+}
+
+.screening-criterion > header b {
+  color: var(--fg);
+  font-size: 21.2px;
+  white-space: nowrap;
+}
+
+.screening-criterion-tier {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 16.2px;
+  line-height: 1.55;
+}
+
+.screening-criterion-basis {
+  margin: 6px 0 0;
+  color: var(--muted-2);
+  font-size: 13.8px;
+  line-height: 1.5;
+}
+
+.screening-tier-block {
+  display: grid;
+  gap: 6px;
+}
+
+.screening-tier-toggle {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 4px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 13.8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.screening-tier-toggle:hover {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+.screening-tier-toggle svg {
+  transition: transform 140ms ease;
+}
+
+.screening-tier-toggle svg.is-open {
+  transform: rotate(90deg);
+}
+
+.screening-tier-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  list-style: none;
+}
+
+.screening-tier-list li {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 9px;
+  padding: 6px 9px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.screening-tier-list li b {
+  color: var(--fg-2);
+  font-size: 15px;
+  text-align: right;
+}
+
+.screening-tier-list li em {
+  color: var(--teal);
+  font-size: 12.5px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.screening-tier-list li.is-achieved {
+  color: var(--fg-2);
+}
+
+.screening-tier-list li.is-selected {
+  color: var(--fg);
+  background: var(--blue-dim);
+  border-color: color-mix(in srgb, var(--blue) 40%, transparent);
+  font-weight: 700;
+}
+
+.screening-tier-list li.is-selected b {
+  color: var(--blue);
+}
+
+.screening-group-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+  list-style: none;
+}
+
+.screening-group-list > li {
+  --screening-tone: var(--muted);
+  padding: 7px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--screening-tone);
+  border-radius: 8px;
+}
+
+.screening-group-list > li > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.screening-group-list > li svg {
+  color: var(--screening-tone);
+}
+
+.screening-group-list strong {
+  font-size: 15px;
+}
+
+.screening-group-list > li > div > b {
+  color: var(--fg-2);
+  font-size: 15px;
+}
+
+.screening-group-list > li > div > span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.screening-group-source {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.screening-out-of-scope {
+  padding: 11px 13px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+}
+
+.screening-out-of-scope > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.screening-out-of-scope > header strong {
+  color: var(--muted);
+  font-size: 16.2px;
+}
+
+.screening-out-of-scope > header b {
+  color: var(--fg-2);
+  font-size: 17.5px;
+}
+
+.screening-out-of-scope ul {
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+  list-style: none;
+}
+
+.screening-out-of-scope li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+}
+
+.screening-out-of-scope li span {
+  color: var(--fg-2);
+  font-size: 15px;
+}
+
+.screening-out-of-scope li b {
+  color: var(--fg-2);
+  font-size: 15px;
+  text-align: right;
+}
+
+.screening-out-of-scope li small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* ── E. 하단 고지 ───────────────────────────────────────────── */
+.screening-footer {
+  display: grid;
+  gap: 7px;
+  justify-items: start;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.screening-footer p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.8px;
+  line-height: 1.6;
+}
+
+.screening-footer strong {
+  color: var(--muted-2);
+  font-size: 13.8px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.screening-footer button {
+  margin-top: 4px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  color: var(--fg-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.screening-footer button:hover:not(:disabled) {
+  color: #fff;
+  background: var(--blue-dim);
+  border-color: var(--blue);
+}
+
+.screening-footer button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── 결과 이전 안내 ─────────────────────────────────────────── */
+.screening-empty {
+  margin: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+}
+
+.screening-empty > span {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #fff;
+  background: var(--blue);
+  border-radius: 12px;
+}
+
+.screening-empty > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.screening-empty small {
+  color: var(--blue);
+  font-size: 13.8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.screening-empty strong {
+  font-size: 20px;
+}
+
+.screening-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.screening-empty em {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  color: var(--red);
+  font-size: 15px;
+  font-style: normal;
+}
+
+@media (max-width: 760px) {
+  .screening-sheet {
+    padding: 12px 12px 22px;
+  }
+
+  .screening-head-controls {
+    width: 100%;
+  }
+
+  .screening-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .screening-field {
+    flex: 1 1 140px;
+  }
+}
+
+@media print {
+  .screening-head-actions,
+  .screening-footer button,
+  .screening-stage-tabs {
+    display: none;
+  }
+
+  /* 화면에서는 한 단계씩 보지만 인쇄본은 심사표 한 장이라 둘 다 나와야 한다. */
+  .screening-sheet .screening-section[hidden] {
+    display: grid;
+  }
+
+  .screening-table-scroll {
+    overflow-x: visible;
+  }
+}
+
+/* ── 2차 시설군 토글·근거 시설 행(정민재 검증판) ─────────────────────
+   시설군 행을 눌러 지도에 전체를 펼치고, 근거 시설마다 측정 기준·문 선택·
+   기준점 지정을 제자리에서 다룬다. 지도 없이도 동작한다(카카오 키 없을 때). */
+.screening-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.screening-group-toggle.is-static {
+  cursor: default;
+}
+
+.screening-group-toggle:not(.is-static):hover {
+  color: var(--blue);
+}
+
+.screening-group-toggle > svg:first-child {
+  transition: transform 140ms ease;
+}
+
+.screening-group-toggle > svg.is-open {
+  transform: rotate(90deg);
+}
+
+.screening-hit-list {
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+  list-style: none;
+}
+
+.screening-hit {
+  padding: 8px 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.screening-hit.is-active {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+
+.screening-hit-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.screening-hit-select:disabled {
+  cursor: default;
+}
+
+.screening-hit-select > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.screening-hit-select > span {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.screening-hit-select strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screening-hit-select small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screening-hit-select > b {
+  margin-left: auto;
+  flex: none;
+  color: var(--fg-2);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.screening-hit-select:hover:not(:disabled) strong {
+  color: var(--blue);
+}
+
+.screening-hit-meta {
+  margin: 6px 0 0;
+  color: var(--muted-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.screening-hit-badge-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 0;
+}
+
+.screening-hit-badge-row small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.screening-hit-clear {
+  margin-left: auto;
+  padding: 2px 8px;
+  color: var(--fg-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.screening-hit-clear:hover:not(:disabled) {
+  color: var(--danger, #d92d3f);
+  border-color: var(--danger, #d92d3f);
+}
+
+.screening-hit-clear:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.screening-hit-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.screening-hit-actions:empty {
+  display: none;
+}
+
+.screening-hit-door {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--fg-2);
+  font-size: 12px;
+}
+
+.screening-hit-door > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.screening-hit-door select {
+  padding: 3px 6px;
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.screening-hit-designate {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 4px 9px;
+  color: var(--blue);
+  background: transparent;
+  border: 1px solid var(--blue);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.screening-hit-designate:hover:not(:disabled) {
+  color: #fff;
+  background: var(--blue);
+}
+
+.screening-hit-designate:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.screening-hit-designate.is-active {
+  color: #fff;
+  background: var(--blue);
+}
+
+.screening-hit-diff {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 7px 0 0;
+  padding: 6px 9px;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.screening-hit-diff > svg {
+  flex: none;
+  color: var(--blue);
+}
+
+.screening-notice-action {
+  margin-left: auto;
+  padding: 2px 9px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.site-parcel-list li.is-representative {
+  font-weight: 600;
+}
+
+.parcel-rep-badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.site-parcel-note {
+  margin: 6px 0 0;
+  color: var(--muted-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ── 2차 시설군 표 — 1차 판정 표와 같은 열 구조(시설군·건수·최근접·결과·근거·원천·데이터) ── */
+.screening-group-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.screening-group-table .screening-row-toggle svg,
+.screening-group-label svg {
+  color: var(--screening-tone);
+}
+
+.screening-group-table .screening-row-note svg {
+  vertical-align: -2px;
+}

@@ -1,0 +1,1437 @@
+{
+  "meta": {
+    "targets": [
+      "001",
+      "004",
+      "006",
+      "041",
+      "105"
+    ],
+    "warm": {
+      "kgs_lpg": 3661,
+      "crematorium": 61,
+      "noise_emission": 146,
+      "opinet": 0
+    },
+    "degraded": []
+  },
+  "runs": {
+    "A_주택일반": [
+      {
+        "no": "001",
+        "address": "전주시 완산구 동서학동 315-12",
+        "geometry_source": "parcel_polygon",
+        "verdict": "pass",
+        "reasons": [],
+        "review_reasons": [],
+        "nearest_fail": null,
+        "passthrough": 10,
+        "living_score": 35,
+        "living_min": 35,
+        "living_max": 35,
+        "living_determined": true,
+        "criteria": {
+          "transit": [
+            15,
+            15,
+            15
+          ],
+          "living": [
+            12,
+            12,
+            12
+          ],
+          "education": [
+            8,
+            8,
+            8
+          ]
+        },
+        "categories": {
+          "factory_registered": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "lpg_retailer": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_facility": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "high_pressure_gas": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "toxic_substance": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "paint_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "city_gas_plant": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "explosive_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_other_similar": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "gas_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "oil_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "cng_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "entertainment_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "singing_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_comprehensive": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_general": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_other": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_hall": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_academy": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "casino": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "general_lodging": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "crematorium": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "military_base": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "shooting_range": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          }
+        },
+        "housing_type": "house",
+        "application_type": "general"
+      },
+      {
+        "no": "004",
+        "address": "전주시 덕진구 송천동1가 626-74",
+        "geometry_source": "parcel_polygon",
+        "verdict": "fail",
+        "reasons": [
+          "가. 석유 판매소 (일반·용제·부생연료유) · 석유대체연료판매업 21m — 기준거리 25m 이내"
+        ],
+        "review_reasons": [],
+        "nearest_fail": {
+          "name": "솔내주유소",
+          "type": "석유판매업소",
+          "distance_m": 20.7,
+          "address": "전북특별자치도 전주시 덕진구 송천동1가 626-41 외1필지"
+        },
+        "passthrough": 10,
+        "living_score": 37,
+        "living_min": 37,
+        "living_max": 37,
+        "living_determined": true,
+        "criteria": {
+          "transit": [
+            15,
+            15,
+            15
+          ],
+          "living": [
+            12,
+            12,
+            12
+          ],
+          "education": [
+            10,
+            10,
+            10
+          ]
+        },
+        "categories": {
+          "factory_registered": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "lpg_retailer": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_facility": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "high_pressure_gas": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "toxic_substance": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "paint_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "city_gas_plant": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "explosive_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_other_similar": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "gas_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "oil_retailer": {
+            "outcome": "fail",
+            "status": "exclusion_match"
+          },
+          "cng_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "entertainment_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "singing_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_comprehensive": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_general": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_other": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_hall": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_academy": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "casino": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "general_lodging": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "crematorium": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "military_base": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "shooting_range": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          }
+        },
+        "housing_type": "house",
+        "application_type": "general"
+      },
+      {
+        "no": "006",
+        "address": "전주시 덕진구 금암동 473-6",
+        "geometry_source": "parcel_polygon",
+        "verdict": "review",
+        "reasons": [],
+        "review_reasons": [
+          "공장 있음 — 등록공장 소재 (LH 확정 2026-09-11: 유해공장 여부 공적 데이터로 전수 확인 불가 → 자동 제외·매칭 판정 없음, 담당자 확인)"
+        ],
+        "nearest_fail": null,
+        "passthrough": 10,
+        "living_score": 38,
+        "living_min": 38,
+        "living_max": 38,
+        "living_determined": true,
+        "criteria": {
+          "transit": [
+            15,
+            15,
+            15
+          ],
+          "living": [
+            15,
+            15,
+            15
+          ],
+          "education": [
+            8,
+            8,
+            8
+          ]
+        },
+        "categories": {
+          "factory_registered": {
+            "outcome": "review",
+            "status": "review_required"
+          },
+          "lpg_retailer": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_facility": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "high_pressure_gas": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "toxic_substance": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "paint_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "city_gas_plant": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "explosive_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_other_similar": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "gas_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "oil_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "cng_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "entertainment_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "singing_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_comprehensive": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_general": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_other": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_hall": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_academy": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "casino": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "general_lodging": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "crematorium": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "military_base": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "shooting_range": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          }
+        },
+        "housing_type": "house",
+        "application_type": "general"
+      },
+      {
+        "no": "041",
+        "address": "전주시 덕진구 진북동 988-60",
+        "geometry_source": "parcel_polygon",
+        "verdict": "fail",
+        "reasons": [
+          "가. 석유 판매소 (일반·용제·부생연료유) · 석유대체연료판매업 15m — 기준거리 25m 이내"
+        ],
+        "review_reasons": [],
+        "nearest_fail": {
+          "name": "어은터널 주유소",
+          "type": "석유판매업소",
+          "distance_m": 14.9,
+          "address": "전북특별자치도 전주시 덕진구 진북동 988-59,991-7,-9"
+        },
+        "passthrough": 10,
+        "living_score": 38,
+        "living_min": 38,
+        "living_max": 38,
+        "living_determined": true,
+        "criteria": {
+          "transit": [
+            15,
+            15,
+            15
+          ],
+          "living": [
+            15,
+            15,
+            15
+          ],
+          "education": [
+            8,
+            8,
+            8
+          ]
+        },
+        "categories": {
+          "factory_registered": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "lpg_retailer": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_facility": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "high_pressure_gas": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "toxic_substance": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "paint_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "city_gas_plant": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "explosive_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_other_similar": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "gas_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "oil_retailer": {
+            "outcome": "fail",
+            "status": "exclusion_match"
+          },
+          "cng_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "entertainment_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "singing_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_comprehensive": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_general": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_other": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_hall": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_academy": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "casino": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "general_lodging": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "crematorium": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "military_base": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "shooting_range": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          }
+        },
+        "housing_type": "house",
+        "application_type": "general"
+      },
+      {
+        "no": "105",
+        "address": "완주군 삼례읍 수계리 1246-3",
+        "geometry_source": "parcel_polygon",
+        "verdict": "pass",
+        "reasons": [],
+        "review_reasons": [],
+        "nearest_fail": null,
+        "passthrough": 10,
+        "living_score": 22,
+        "living_min": 22,
+        "living_max": 22,
+        "living_determined": true,
+        "criteria": {
+          "transit": [
+            15,
+            15,
+            15
+          ],
+          "living": [
+            3,
+            3,
+            3
+          ],
+          "education": [
+            4,
+            4,
+            4
+          ]
+        },
+        "categories": {
+          "factory_registered": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "lpg_retailer": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_facility": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "high_pressure_gas": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "toxic_substance": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "paint_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "city_gas_plant": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "explosive_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_other_similar": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "gas_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "oil_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "cng_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "entertainment_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "singing_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_comprehensive": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_general": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_other": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_hall": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_academy": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "casino": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "general_lodging": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "crematorium": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "military_base": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "shooting_range": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          }
+        },
+        "housing_type": "house",
+        "application_type": "general"
+      }
+    ],
+    "B_실제유형": [
+      {
+        "no": "001",
+        "address": "전주시 완산구 동서학동 315-12",
+        "geometry_source": "parcel_polygon",
+        "verdict": "pass",
+        "reasons": [],
+        "review_reasons": [],
+        "nearest_fail": null,
+        "passthrough": 10,
+        "living_score": 35,
+        "living_min": 35,
+        "living_max": 35,
+        "living_determined": true,
+        "criteria": {
+          "transit": [
+            15,
+            15,
+            15
+          ],
+          "living": [
+            12,
+            12,
+            12
+          ],
+          "education": [
+            8,
+            8,
+            8
+          ]
+        },
+        "categories": {
+          "factory_registered": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "lpg_retailer": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_facility": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "high_pressure_gas": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "toxic_substance": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "paint_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "city_gas_plant": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "explosive_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_other_similar": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "gas_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "oil_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "cng_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "entertainment_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "singing_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_comprehensive": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_general": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_other": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_hall": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_academy": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "casino": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "general_lodging": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "crematorium": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "military_base": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "shooting_range": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          }
+        },
+        "housing_type": "house",
+        "application_type": "general"
+      },
+      {
+        "no": "004",
+        "address": "전주시 덕진구 송천동1가 626-74",
+        "geometry_source": "parcel_polygon",
+        "verdict": "pass",
+        "reasons": [],
+        "review_reasons": [],
+        "nearest_fail": null,
+        "passthrough": 8,
+        "living_score": 37,
+        "living_min": 37,
+        "living_max": 37,
+        "living_determined": true,
+        "criteria": {
+          "transit": [
+            15,
+            15,
+            15
+          ],
+          "living": [
+            12,
+            12,
+            12
+          ],
+          "education": [
+            10,
+            10,
+            10
+          ]
+        },
+        "categories": {
+          "factory_registered": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "lpg_retailer": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "lpg_storage": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "hazmat_facility": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "high_pressure_gas": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "toxic_substance": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "paint_retailer": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "city_gas_plant": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "explosive_storage": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "hazmat_other_similar": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "lpg_station": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "gas_station": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "oil_retailer": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "cng_station": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "entertainment_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "singing_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_comprehensive": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_general": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_other": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_hall": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_academy": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "casino": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "general_lodging": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "crematorium": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "military_base": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "shooting_range": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          }
+        },
+        "housing_type": "officetel",
+        "application_type": "general"
+      },
+      {
+        "no": "006",
+        "address": "전주시 덕진구 금암동 473-6",
+        "geometry_source": "parcel_polygon",
+        "verdict": "pass",
+        "reasons": [],
+        "review_reasons": [],
+        "nearest_fail": null,
+        "passthrough": 8,
+        "living_score": 40,
+        "living_min": 40,
+        "living_max": 40,
+        "living_determined": true,
+        "criteria": {
+          "transit": [
+            20,
+            20,
+            20
+          ],
+          "living": [
+            15,
+            15,
+            15
+          ],
+          "education": [
+            5,
+            5,
+            5
+          ]
+        },
+        "categories": {
+          "factory_registered": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "lpg_retailer": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "lpg_storage": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "hazmat_facility": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "high_pressure_gas": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "toxic_substance": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "paint_retailer": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "city_gas_plant": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "explosive_storage": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "hazmat_other_similar": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "lpg_station": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "gas_station": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "oil_retailer": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "cng_station": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "entertainment_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "singing_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_comprehensive": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_general": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_other": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_hall": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_academy": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "casino": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "general_lodging": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "crematorium": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "military_base": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "shooting_range": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          }
+        },
+        "housing_type": "officetel",
+        "application_type": "youth"
+      },
+      {
+        "no": "041",
+        "address": "전주시 덕진구 진북동 988-60",
+        "geometry_source": "parcel_polygon",
+        "verdict": "fail",
+        "reasons": [
+          "가. 석유 판매소 (일반·용제·부생연료유) · 석유대체연료판매업 15m — 기준거리 25m 이내"
+        ],
+        "review_reasons": [],
+        "nearest_fail": {
+          "name": "어은터널 주유소",
+          "type": "석유판매업소",
+          "distance_m": 14.9,
+          "address": "전북특별자치도 전주시 덕진구 진북동 988-59,991-7,-9"
+        },
+        "passthrough": 10,
+        "living_score": 38,
+        "living_min": 38,
+        "living_max": 38,
+        "living_determined": true,
+        "criteria": {
+          "transit": [
+            15,
+            15,
+            15
+          ],
+          "living": [
+            15,
+            15,
+            15
+          ],
+          "education": [
+            8,
+            8,
+            8
+          ]
+        },
+        "categories": {
+          "factory_registered": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "lpg_retailer": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_facility": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "high_pressure_gas": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "toxic_substance": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "paint_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "city_gas_plant": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "explosive_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_other_similar": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "gas_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "oil_retailer": {
+            "outcome": "fail",
+            "status": "exclusion_match"
+          },
+          "cng_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "entertainment_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "singing_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_comprehensive": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_general": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_other": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_hall": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_academy": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "casino": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "general_lodging": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "crematorium": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "military_base": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "shooting_range": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          }
+        },
+        "housing_type": "house",
+        "application_type": "general"
+      },
+      {
+        "no": "105",
+        "address": "완주군 삼례읍 수계리 1246-3",
+        "geometry_source": "parcel_polygon",
+        "verdict": "pass",
+        "reasons": [],
+        "review_reasons": [],
+        "nearest_fail": null,
+        "passthrough": 10,
+        "living_score": 22,
+        "living_min": 22,
+        "living_max": 22,
+        "living_determined": true,
+        "criteria": {
+          "transit": [
+            15,
+            15,
+            15
+          ],
+          "living": [
+            3,
+            3,
+            3
+          ],
+          "education": [
+            4,
+            4,
+            4
+          ]
+        },
+        "categories": {
+          "factory_registered": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "lpg_retailer": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_facility": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "high_pressure_gas": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "toxic_substance": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "paint_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "city_gas_plant": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "explosive_storage": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "hazmat_other_similar": {
+            "outcome": "pass",
+            "status": "dataset_missing"
+          },
+          "lpg_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "gas_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "oil_retailer": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "cng_station": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "entertainment_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "singing_bar": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_comprehensive": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_general": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "theme_park_other": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_hall": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "dance_academy": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "casino": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "general_lodging": {
+            "outcome": "not_applicable",
+            "status": "not_applicable"
+          },
+          "crematorium": {
+            "outcome": "pass",
+            "status": "no_conflict_in_snapshot"
+          },
+          "military_base": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          },
+          "shooting_range": {
+            "outcome": "pass",
+            "status": "not_applicable"
+          }
+        },
+        "housing_type": "house",
+        "application_type": "general"
+      }
+    ]
+  }
+}

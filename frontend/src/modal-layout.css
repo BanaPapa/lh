@@ -1,0 +1,71 @@
+/* 분석·검토 모달 규격: 화면 가로 60% / 세로 80%, 항상 중앙.
+   styles.css 는 @scope (.site-scope-module) 안에 있고, 스코프 규칙은 근접성
+   때문에 동일 특이도의 무스코프 규칙을 이긴다. 그래서 여기서는 특이도를 한 단계
+   올려(부모 선택자 결합) 확실히 덮어쓴다. 진행 모달은 body 로 포털되므로
+   무스코프 선택자로 함께 잡는다. */
+
+div.analysis-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  /* grid place-items 는 자식이 넘칠 때 위쪽이 잘린다.
+     flex + margin:auto 는 넘쳐도 스크롤로 접근할 수 있다. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 24px;
+}
+
+.analysis-modal-backdrop > .analysis-modal {
+  /* 진행 모달은 body 로 포털돼 styles.css 의 border-box 리셋 밖에 있다.
+     명시하지 않으면 패딩만큼 커져 60/80 규격이 깨진다. */
+  box-sizing: border-box;
+  width: 60vw;
+  height: 80vh;
+  /* 최소치가 남아 있으면 작은 화면에서 밖으로 밀려난다. */
+  min-width: 0;
+  min-height: 0;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  margin: auto;
+  flex: 0 0 auto;
+}
+
+/* 진행 모달은 내용이 짧아 남는 세로 공간을 본문이 채우게 한다. */
+.analysis-modal-backdrop > .analysis-modal.is-loading {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.analysis-modal-backdrop > .analysis-modal.is-loading .analysis-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 좁은 화면에서는 60%가 너무 작아 읽기 어렵다. */
+@media (max-width: 1180px) {
+  .analysis-modal-backdrop > .analysis-modal {
+    width: calc(100vw - 48px);
+    height: calc(100vh - 48px);
+  }
+}
+
+@media (max-width: 760px) {
+  div.analysis-modal-backdrop {
+    padding: 12px;
+  }
+
+  .analysis-modal-backdrop > .analysis-modal {
+    width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+}
+
+/* 결과는 더 이상 모달이 아니라 화면 우측 레일에 쌓인다. 레일 규격은
+   standalone-app.css, 리포트·진행 화면 표현은 analysis-report.css 에 있다.
+   여기 남은 규칙은 모달 바깥 규격(위치·크기)뿐이다. */

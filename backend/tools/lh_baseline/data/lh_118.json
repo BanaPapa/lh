@@ -1,0 +1,3306 @@
+[
+ {
+  "no": "001",
+  "region": "전주시",
+  "address": "전주시 완산구 동서학동 315-12",
+  "lat": 35.8034674473044,
+  "lng": 127.151579733961,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "양지주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 688.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "002",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 1243-3",
+  "lat": 35.8152174903236,
+  "lng": 127.1040299284,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "아리랑7080",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 154.7
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "003",
+  "region": "김제시",
+  "address": "김제시 검산동 834, -4, 835-9",
+  "lat": 35.7992241079461,
+  "lng": 126.903393509098,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "백제모텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 545.8
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   9,
+   10
+  ],
+  "stage2_city_total": 34,
+  "stage2_all": [
+   15,
+   9,
+   10
+  ],
+  "stage2_all_total": 34
+ },
+ {
+  "no": "004",
+  "region": "전주시",
+  "address": "전주시 덕진구 송천동1가 626-74",
+  "lat": 35.8614624210194,
+  "lng": 127.115074486856,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "송천 주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 58.9
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   10
+  ],
+  "stage2_city_total": 28,
+  "stage2_all": [
+   15,
+   3,
+   10
+  ],
+  "stage2_all_total": 28
+ },
+ {
+  "no": "005",
+  "region": "전주시",
+  "address": "전주시 덕진구 인후동1가 517-1, -2, 산 7-1",
+  "lat": 35.8383506017359,
+  "lng": 127.161262115159,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "상리2 동부지점",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 93.5
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "006",
+  "region": "전주시",
+  "address": "전주시 덕진구 금암동 473-6",
+  "lat": 35.8367363010341,
+  "lng": 127.131526822637,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "비채호텔",
+   "major": "숙박시설",
+   "mid": "일반호텔",
+   "distance_m": 39.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "007",
+  "region": "정읍시",
+  "address": "정읍시 상동 353-5, -2, 655-52",
+  "lat": 35.5620185177112,
+  "lng": 126.863501543673,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "스캔들노래",
+   "major": "위락시설",
+   "mid": "간이주점",
+   "distance_m": 94.6
+  },
+  "master": "정읍",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "009",
+  "region": "전주시",
+  "address": "전주시 완산구 태평동 239-2, -3, -5, -6, -7",
+  "lat": 35.8252955264267,
+  "lng": 127.13769086929,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "호텔야자",
+   "major": "숙박시설",
+   "mid": "일반호텔",
+   "distance_m": 362.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "010",
+  "region": "완주군",
+  "address": "완주군 봉동읍 낙평리 46-2, -45",
+  "lat": 35.934782938213,
+  "lng": 127.16528924624,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "뚜바비앙2",
+   "major": "숙박시설",
+   "mid": "숙박업(생활)",
+   "distance_m": 212.4
+  },
+  "master": "완주",
+  "stage2_city": [
+   3,
+   6,
+   10
+  ],
+  "stage2_city_total": 19,
+  "stage2_all": [
+   15,
+   6,
+   10
+  ],
+  "stage2_all_total": 31
+ },
+ {
+  "no": "011",
+  "region": "완주군",
+  "address": "완주군 봉동읍 낙평리 61-2, 191-2",
+  "lat": 35.9336800701392,
+  "lng": 127.164905698455,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "숲무인텔",
+   "major": "숙박시설",
+   "mid": "숙박업 기타",
+   "distance_m": 303.9
+  },
+  "master": "완주",
+  "stage2_city": [
+   3,
+   6,
+   8
+  ],
+  "stage2_city_total": 17,
+  "stage2_all": [
+   15,
+   6,
+   8
+  ],
+  "stage2_all_total": 29
+ },
+ {
+  "no": "012",
+  "region": "완주군",
+  "address": "완주군 봉동읍 장기리 383-4",
+  "lat": 35.9389377375496,
+  "lng": 127.16244630674,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "뚜바비앙2",
+   "major": "숙박시설",
+   "mid": "숙박업(생활)",
+   "distance_m": 491.3
+  },
+  "master": "완주",
+  "stage2_city": [
+   3,
+   6,
+   10
+  ],
+  "stage2_city_total": 19,
+  "stage2_all": [
+   15,
+   6,
+   10
+  ],
+  "stage2_all_total": 31
+ },
+ {
+  "no": "013",
+  "region": "정읍시",
+  "address": "정읍시 연지동 56-3, 57-21, 57-6, 56-6, 56-11",
+  "lat": 35.5682754046707,
+  "lng": 126.849889657803,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "육각수",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 67.4
+  },
+  "master": "정읍",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "014",
+  "region": "완주군",
+  "address": "완주군 삼례읍 수계리 1257-2",
+  "lat": 35.9206286572154,
+  "lng": 127.124618918574,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "(주)한영 동부지점",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 3186.2
+  },
+  "master": "완주",
+  "stage2_city": [
+   9,
+   3,
+   2
+  ],
+  "stage2_city_total": 14,
+  "stage2_all": [
+   15,
+   3,
+   2
+  ],
+  "stage2_all_total": 20
+ },
+ {
+  "no": "015",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1375-3",
+  "lat": 35.8426868221579,
+  "lng": 127.080127275807,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "유한회사 흥국주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 762.3
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "016",
+  "region": "전주시",
+  "address": "전주시 완산구 삼천동2가 763-4",
+  "lat": 35.7945007056717,
+  "lng": 127.106179617494,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "바울주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 392.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "017",
+  "region": "전주시",
+  "address": "전주시 완산구 중노송동 551-1, -5, -6, -7, -8, -9, -21",
+  "lat": 35.8218181308962,
+  "lng": 127.150836237669,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "청하모텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 46.8
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "018",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1262-3",
+  "lat": 35.8417054773661,
+  "lng": 127.077709951178,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "유한회사 흥국주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 574.2
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "019",
+  "region": "정읍시",
+  "address": "정읍시 시기동 460-1",
+  "lat": 35.5574619148789,
+  "lng": 126.852532052781,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "토마토노래",
+   "major": "위락시설",
+   "mid": "간이주점",
+   "distance_m": 680.9
+  },
+  "master": "정읍",
+  "stage2_city": [
+   15,
+   12,
+   10
+  ],
+  "stage2_city_total": 37,
+  "stage2_all": [
+   15,
+   12,
+   10
+  ],
+  "stage2_all_total": 37
+ },
+ {
+  "no": "020",
+  "region": "전주시",
+  "address": "전주시 완산구 평화동2가 99-3, -6",
+  "lat": 35.7818192327938,
+  "lng": 127.135301943839,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "석구 주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 499.3
+  },
+  "master": "전주",
+  "stage2_city": [
+   12,
+   9,
+   8
+  ],
+  "stage2_city_total": 29,
+  "stage2_all": [
+   12,
+   9,
+   8
+  ],
+  "stage2_all_total": 29
+ },
+ {
+  "no": "021",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1343-3",
+  "lat": 35.8502918574668,
+  "lng": 127.076152868443,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "서부대로주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 367.7
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   8
+  ],
+  "stage2_city_total": 26,
+  "stage2_all": [
+   15,
+   3,
+   8
+  ],
+  "stage2_all_total": 26
+ },
+ {
+  "no": "022",
+  "region": "군산시",
+  "address": "군산시 나운동 869-5",
+  "lat": 35.9578232912334,
+  "lng": 126.688159083063,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "만숙",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 199.3
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   9,
+   6
+  ],
+  "stage2_city_total": 30,
+  "stage2_all": [
+   15,
+   9,
+   6
+  ],
+  "stage2_all_total": 30
+ },
+ {
+  "no": "023",
+  "region": "정읍시",
+  "address": "정읍시 시기동 171-6, -26, 172-18, -24, -26",
+  "lat": 35.5639251536532,
+  "lng": 126.859182924809,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "코러스노래",
+   "major": "위락시설",
+   "mid": "룸살롱",
+   "distance_m": 35.9
+  },
+  "master": "정읍",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "024",
+  "region": "익산시",
+  "address": "익산시 남중동 15-20, 10-15",
+  "lat": 35.9525066228392,
+  "lng": 126.958961078692,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "동화장",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 61.5
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "025",
+  "region": "전주시",
+  "address": "전주시 완산구 중화산동1가 221-10, -16, 산8-15",
+  "lat": 35.8150726188706,
+  "lng": 127.131066156366,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "GS칼텍스(주) 시온셀프주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 407.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "026",
+  "region": "익산시",
+  "address": "익산시 마동 230-8, -10, -19",
+  "lat": 35.9394255122064,
+  "lng": 126.957176586868,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "임페리얼모텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 261.7
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   12,
+   10
+  ],
+  "stage2_city_total": 37,
+  "stage2_all": [
+   15,
+   12,
+   10
+  ],
+  "stage2_all_total": 37
+ },
+ {
+  "no": "027",
+  "region": "익산시",
+  "address": "익산시 어양동 80",
+  "lat": 35.9540191601007,
+  "lng": 126.989401723383,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "차차차",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 335.5
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   12,
+   6
+  ],
+  "stage2_city_total": 33,
+  "stage2_all": [
+   15,
+   12,
+   6
+  ],
+  "stage2_all_total": 33
+ },
+ {
+  "no": "028",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1264-7",
+  "lat": 35.8408170954684,
+  "lng": 127.0791456542,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "유한회사 흥국주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 538.8
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "029",
+  "region": "익산시",
+  "address": "익산시 마동 128-1",
+  "lat": 35.9381826563632,
+  "lng": 126.963702495662,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "동해장 모텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 370.8
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "030",
+  "region": "군산시",
+  "address": "군산시 나운동 798-5",
+  "lat": 35.9643247158426,
+  "lng": 126.692328930154,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "역전여인숙",
+   "major": "숙박시설",
+   "mid": "여인숙업",
+   "distance_m": 85.8
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   9,
+   8
+  ],
+  "stage2_city_total": 32,
+  "stage2_all": [
+   15,
+   9,
+   8
+  ],
+  "stage2_all_total": 32
+ },
+ {
+  "no": "031",
+  "region": "전주시",
+  "address": "전주시 덕진구 송천동1가 564-11",
+  "lat": 35.8667884255807,
+  "lng": 127.114739470966,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "싼2주유소 주식회사",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 416.4
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   8
+  ],
+  "stage2_city_total": 26,
+  "stage2_all": [
+   15,
+   3,
+   8
+  ],
+  "stage2_all_total": 26
+ },
+ {
+  "no": "032",
+  "region": "군산시",
+  "address": "군산시 수송동 855-4",
+  "lat": 35.9613433165885,
+  "lng": 126.716464731597,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "연예인 단란주점",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 227.5
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "033",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 541-7",
+  "lat": 35.8083358751412,
+  "lng": 127.106078571598,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "은일주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 495.4
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   10
+  ],
+  "stage2_city_total": 40,
+  "stage2_all": [
+   15,
+   15,
+   10
+  ],
+  "stage2_all_total": 40
+ },
+ {
+  "no": "034",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 541-1",
+  "lat": 35.8081013498387,
+  "lng": 127.106046524121,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "은일주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 469.2
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   10
+  ],
+  "stage2_city_total": 40,
+  "stage2_all": [
+   15,
+   15,
+   10
+  ],
+  "stage2_all_total": 40
+ },
+ {
+  "no": "035",
+  "region": "군산시",
+  "address": "군산시 경장동 511-7",
+  "lat": 35.9695326904403,
+  "lng": 126.73052352662,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "비욘드 호텔",
+   "major": "숙박시설",
+   "mid": "일반호텔",
+   "distance_m": 97.8
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "036",
+  "region": "전주시",
+  "address": "전주시 덕진구 호성동2가 460-15, -2, -5, -10, -11, -13, -17, -19",
+  "lat": 35.87821722229,
+  "lng": 127.144108474754,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "혁신주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 830.2
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "037",
+  "region": "김제시",
+  "address": "김제시 서암동 22-10, 15-17, -5",
+  "lat": 35.8087928596515,
+  "lng": 126.884615004235,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "신바람음악홀",
+   "major": "위락시설",
+   "mid": "간이주점",
+   "distance_m": 456.2
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   9,
+   8
+  ],
+  "stage2_city_total": 32,
+  "stage2_all": [
+   15,
+   9,
+   8
+  ],
+  "stage2_all_total": 32
+ },
+ {
+  "no": "038",
+  "region": "김제시",
+  "address": "김제시 요촌동 110-5, 111-1, -9, 114-2, -5, -7, 115-3, -5, 116-14",
+  "lat": 35.7997523909424,
+  "lng": 126.891043641896,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "천궁노래",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 32.9
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   9,
+   10
+  ],
+  "stage2_city_total": 34,
+  "stage2_all": [
+   15,
+   9,
+   10
+  ],
+  "stage2_all_total": 34
+ },
+ {
+  "no": "039",
+  "region": "전주시",
+  "address": "전주시 덕진구 팔복동2가 261-1, -3, 262-3",
+  "lat": 35.8522287021818,
+  "lng": 127.104034260635,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "이호라이브난타",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 139.5
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   9,
+   6
+  ],
+  "stage2_city_total": 30,
+  "stage2_all": [
+   15,
+   9,
+   6
+  ],
+  "stage2_all_total": 30
+ },
+ {
+  "no": "040",
+  "region": "남원시",
+  "address": "남원시 노암동 587, 585-16, 830",
+  "lat": 35.3968285167191,
+  "lng": 127.37389187441,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "슬로우 남원",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 586.8
+  },
+  "master": "남원",
+  "stage2_city": [
+   3,
+   3,
+   2
+  ],
+  "stage2_city_total": 8,
+  "stage2_all": [
+   3,
+   3,
+   2
+  ],
+  "stage2_all_total": 8
+ },
+ {
+  "no": "041",
+  "region": "전주시",
+  "address": "전주시 덕진구 진북동 988-60",
+  "lat": 35.8239018568646,
+  "lng": 127.130069459464,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "장승배기주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 295.1
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "042",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 1360-2",
+  "lat": 35.8016929667419,
+  "lng": 127.10036420891,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "솔주유소 효천점",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 384.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   10
+  ],
+  "stage2_city_total": 37,
+  "stage2_all": [
+   15,
+   12,
+   10
+  ],
+  "stage2_all_total": 37
+ },
+ {
+  "no": "043",
+  "region": "전주시",
+  "address": "전주시 완산구 평화동1가 410-3, 411, 412-44, -45, 413-2, -9, -18, 416-3",
+  "lat": 35.799641152064,
+  "lng": 127.142588498234,
+  "stage1": "EXCLUDE",
+  "stage1_label": "제외",
+  "nearest": {
+   "name": "(유)민들레Self주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 0.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   10
+  ],
+  "stage2_city_total": 40,
+  "stage2_all": [
+   15,
+   15,
+   10
+  ],
+  "stage2_all_total": 40
+ },
+ {
+  "no": "044",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 170, -2, 171-5, 176-2, -3, -9, -10, -11, -12",
+  "lat": 35.8069703891241,
+  "lng": 127.106958343368,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "은일주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 371.7
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   10
+  ],
+  "stage2_city_total": 40,
+  "stage2_all": [
+   15,
+   15,
+   10
+  ],
+  "stage2_all_total": 40
+ },
+ {
+  "no": "045",
+  "region": "정읍시",
+  "address": "정읍시 상동 183-7(B)",
+  "lat": 35.5592248013543,
+  "lng": 126.872241535992,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "스캔들노래",
+   "major": "위락시설",
+   "mid": "간이주점",
+   "distance_m": 933.2
+  },
+  "master": "정읍",
+  "stage2_city": [
+   15,
+   9,
+   10
+  ],
+  "stage2_city_total": 34,
+  "stage2_all": [
+   15,
+   9,
+   10
+  ],
+  "stage2_all_total": 34
+ },
+ {
+  "no": "046",
+  "region": "정읍시",
+  "address": "정읍시 상동 183-7(A)",
+  "lat": 35.5592248013543,
+  "lng": 126.872241535992,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "스캔들노래",
+   "major": "위락시설",
+   "mid": "간이주점",
+   "distance_m": 933.2
+  },
+  "master": "정읍",
+  "stage2_city": [
+   15,
+   9,
+   10
+  ],
+  "stage2_city_total": 34,
+  "stage2_all": [
+   15,
+   9,
+   10
+  ],
+  "stage2_all_total": 34
+ },
+ {
+  "no": "047",
+  "region": "김제시",
+  "address": "김제시 요촌동  산11",
+  "lat": 35.8180390396239,
+  "lng": 126.892271517476,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "킹덤",
+   "major": "위락시설",
+   "mid": "기타",
+   "distance_m": 709.9
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   9,
+   6
+  ],
+  "stage2_city_total": 30,
+  "stage2_all": [
+   15,
+   9,
+   6
+  ],
+  "stage2_all_total": 30
+ },
+ {
+  "no": "048",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1343-6",
+  "lat": 35.8499987284079,
+  "lng": 127.076870333033,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "서부대로주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 309.4
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   8
+  ],
+  "stage2_city_total": 26,
+  "stage2_all": [
+   15,
+   3,
+   8
+  ],
+  "stage2_all_total": 26
+ },
+ {
+  "no": "049",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 1242-5, -6",
+  "lat": 35.8155382786232,
+  "lng": 127.104282342552,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "아리랑7080",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 112.4
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "050",
+  "region": "전주시",
+  "address": "전주시 완산구 중노송동 505-10, -22",
+  "lat": 35.8229042281483,
+  "lng": 127.15227066091,
+  "stage1": "EXCLUDE",
+  "stage1_label": "제외",
+  "nearest": {
+   "name": "버터스테이",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 21.3
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "051",
+  "region": "군산시",
+  "address": "군산시 오식도동 956",
+  "lat": 35.9478727639294,
+  "lng": 126.567603105764,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "원샷 뮤직홀",
+   "major": "위락시설",
+   "mid": "룸살롱",
+   "distance_m": 47.1
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   3,
+   2
+  ],
+  "stage2_city_total": 20,
+  "stage2_all": [
+   15,
+   3,
+   2
+  ],
+  "stage2_all_total": 20
+ },
+ {
+  "no": "052",
+  "region": "군산시",
+  "address": "군산시 경장동 203-2, -6, 4-1, 4-13",
+  "lat": 35.9732006010098,
+  "lng": 126.734398070607,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "스카이모텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 113.2
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "053",
+  "region": "군산시",
+  "address": "군산시 오식도동 658-1",
+  "lat": 35.9658706081231,
+  "lng": 126.567453850232,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "궁단란주점",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 120.2
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   3,
+   2
+  ],
+  "stage2_city_total": 20,
+  "stage2_all": [
+   15,
+   3,
+   2
+  ],
+  "stage2_all_total": 20
+ },
+ {
+  "no": "054",
+  "region": "군산시",
+  "address": "군산시 수송동 854-6, -7",
+  "lat": 35.9616907400582,
+  "lng": 126.716066225882,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "연예인 단란주점",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 186.1
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "055",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1263-8",
+  "lat": 35.8408801264643,
+  "lng": 127.079856813921,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "유한회사 흥국주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 581.9
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "056",
+  "region": "전주시",
+  "address": "전주시 덕진구 진북동 326-5, -18, -30, -31",
+  "lat": 35.8307748435858,
+  "lng": 127.142880735317,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "국보장여관",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 72.9
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   10
+  ],
+  "stage2_city_total": 40,
+  "stage2_all": [
+   15,
+   15,
+   10
+  ],
+  "stage2_all_total": 40
+ },
+ {
+  "no": "057",
+  "region": "김제시",
+  "address": "김제시 검산동 834, -4, 835-9",
+  "lat": 35.7992241079461,
+  "lng": 126.903393509098,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "백제모텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 545.8
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   9,
+   10
+  ],
+  "stage2_city_total": 34,
+  "stage2_all": [
+   15,
+   9,
+   10
+  ],
+  "stage2_all_total": 34
+ },
+ {
+  "no": "058",
+  "region": "전주시",
+  "address": "전주시 서완산동2가 339-6, -23, -24, -36, -39 334-33, 산79-5",
+  "lat": 35.8094749212265,
+  "lng": 127.133184759151,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "히트단란주점",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 367.3
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   10
+  ],
+  "stage2_city_total": 40,
+  "stage2_all": [
+   15,
+   15,
+   10
+  ],
+  "stage2_all_total": 40
+ },
+ {
+  "no": "059",
+  "region": "전주시",
+  "address": "전주시 완산구 서노송동 607-6",
+  "lat": 35.8219936435535,
+  "lng": 127.146108371502,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "스텐바이",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 26.6
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "060",
+  "region": "익산시",
+  "address": "익산시 부송동 764-10, -7, -8, -11",
+  "lat": 35.9579425236174,
+  "lng": 126.988687932144,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "비원단란주점",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 46.7
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   12,
+   6
+  ],
+  "stage2_city_total": 33,
+  "stage2_all": [
+   15,
+   12,
+   6
+  ],
+  "stage2_all_total": 33
+ },
+ {
+  "no": "061",
+  "region": "완주군",
+  "address": "완주군 삼례읍 삼례리 866-44, -7, -48, -53, -85",
+  "lat": 35.9093070055375,
+  "lng": 127.074358981911,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "카리브모텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 147.0
+  },
+  "master": "완주",
+  "stage2_city": [
+   15,
+   9,
+   8
+  ],
+  "stage2_city_total": 32,
+  "stage2_all": [
+   15,
+   9,
+   8
+  ],
+  "stage2_all_total": 32
+ },
+ {
+  "no": "062",
+  "region": "정읍시",
+  "address": "정읍시 수성동 969-1",
+  "lat": 35.5773454658038,
+  "lng": 126.85148289185,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "오렌지뮤직홀",
+   "major": "위락시설",
+   "mid": "간이주점",
+   "distance_m": 437.9
+  },
+  "master": "정읍",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "063",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1264-8",
+  "lat": 35.8409123253111,
+  "lng": 127.078916728361,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "유한회사 흥국주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 536.9
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "064",
+  "region": "전주시",
+  "address": "전주시 덕진구 중동 776-6",
+  "lat": 35.836485034084,
+  "lng": 127.059545809437,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "꼭지",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 46.6
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   8
+  ],
+  "stage2_city_total": 26,
+  "stage2_all": [
+   15,
+   3,
+   8
+  ],
+  "stage2_all_total": 26
+ },
+ {
+  "no": "065",
+  "region": "군산시",
+  "address": "군산시 소룡동 1553",
+  "lat": 35.9732124337076,
+  "lng": 126.678258161754,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "거목",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 25.3
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   9,
+   8
+  ],
+  "stage2_city_total": 32,
+  "stage2_all": [
+   15,
+   9,
+   8
+  ],
+  "stage2_all_total": 32
+ },
+ {
+  "no": "066",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1360-2",
+  "lat": 35.8458264231181,
+  "lng": 127.073212354067,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "서부대로주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 827.4
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   8
+  ],
+  "stage2_city_total": 26,
+  "stage2_all": [
+   15,
+   3,
+   8
+  ],
+  "stage2_all_total": 26
+ },
+ {
+  "no": "067",
+  "region": "완주군",
+  "address": "완주군 이서면 갈산리 661-13",
+  "lat": 35.8390579078579,
+  "lng": 127.056676731875,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "보스7080",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 119.6
+  },
+  "master": "완주",
+  "stage2_city": [
+   9,
+   3,
+   2
+  ],
+  "stage2_city_total": 14,
+  "stage2_all": [
+   15,
+   3,
+   8
+  ],
+  "stage2_all_total": 26
+ },
+ {
+  "no": "068",
+  "region": "전주시",
+  "address": "전주시 덕진구 금암동 1547-18, -29",
+  "lat": 35.842498079893,
+  "lng": 127.137612653645,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "전주서린self주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 54.6
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "069",
+  "region": "익산시",
+  "address": "익산시 중앙동3가 99-1",
+  "lat": 35.9381234868293,
+  "lng": 126.950411598544,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "자전거",
+   "major": "위락시설",
+   "mid": "룸살롱",
+   "distance_m": 38.6
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   12,
+   10
+  ],
+  "stage2_city_total": 37,
+  "stage2_all": [
+   15,
+   12,
+   10
+  ],
+  "stage2_all_total": 37
+ },
+ {
+  "no": "070",
+  "region": "익산시",
+  "address": "익산시 중앙동3가 100",
+  "lat": 35.9381705944027,
+  "lng": 126.950854735218,
+  "stage1": "EXCLUDE",
+  "stage1_label": "제외",
+  "nearest": {
+   "name": "자전거",
+   "major": "위락시설",
+   "mid": "룸살롱",
+   "distance_m": 20.2
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   12,
+   10
+  ],
+  "stage2_city_total": 37,
+  "stage2_all": [
+   15,
+   12,
+   10
+  ],
+  "stage2_all_total": 37
+ },
+ {
+  "no": "071",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가170, -2, 171-5, 176-2, -3, -9, -10, -11, -12",
+  "lat": 35.8069703891241,
+  "lng": 127.106958343368,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "은일주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 371.7
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   10
+  ],
+  "stage2_city_total": 40,
+  "stage2_all": [
+   15,
+   15,
+   10
+  ],
+  "stage2_all_total": 40
+ },
+ {
+  "no": "072",
+  "region": "전주시",
+  "address": "전주시 완산구 평화동2가 458-106, 457",
+  "lat": 35.7855981687788,
+  "lng": 127.126273923231,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "남고산 셀프주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 571.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   9,
+   8
+  ],
+  "stage2_city_total": 32,
+  "stage2_all": [
+   15,
+   9,
+   8
+  ],
+  "stage2_all_total": 32
+ },
+ {
+  "no": "073",
+  "region": "전주시",
+  "address": "전주시 덕진구 고랑동 1142-6, -7, 12, 1143-5",
+  "lat": 35.8759576457651,
+  "lng": 127.077174002933,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "태정주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 214.7
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   10
+  ],
+  "stage2_city_total": 28,
+  "stage2_all": [
+   15,
+   3,
+   10
+  ],
+  "stage2_all_total": 28
+ },
+ {
+  "no": "074",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1262-4",
+  "lat": 35.8416102047925,
+  "lng": 127.077938841316,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "유한회사 흥국주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 570.5
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "075",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1349-7",
+  "lat": 35.8478150652832,
+  "lng": 127.082179052475,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "서부대로주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 361.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "076",
+  "region": "군산시",
+  "address": "군산시 소룡동 854",
+  "lat": 35.9803473565118,
+  "lng": 126.679298650266,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "7080발리",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 761.1
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   9,
+   8
+  ],
+  "stage2_city_total": 32,
+  "stage2_all": [
+   15,
+   9,
+   8
+  ],
+  "stage2_all_total": 32
+ },
+ {
+  "no": "077",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 1236-8",
+  "lat": 35.8164176350184,
+  "lng": 127.10396161519,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "뉴스카이노래타운",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 35.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "078",
+  "region": "군산시",
+  "address": "군산시 수송동 757-1",
+  "lat": 35.969599584843,
+  "lng": 126.711406808899,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "수정여관",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 449.4
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   12,
+   10
+  ],
+  "stage2_city_total": 37,
+  "stage2_all": [
+   15,
+   12,
+   10
+  ],
+  "stage2_all_total": 37
+ },
+ {
+  "no": "079",
+  "region": "전주시",
+  "address": "전주시 완산구 평화동1가 382-2, 산51-1",
+  "lat": 35.8006583254337,
+  "lng": 127.139918947128,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "(유)민들레Self주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 266.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "080",
+  "region": "전주시",
+  "address": "전주시 덕진구 여의동 745-12",
+  "lat": 35.8631211364101,
+  "lng": 127.072745267086,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "씨제이대한통운(주) 공단주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 338.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   8
+  ],
+  "stage2_city_total": 26,
+  "stage2_all": [
+   15,
+   3,
+   8
+  ],
+  "stage2_all_total": 26
+ },
+ {
+  "no": "081",
+  "region": "전주시",
+  "address": "전주시 덕진구 여의동 748-21",
+  "lat": 35.8628433362805,
+  "lng": 127.073223031733,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "씨제이대한통운(주) 공단주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 374.1
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   8
+  ],
+  "stage2_city_total": 26,
+  "stage2_all": [
+   15,
+   3,
+   8
+  ],
+  "stage2_all_total": 26
+ },
+ {
+  "no": "082",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 363-2, -4, -8, -9, -10, -22, 364-1",
+  "lat": 35.803778607036,
+  "lng": 127.104828260954,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "은일주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 40.7
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   10
+  ],
+  "stage2_city_total": 37,
+  "stage2_all": [
+   15,
+   12,
+   10
+  ],
+  "stage2_all_total": 37
+ },
+ {
+  "no": "083",
+  "region": "전주시",
+  "address": "전주시 완산구 중화산동1가 161-40 외 41",
+  "lat": 35.811775303656,
+  "lng": 127.13307008222,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "GS칼텍스(주) 시온셀프주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 393.8
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   10
+  ],
+  "stage2_city_total": 40,
+  "stage2_all": [
+   15,
+   15,
+   10
+  ],
+  "stage2_all_total": 40
+ },
+ {
+  "no": "084",
+  "region": "익산시",
+  "address": "익산시 신동 808-2",
+  "lat": 35.9777944977388,
+  "lng": 126.943801166923,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "찰랑찰랑",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 54.1
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   12,
+   6
+  ],
+  "stage2_city_total": 33,
+  "stage2_all": [
+   15,
+   12,
+   6
+  ],
+  "stage2_all_total": 33
+ },
+ {
+  "no": "085",
+  "region": "전주시",
+  "address": "전주시 덕진구 팔복동1가 124-2, -3, -4, -5, -6, -7, 128-1, -2, -3, -4, -5, -6",
+  "lat": 35.8531976570277,
+  "lng": 127.109180270089,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "북전주농협주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 125.7
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   9,
+   6
+  ],
+  "stage2_city_total": 30,
+  "stage2_all": [
+   15,
+   9,
+   6
+  ],
+  "stage2_all_total": 30
+ },
+ {
+  "no": "086",
+  "region": "김제시",
+  "address": "김제시 요촌동 199-11, 197-8",
+  "lat": 35.7994556004706,
+  "lng": 126.884920575634,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "제우스음악홀",
+   "major": "위락시설",
+   "mid": "간이주점",
+   "distance_m": 42.0
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   9,
+   8
+  ],
+  "stage2_city_total": 32,
+  "stage2_all": [
+   15,
+   9,
+   8
+  ],
+  "stage2_all_total": 32
+ },
+ {
+  "no": "087",
+  "region": "김제시",
+  "address": "김제시 금구면 금구리 574-7, -9, -10",
+  "lat": 35.773052271405,
+  "lng": 127.005545563999,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "쿡1포레나",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 158.4
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   3,
+   4
+  ],
+  "stage2_city_total": 22,
+  "stage2_all": [
+   15,
+   3,
+   4
+  ],
+  "stage2_all_total": 22
+ },
+ {
+  "no": "088",
+  "region": "익산시",
+  "address": "익산시 황등면 황등리 921-4, 922-1, -7",
+  "lat": 36.0057488043595,
+  "lng": 126.944239322092,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "리노노래타운",
+   "major": "위락시설",
+   "mid": "룸살롱",
+   "distance_m": 645.0
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   9,
+   10
+  ],
+  "stage2_city_total": 34,
+  "stage2_all": [
+   15,
+   9,
+   10
+  ],
+  "stage2_all_total": 34
+ },
+ {
+  "no": "089",
+  "region": "김제시",
+  "address": "김제시 신풍동 248-4, -10, 219-12, -18",
+  "lat": 35.7941841379048,
+  "lng": 126.899267863892,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "백제모텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 459.7
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   9,
+   10
+  ],
+  "stage2_city_total": 34,
+  "stage2_all": [
+   15,
+   9,
+   10
+  ],
+  "stage2_all_total": 34
+ },
+ {
+  "no": "090",
+  "region": "전주시",
+  "address": "전주시 완산구 삼천동2가 764",
+  "lat": 35.7942239916015,
+  "lng": 127.106665723316,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "바울주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 338.6
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "091",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 1238-3",
+  "lat": 35.8160480332721,
+  "lng": 127.10374852193,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "뉴스카이노래타운",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 78.3
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "092",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동3가 1643-2",
+  "lat": 35.8229505766711,
+  "lng": 127.102234061717,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "노래하는오렌지",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 263.2
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "093",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1264-4",
+  "lat": 35.8410478570932,
+  "lng": 127.079290528697,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "유한회사 흥국주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 567.5
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "094",
+  "region": "익산시",
+  "address": "익산시 창인동1가 19, 20-2, 21-7",
+  "lat": 35.9412688313936,
+  "lng": 126.948183508567,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "천일여인숙",
+   "major": "숙박시설",
+   "mid": "여인숙업",
+   "distance_m": 26.4
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "095",
+  "region": "정읍시",
+  "address": "정읍시 연지동 14-96, -14, -95",
+  "lat": 35.577500216456,
+  "lng": 126.847214111761,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "첼로",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 108.5
+  },
+  "master": "정읍",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "096",
+  "region": "김제시",
+  "address": "김제시 요촌동 237-3, -7",
+  "lat": 35.8032464102587,
+  "lng": 126.887481204836,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "오렌지",
+   "major": "위락시설",
+   "mid": "간이주점",
+   "distance_m": 296.4
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   9,
+   10
+  ],
+  "stage2_city_total": 34,
+  "stage2_all": [
+   15,
+   9,
+   10
+  ],
+  "stage2_all_total": 34
+ },
+ {
+  "no": "097",
+  "region": "김제시",
+  "address": "김제시 신풍동 279-1, -2, 278-1, 277-25, 277-103",
+  "lat": 35.751740084885,
+  "lng": 126.915206931214,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "백제모텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 4841.1
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   3,
+   2
+  ],
+  "stage2_city_total": 20,
+  "stage2_all": [
+   15,
+   3,
+   2
+  ],
+  "stage2_all_total": 20
+ },
+ {
+  "no": "098",
+  "region": "전주시",
+  "address": "전주시 완산구 평화동2가 458-106, 457",
+  "lat": 35.7855981687788,
+  "lng": 127.126273923231,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "남고산 셀프주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 571.0
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   9,
+   8
+  ],
+  "stage2_city_total": 32,
+  "stage2_all": [
+   15,
+   9,
+   8
+  ],
+  "stage2_all_total": 32
+ },
+ {
+  "no": "099",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1263-3",
+  "lat": 35.8414917169234,
+  "lng": 127.079230586875,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "유한회사 흥국주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 606.8
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "100",
+  "region": "전주시",
+  "address": "전주시 완산구 평화동1가 592-36, -39",
+  "lat": 35.7969203879238,
+  "lng": 127.134300432018,
+  "stage1": "EXCLUDE",
+  "stage1_label": "제외",
+  "nearest": {
+   "name": "나이야가라단란주점",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 23.1
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "101",
+  "region": "전주시",
+  "address": "전주시 완산구 중앙동1가 7-1",
+  "lat": 35.8175365412244,
+  "lng": 127.142010163001,
+  "stage1": "EXCLUDE",
+  "stage1_label": "제외",
+  "nearest": {
+   "name": "현대여관",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 20.2
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "102",
+  "region": "전주시",
+  "address": "전주시 덕진구 덕진동1가 1280-6, -19, -21",
+  "lat": 35.8452827072411,
+  "lng": 127.122528660805,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "어썸호텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 83.8
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "103",
+  "region": "전주시",
+  "address": "전주시 덕진구 인후동1가 765-8, -9, -10",
+  "lat": 35.8381994558195,
+  "lng": 127.156743748191,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "카지노가요주점",
+   "major": "위락시설",
+   "mid": "비어(바)살롱",
+   "distance_m": 214.4
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "104",
+  "region": "완주군",
+  "address": "완주군 삼례읍 수계리 1246-2",
+  "lat": 35.9258295997245,
+  "lng": 127.124103273464,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "나들목산장",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 3587.2
+  },
+  "master": "완주",
+  "stage2_city": [
+   12,
+   3,
+   2
+  ],
+  "stage2_city_total": 17,
+  "stage2_all": [
+   15,
+   3,
+   2
+  ],
+  "stage2_all_total": 20
+ },
+ {
+  "no": "105",
+  "region": "완주군",
+  "address": "완주군 삼례읍 수계리 1246-3",
+  "lat": 35.9255353414133,
+  "lng": 127.124102786177,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "나들목산장",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 3619.9
+  },
+  "master": "완주",
+  "stage2_city": [
+   12,
+   3,
+   2
+  ],
+  "stage2_city_total": 17,
+  "stage2_all": [
+   15,
+   3,
+   2
+  ],
+  "stage2_all_total": 20
+ },
+ {
+  "no": "106",
+  "region": "군산시",
+  "address": "군산시 소룡동 776, 777, 778, 779, 780, 781, 782, 783, 785, -1, 786, 787, 789, 790, 793, 794, 800",
+  "lat": 35.9773036600664,
+  "lng": 126.679648950608,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "성수장여관",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 460.4
+  },
+  "master": "군산",
+  "stage2_city": [
+   15,
+   9,
+   10
+  ],
+  "stage2_city_total": 34,
+  "stage2_all": [
+   15,
+   9,
+   10
+  ],
+  "stage2_all_total": 34
+ },
+ {
+  "no": "107",
+  "region": "전주시",
+  "address": "전주시 완산구 삼천동2가 764-3, -4",
+  "lat": 35.7938690500953,
+  "lng": 127.107311483142,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "바울주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 268.5
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "108",
+  "region": "전주시",
+  "address": "전주시 완산구 서신동 968-1, -2",
+  "lat": 35.8353505037826,
+  "lng": 127.120206152156,
+  "stage1": "EXCLUDE",
+  "stage1_label": "제외",
+  "nearest": {
+   "name": "블루피쉬",
+   "major": "위락시설",
+   "mid": "룸살롱",
+   "distance_m": 21.3
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "109",
+  "region": "전주시",
+  "address": "전주시 완산구 서서학동 산 10, 102-12",
+  "lat": 35.8052703965546,
+  "lng": 127.146702773693,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "마리호텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 622.2
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "110",
+  "region": "김제시",
+  "address": "김제시 요촌동 199-11",
+  "lat": 35.7994556004706,
+  "lng": 126.884920575634,
+  "stage1": "CAUTION",
+  "stage1_label": "주의",
+  "nearest": {
+   "name": "제우스음악홀",
+   "major": "위락시설",
+   "mid": "간이주점",
+   "distance_m": 42.0
+  },
+  "master": "김제",
+  "stage2_city": [
+   15,
+   9,
+   8
+  ],
+  "stage2_city_total": 32,
+  "stage2_all": [
+   15,
+   9,
+   8
+  ],
+  "stage2_all_total": 32
+ },
+ {
+  "no": "111",
+  "region": "전주시",
+  "address": "전주시 덕진구 인후동2가 1557-4",
+  "lat": 35.8449287020094,
+  "lng": 127.148498088586,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "와라와라",
+   "major": "위락시설",
+   "mid": "비어(바)살롱",
+   "distance_m": 256.3
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "112",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1375-3",
+  "lat": 35.8426868221579,
+  "lng": 127.080127275807,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "유한회사 흥국주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 762.3
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   6
+  ],
+  "stage2_city_total": 24,
+  "stage2_all": [
+   15,
+   3,
+   6
+  ],
+  "stage2_all_total": 24
+ },
+ {
+  "no": "113",
+  "region": "익산시",
+  "address": "익산시 신동 741-8, -9",
+  "lat": 35.9574056586801,
+  "lng": 126.957718939461,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "환이 라이브",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 226.1
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "114",
+  "region": "익산시",
+  "address": "익산시 남중동 195-22, -9, -8, 496-13, -10, 497-3",
+  "lat": 35.9438499769739,
+  "lng": 126.950715657251,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "소호호텔 플러스",
+   "major": "숙박시설",
+   "mid": "숙박업 기타",
+   "distance_m": 93.8
+  },
+  "master": "익산",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "115",
+  "region": "전주시",
+  "address": "전주시 덕진구 금암동 762-1, -16",
+  "lat": 35.8357755693557,
+  "lng": 127.129892550796,
+  "stage1": "EXCLUDE",
+  "stage1_label": "제외",
+  "nearest": {
+   "name": "명품호텔",
+   "major": "숙박시설",
+   "mid": "여관업",
+   "distance_m": 20.8
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   12,
+   8
+  ],
+  "stage2_city_total": 35,
+  "stage2_all": [
+   15,
+   12,
+   8
+  ],
+  "stage2_all_total": 35
+ },
+ {
+  "no": "116",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 1237-4, -10",
+  "lat": 35.8169876139824,
+  "lng": 127.104928860372,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "아리랑7080",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 67.2
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "117",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1360-2",
+  "lat": 35.8458264231181,
+  "lng": 127.073212354067,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "서부대로주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 827.4
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   8
+  ],
+  "stage2_city_total": 26,
+  "stage2_all": [
+   15,
+   3,
+   8
+  ],
+  "stage2_all_total": 26
+ },
+ {
+  "no": "118",
+  "region": "전주시",
+  "address": "전주시 완산구 효자동2가 1238-3",
+  "lat": 35.8160480332721,
+  "lng": 127.10374852193,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "뉴스카이노래타운",
+   "major": "위락시설",
+   "mid": "단란주점",
+   "distance_m": 78.3
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   15,
+   8
+  ],
+  "stage2_city_total": 38,
+  "stage2_all": [
+   15,
+   15,
+   8
+  ],
+  "stage2_all_total": 38
+ },
+ {
+  "no": "119",
+  "region": "전주시",
+  "address": "전주시 덕진구 만성동 1342-2",
+  "lat": 35.8505516524093,
+  "lng": 127.076787204084,
+  "stage1": "PASS",
+  "stage1_label": "통과",
+  "nearest": {
+   "name": "서부대로주유소",
+   "major": "위험시설",
+   "mid": "주유소",
+   "distance_m": 308.7
+  },
+  "master": "전주",
+  "stage2_city": [
+   15,
+   3,
+   8
+  ],
+  "stage2_city_total": 26,
+  "stage2_all": [
+   15,
+   3,
+   8
+  ],
+  "stage2_all_total": 26
+ }
+]

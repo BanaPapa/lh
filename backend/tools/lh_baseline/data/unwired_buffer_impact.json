@@ -1,0 +1,24 @@
+{
+ "general": {
+  "application_type": "general",
+  "buffer_b100": 100,
+  "buffer_b150": 150,
+  "usable_cases": 118,
+  "errors": [],
+  "case_diff_count": 0,
+  "case_diffs": [],
+  "facility_diff_count": 0,
+  "facility_diffs": []
+ },
+ "multi_child": {
+  "application_type": "multi_child",
+  "buffer_b100": 100,
+  "buffer_b150": 150,
+  "usable_cases": 118,
+  "errors": [],
+  "case_diff_count": 0,
+  "case_diffs": [],
+  "facility_diff_count": 0,
+  "facility_diffs": []
+ }
+}

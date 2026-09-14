@@ -1,0 +1,1400 @@
+/* ============================================================
+   입지분석 리포트 표현 규격
+   ------------------------------------------------------------
+   styles.css 안의 리포트 규칙은 세 겹으로 쌓여 있었다. ① 하드코딩 밝은
+   팔레트, ② 글자 크기만 다시 키우는 시트, ③ 호스트 토큰으로 색을 다시
+   덮는 테마 레이어. 세 겹이 서로를 덮으면서 축마다 다른 색(파랑·주황·초록
+   ·노랑), 원형 등급 배지, 01 02 03 번호 마커, 카드마다 붙는 진행바가
+   남았다. 한 화면에 강조가 열 군데면 강조가 아니다.
+
+   이 파일은 리포트의 단일 표현 규격이다. 색은 standalone.css 가 이미 갖고
+   있는 토큰(--fg/--muted/--border/--blue)에서만 끌어오므로 라이트·다크가
+   따로 관리되지 않는다. 강조색은 --blue 하나뿐이고, 계층은 괘선과 여백과
+   글자 굵기로만 만든다. 숫자는 전부 탭 숫자(tabular-nums)로 자리를 고정해
+   표에서 자릿수가 흔들리지 않게 한다.
+
+   특이도 주의: styles.css 는 @scope (.site-scope-module) 안에 있고 스코프
+   규칙은 근접성 때문에 같은 특이도의 무스코프 규칙을 이긴다. 그래서 여기
+   선택자는 한 단계 높여 쓴다(.analysis-modal 결합).
+   ============================================================ */
+
+.analysis-modal-backdrop > .analysis-modal,
+.analysis-modal {
+  --rp-ink: var(--fg, #15181e);
+  --rp-ink-2: var(--fg-2, #3c4453);
+  --rp-ink-3: var(--muted, #667085);
+  --rp-ink-4: var(--muted-2, #98a1b0);
+  --rp-surface: var(--surface-3, #ffffff);
+  --rp-surface-2: var(--surface-2, #f4f6f9);
+  /* 모달 바닥은 반드시 불투명해야 한다. 다크의 --surface-2 는 반투명이라
+     지도가 비쳐 글이 읽히지 않는다. --bg 는 두 테마 모두 불투명이다. */
+  --rp-ground: var(--bg, #eceef2);
+  --rp-line: var(--border, rgba(17, 24, 39, 0.1));
+  --rp-line-2: var(--border-2, rgba(17, 24, 39, 0.16));
+  /* 액센트를 글자색 쪽으로 조금 섞어 채도를 떨어뜨린다. 중립 회색 위에서
+     비명을 지르지 않고, 라이트·다크 어느 쪽에서도 본문과 같은 계열로 앉는다. */
+  --rp-accent: color-mix(in srgb, var(--blue, #2563eb) 86%, var(--fg, #15181e));
+  --rp-accent-weak: var(--blue-dim, rgba(37, 99, 235, 0.09));
+  /* 숫자도 본문과 같은 글꼴을 쓴다. Pretendard 는 탭 숫자를 지원해 자릿수가
+     흔들리지 않으므로, 데이터 칸만 다른 글꼴로 떼어 놓을 이유가 없다. */
+  --rp-num: var(--font-sans, "Pretendard Variable", Pretendard, sans-serif);
+}
+
+/* ── 모달 외곽 ──────────────────────────────────────────────── */
+
+.analysis-modal-backdrop > .analysis-modal {
+  color: var(--rp-ink);
+  background: var(--rp-ground);
+  border: 1px solid var(--rp-line-2);
+  border-radius: 10px;
+  /* 그림자는 검정이 아니라 배경 색조를 띤다. */
+  box-shadow: 0 24px 70px -28px color-mix(in srgb, var(--bg, #11161f) 80%, #000);
+  font-size: 15px;
+}
+
+/* 진행 모달은 body 로 포털돼 styles.css 의 @scope 바깥에 있다. 거기 있는
+   레이아웃 규칙이 하나도 닿지 않으므로, 머리말 배치를 여기서 온전히 갖춘다.
+   (예전에는 눈썹 문구와 제목이 한 줄에 붙고 닫기 버튼이 아래로 떨어졌다.) */
+.analysis-modal-backdrop,
+.analysis-modal-backdrop *,
+.analysis-modal-backdrop *::before,
+.analysis-modal-backdrop *::after {
+  box-sizing: border-box;
+}
+
+.analysis-modal-backdrop > .analysis-modal .analysis-modal-header {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 18px 0 22px;
+  color: var(--rp-ink);
+  background: var(--rp-surface);
+  border-bottom: 1px solid var(--rp-line);
+  border-radius: 10px 10px 0 0;
+}
+
+.analysis-modal .analysis-modal-title {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.analysis-modal .analysis-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 주황 대문자 눈썹 문구를 걷어낸다. 자리만 알려주는 작은 라벨이면 된다. */
+.analysis-modal .analysis-modal-title span {
+  color: var(--rp-ink-3);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.analysis-modal .analysis-modal-title strong {
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analysis-modal .analysis-modal-actions button {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 11px;
+  cursor: pointer;
+  color: var(--rp-ink-2);
+  background: transparent;
+  border: 1px solid var(--rp-line-2);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.analysis-modal .analysis-modal-actions button:hover {
+  color: var(--rp-ink);
+  background: var(--rp-surface-2);
+  border-color: var(--rp-ink-4);
+}
+
+.analysis-modal .analysis-modal-actions button:active {
+  transform: translateY(1px);
+}
+
+.analysis-modal .analysis-modal-actions button:focus-visible {
+  outline: 2px solid var(--rp-accent);
+  outline-offset: 2px;
+}
+
+.analysis-modal .analysis-modal-actions .modal-close {
+  width: 34px;
+  padding: 0;
+  border-color: transparent;
+}
+
+/* ── 탭 ─────────────────────────────────────────────────────── */
+
+.analysis-modal .analysis-modal-tabs {
+  min-height: 46px;
+  gap: 0;
+  padding: 0 16px;
+  background: var(--rp-surface);
+  border-bottom: 1px solid var(--rp-line);
+}
+
+.analysis-modal .analysis-modal-tabs button {
+  gap: 7px;
+  padding: 0 14px;
+  color: var(--rp-ink-3);
+  border-bottom: 2px solid transparent;
+  font-size: 14px;
+  font-weight: 500;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.analysis-modal .analysis-modal-tabs button:hover {
+  color: var(--rp-ink);
+  background: transparent;
+}
+
+.analysis-modal .analysis-modal-tabs button.is-active {
+  color: var(--rp-ink);
+  border-bottom-color: var(--rp-accent);
+  font-weight: 600;
+}
+
+.analysis-modal .analysis-modal-tabs button:focus-visible {
+  outline: 2px solid var(--rp-accent);
+  outline-offset: -4px;
+}
+
+/* 알약 배지를 없애고 숫자만 남긴다. 탭 라벨 옆 숫자는 장식이 아니라 값이다. */
+.analysis-modal .analysis-modal-tabs button b {
+  min-width: 0;
+  padding: 0;
+  color: var(--rp-ink-4);
+  background: transparent;
+  border-radius: 0;
+  font-family: var(--rp-num);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .analysis-modal-tabs button.is-active b {
+  color: var(--rp-accent);
+  background: transparent;
+}
+
+.analysis-modal .analysis-modal-body {
+  background: var(--rp-ground);
+}
+
+.analysis-modal .overview-content,
+.analysis-modal .dimension-tab-content {
+  padding: 22px 24px 28px;
+}
+
+/* ── 종합분석: 요약 ─────────────────────────────────────────── */
+
+.analysis-modal .report-summary {
+  display: grid;
+  grid-template-columns: minmax(230px, 290px) minmax(0, 1fr);
+  gap: 30px;
+  padding: 24px 26px 26px;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-line);
+  border-radius: 6px;
+}
+
+.analysis-modal .report-score {
+  align-self: start;
+  display: grid;
+  gap: 10px;
+  padding-right: 28px;
+  border-right: 1px solid var(--rp-line);
+}
+
+.analysis-modal .report-score-label {
+  margin: 0;
+  color: var(--rp-ink-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.analysis-modal .report-score-value {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+}
+
+.analysis-modal .report-score-value strong {
+  font-family: var(--rp-num);
+  font-size: 54px;
+  font-weight: 600;
+  line-height: 0.9;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .report-score-value span {
+  color: var(--rp-ink-4);
+  font-family: var(--rp-num);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 등급은 주황 원 배지였다. 원을 없애고 괘선 한 줄로 갈라 붙인다. */
+.analysis-modal .report-score-value em {
+  margin-left: auto;
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+  padding-left: 14px;
+  border-left: 1px solid var(--rp-line-2);
+  color: var(--rp-accent);
+  font-family: var(--rp-num);
+  font-size: 26px;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.analysis-modal .report-score-note {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--rp-line);
+  color: var(--rp-ink-3);
+  font-size: 12.5px;
+  line-height: 1.65;
+  word-break: keep-all;
+  text-wrap: pretty;
+}
+
+.analysis-modal .report-intro {
+  min-width: 0;
+}
+
+.analysis-modal .report-region {
+  margin: 0;
+  color: var(--rp-ink-3);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.analysis-modal .report-intro h2 {
+  margin: 5px 0 7px;
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  word-break: keep-all;
+  text-wrap: balance;
+}
+
+.analysis-modal .report-profile {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--rp-ink-2);
+  font-size: 14px;
+  line-height: 1.7;
+  word-break: keep-all;
+  text-wrap: pretty;
+}
+
+/* 번호 마커(01 02 03)를 쓰지 않는다. 순서가 의미 없는 관찰 문장들이다. */
+.analysis-modal .report-findings {
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--rp-line);
+}
+
+.analysis-modal .report-findings li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rp-line);
+  color: var(--rp-ink);
+  font-size: 13.5px;
+  line-height: 1.65;
+  word-break: keep-all;
+  text-wrap: pretty;
+}
+
+/* ── 종합분석: 평가축 목록 ──────────────────────────────────── */
+
+.analysis-modal .report-block {
+  margin-top: 26px;
+}
+
+.analysis-modal .report-block-title {
+  display: flex;
+  align-items: baseline;
+  gap: 13px;
+  margin-bottom: 2px;
+}
+
+.analysis-modal .report-block-title h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+}
+
+/* 제목 오른쪽을 괘선이 채운다. 섹션 번호 배지를 대신하는 구분이다. */
+.analysis-modal .report-block-title::after {
+  order: 1;
+  flex: 1;
+  height: 1px;
+  background: var(--rp-line);
+  content: "";
+}
+
+.analysis-modal .report-block-title small {
+  order: 2;
+  color: var(--rp-ink-3);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* 2×2 동일 카드 격자를 걷어낸다. 네 축은 같은 척도의 값이라 표로 읽는 게
+   맞다. 행마다 색을 달리 주지 않고, 축 이름·점수·근거를 같은 열에 세운다. */
+.analysis-modal .report-axis-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analysis-modal .report-axis-list > li + li {
+  border-top: 1px solid var(--rp-line);
+}
+
+.analysis-modal .report-axis-list button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(130px, 168px) 86px minmax(0, 1fr) 16px;
+  align-items: start;
+  gap: 18px;
+  padding: 16px 8px 16px 2px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.analysis-modal .report-axis-list button:hover {
+  background: var(--rp-accent-weak);
+}
+
+.analysis-modal .report-axis-list button:active {
+  transform: translateY(1px);
+}
+
+.analysis-modal .report-axis-list button:focus-visible {
+  outline: 2px solid var(--rp-accent);
+  outline-offset: -2px;
+}
+
+.analysis-modal .axis-row-name {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 7px;
+}
+
+.analysis-modal .axis-row-name svg {
+  color: var(--rp-ink-4);
+}
+
+.analysis-modal .axis-row-name b {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.analysis-modal .axis-row-name small {
+  grid-column: 2;
+  color: var(--rp-ink-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .axis-row-score {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+}
+
+.analysis-modal .axis-row-score strong {
+  font-family: var(--rp-num);
+  font-size: 31px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .axis-row-score small {
+  color: var(--rp-ink-3);
+  font-family: var(--rp-num);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 색 점 불릿 대신 문장을 그대로 세운다. */
+.analysis-modal .axis-row-notes {
+  display: grid;
+  gap: 5px;
+  padding-top: 2px;
+}
+
+.analysis-modal .axis-row-notes span {
+  color: var(--rp-ink-2);
+  font-size: 12.5px;
+  line-height: 1.65;
+  word-break: keep-all;
+  text-wrap: pretty;
+}
+
+.analysis-modal .axis-row-go {
+  align-self: center;
+  color: var(--rp-line-2);
+  transition:
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.analysis-modal .report-axis-list button:hover .axis-row-go {
+  color: var(--rp-accent);
+  transform: translateX(2px);
+}
+
+.analysis-modal .report-sources {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rp-line);
+  color: var(--rp-ink-3);
+  font-size: 12px;
+  line-height: 1.65;
+  text-align: left;
+}
+
+.analysis-modal .report-sources span {
+  color: var(--rp-ink-2);
+  font-family: inherit;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.analysis-modal .report-sources p {
+  margin: 0;
+  word-break: keep-all;
+}
+
+/* ── 평가축 상세 ────────────────────────────────────────────── */
+
+.analysis-modal .axis-summary {
+  display: grid;
+  grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+  gap: 28px;
+  padding: 22px 26px 24px;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-line);
+  border-radius: 6px;
+}
+
+.analysis-modal .axis-score {
+  align-self: start;
+  display: grid;
+  gap: 8px;
+  padding-right: 26px;
+  border-right: 1px solid var(--rp-line);
+}
+
+.analysis-modal .axis-score-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--rp-ink-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.analysis-modal .axis-score-value {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+}
+
+.analysis-modal .axis-score-value strong {
+  font-family: var(--rp-num);
+  font-size: 46px;
+  font-weight: 600;
+  line-height: 0.9;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .axis-score-value span {
+  color: var(--rp-ink-4);
+  font-family: var(--rp-num);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .axis-summary-body {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.analysis-modal .axis-summary-body > strong {
+  color: var(--rp-ink);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .axis-summary-body > p {
+  max-width: 66ch;
+  margin: 0;
+  color: var(--rp-ink-2);
+  font-size: 13.5px;
+  line-height: 1.7;
+  word-break: keep-all;
+  text-wrap: pretty;
+}
+
+.analysis-modal .axis-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin: 8px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--rp-line);
+}
+
+.analysis-modal .axis-facts > div {
+  display: grid;
+  gap: 2px;
+}
+
+.analysis-modal .axis-facts dt {
+  color: var(--rp-ink-3);
+  font-size: 12px;
+}
+
+.analysis-modal .axis-facts dd {
+  margin: 0;
+  color: var(--rp-ink);
+  font-family: var(--rp-num);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .axis-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(290px, 0.9fr);
+  align-items: start;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+/* ── 카드 공통 ──────────────────────────────────────────────── */
+
+.analysis-modal .analysis-bus-card,
+.analysis-modal .evidence-table-card,
+.analysis-modal .formula-card,
+.analysis-modal .source-summary-card {
+  padding: 18px 18px 20px;
+  color: var(--rp-ink);
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-line);
+  border-radius: 6px;
+}
+
+.analysis-modal .analysis-card-heading {
+  gap: 9px;
+}
+
+.analysis-modal .analysis-card-heading strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.analysis-modal .analysis-card-heading small {
+  color: var(--rp-ink-3);
+  font-size: 12.5px;
+}
+
+/* 색 채운 정사각 아이콘 칩을 없애고 선 아이콘만 남긴다. */
+.analysis-modal .analysis-card-icon,
+.analysis-modal .analysis-card-icon.transport,
+.analysis-modal .analysis-card-icon.formula {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  color: var(--rp-ink-3);
+  background: transparent;
+  border-radius: 0;
+  font-size: 18px;
+}
+
+/* 상태는 알약 배지가 아니라 점 하나 붙은 글자로 읽힌다. */
+.analysis-modal .data-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  color: var(--rp-ink-3);
+  background: transparent;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.analysis-modal .data-status::before {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  border-radius: 50%;
+  content: "";
+}
+
+.analysis-modal .status-ready {
+  color: var(--teal, #0f766e);
+  background: transparent;
+}
+
+.analysis-modal .status-partial {
+  color: var(--amber, #b45309);
+  background: transparent;
+}
+
+.analysis-modal .formula-card ol {
+  gap: 12px;
+  margin: 14px 0 16px;
+}
+
+.analysis-modal .formula-card li {
+  gap: 2px;
+  padding-left: 11px;
+  border-left: 1px solid var(--rp-line-2);
+}
+
+.analysis-modal .formula-card li b {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .formula-card li span {
+  color: var(--rp-ink-3);
+  font-size: 12.5px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .formula-card > p {
+  margin: 0;
+  padding: 11px 12px;
+  color: var(--rp-ink-3);
+  background: var(--rp-surface-2);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.65;
+  word-break: keep-all;
+}
+
+/* ── 근거 표 ────────────────────────────────────────────────── */
+
+.analysis-modal .modal-evidence-table {
+  margin-top: 14px;
+  border-top: 0;
+}
+
+.analysis-modal .modal-evidence-head,
+.analysis-modal .modal-evidence-table button {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.4fr) minmax(92px, 0.8fr) 58px 58px 52px;
+  align-items: center;
+  gap: 10px;
+}
+
+.analysis-modal .modal-evidence-head {
+  min-height: 30px;
+  padding: 0 4px;
+  color: var(--rp-ink-3);
+  background: transparent;
+  border-bottom: 1px solid var(--rp-line-2);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.analysis-modal .modal-evidence-table button {
+  min-height: 50px;
+  padding: 9px 4px;
+  color: var(--rp-ink-2);
+  background: transparent;
+  border-bottom: 1px solid var(--rp-line);
+  border-radius: 4px;
+  transition: background 150ms ease;
+}
+
+.analysis-modal .modal-evidence-table button:hover:not(:disabled) {
+  background: var(--rp-accent-weak);
+}
+
+.analysis-modal .modal-evidence-table button:focus-visible {
+  outline: 2px solid var(--rp-accent);
+  outline-offset: -2px;
+}
+
+.analysis-modal .modal-evidence-table button:disabled {
+  opacity: 1;
+  color: var(--rp-ink-4);
+}
+
+/* 머리글은 우측정렬인데 본문 관측 열만 좌측정렬이라 자리가 어긋나 있었다. */
+.analysis-modal .modal-evidence-table button > span {
+  display: grid;
+  gap: 1px;
+}
+
+.analysis-modal .modal-evidence-table button > span:first-child {
+  text-align: left;
+}
+
+.analysis-modal .modal-evidence-table button > span:nth-child(2) {
+  justify-items: end;
+  text-align: right;
+}
+
+.analysis-modal .modal-evidence-table button strong {
+  color: var(--rp-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.analysis-modal .modal-evidence-table button small {
+  color: var(--rp-ink-3);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .modal-evidence-table button > span b {
+  color: var(--rp-ink);
+  font-family: var(--rp-num);
+  font-size: 13.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .modal-evidence-table button > b {
+  color: var(--rp-ink-3);
+  font-family: var(--rp-num);
+  font-size: 12.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .modal-evidence-table button > strong {
+  color: var(--rp-accent);
+  font-family: var(--rp-num);
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 버스 접근성 카드 ───────────────────────────────────────── */
+
+/* 칸마다 세로줄을 긋고 색을 채운 상자였다. 값 네 개를 나란히 읽으면 되는
+   자리라 위아래 괘선만 남긴다. */
+.analysis-modal .bus-metric-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 14px 0 12px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--rp-line);
+  border-bottom: 1px solid var(--rp-line);
+}
+
+.analysis-modal .bus-metric-grid span {
+  gap: 2px;
+  padding: 12px 10px 12px 0;
+  color: var(--rp-ink-3);
+  font-size: 12px;
+  text-align: left;
+  border-right: 0;
+}
+
+.analysis-modal .bus-metric-grid b {
+  color: var(--rp-ink);
+  font-family: var(--rp-num);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .analysis-bus-card > p {
+  color: var(--rp-ink-2);
+  font-size: 13px;
+  line-height: 1.65;
+  word-break: keep-all;
+}
+
+.analysis-modal .analysis-route-list {
+  max-height: 208px;
+  gap: 0;
+  margin-top: 12px;
+}
+
+.analysis-modal .analysis-route-list article {
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 2px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--rp-line);
+}
+
+/* 노선번호를 파란·빨간 칩으로 칠하지 않는다. 광역·급행만 액센트로 구분한다. */
+.analysis-modal .analysis-route-list article > b,
+.analysis-modal .analysis-route-list article > b.is-express {
+  padding: 0;
+  color: var(--rp-ink-3);
+  background: transparent;
+  border-radius: 0;
+  font-family: var(--rp-num);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .analysis-route-list article > b.is-express {
+  color: var(--rp-accent);
+}
+
+.analysis-modal .analysis-route-list strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.analysis-modal .analysis-route-list small {
+  color: var(--rp-ink-3);
+  font-size: 11.5px;
+}
+
+/* ── 시설 상세 대화상자 ─────────────────────────────────────── */
+
+.analysis-modal .facility-detail-dialog {
+  color: var(--rp-ink);
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-line-2);
+  border-radius: 8px;
+}
+
+.analysis-modal .facility-detail-dialog > header span {
+  color: var(--rp-ink-3);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.analysis-modal .facility-detail-dialog > header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.analysis-modal .facility-detail-summary {
+  background: transparent;
+  border-bottom: 1px solid var(--rp-line);
+}
+
+.analysis-modal .facility-detail-summary span {
+  gap: 2px;
+  padding: 12px 16px;
+  color: var(--rp-ink-3);
+  font-size: 12px;
+  border-right: 0;
+}
+
+.analysis-modal .facility-detail-summary b {
+  color: var(--rp-ink);
+  font-family: var(--rp-num);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .facility-detail-head {
+  color: var(--rp-ink-3);
+  background: transparent;
+  border-bottom: 1px solid var(--rp-line-2);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.analysis-modal .facility-detail-rows article {
+  border-bottom: 1px solid var(--rp-line);
+}
+
+.analysis-modal .facility-detail-rows article > span {
+  color: var(--rp-ink-4);
+  font-family: var(--rp-num);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .facility-detail-rows article strong {
+  color: var(--rp-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.analysis-modal .facility-detail-rows article small {
+  color: var(--rp-ink-3);
+  font-size: 11.5px;
+}
+
+.analysis-modal .facility-detail-rows article > b {
+  color: var(--rp-ink-2);
+  font-family: var(--rp-num);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .facility-detail-rows article > em {
+  color: var(--rp-ink-4);
+  font-family: var(--rp-num);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* 행마다 채운 파란 버튼이 목록을 어지럽힌다. 글자 링크로 낮춘다. */
+.analysis-modal .facility-detail-rows article > button {
+  min-height: 28px;
+  gap: 4px;
+  padding: 0 6px;
+  color: var(--rp-ink-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease;
+}
+
+.analysis-modal .facility-detail-rows article > button:hover {
+  color: var(--rp-accent);
+  background: transparent;
+  border-color: var(--rp-line-2);
+}
+
+.analysis-modal .facility-detail-rows article > button:focus-visible {
+  outline: 2px solid var(--rp-accent);
+  outline-offset: 1px;
+}
+
+.analysis-modal .facility-detail-dialog > footer {
+  color: var(--rp-ink-3);
+  background: transparent;
+  border-top: 1px solid var(--rp-line);
+  font-size: 12px;
+  line-height: 1.65;
+  word-break: keep-all;
+}
+
+.analysis-modal .facility-detail-dialog > header button {
+  color: var(--rp-ink-3);
+  border-color: transparent;
+}
+
+.analysis-modal .facility-detail-dialog > header button:hover {
+  color: var(--rp-ink);
+  border-color: var(--rp-line-2);
+}
+
+/* ── 저장된 결과 런처 ───────────────────────────────────────── */
+
+.analysis-launcher b {
+  font-family: var(--rp-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 진행 화면 ──────────────────────────────────────────────────
+   입지분석과 서류심사가 같은 규격을 쓴다. 예전에는 각자 다른 마크업이라
+   한쪽은 주황 진행바에 원형 스피너, 다른 쪽은 대문자 영문 눈썹 문구였다. */
+
+/* 진행 중에는 본문이 아니라 단계 목록만 스크롤한다. 본문을 통째로 굴리면
+   활성 단계로 자동 스크롤할 때 머리말과 진행률이 화면 밖으로 밀려난다. */
+.analysis-modal-backdrop > .analysis-modal.is-loading .analysis-modal-body {
+  overflow: hidden;
+}
+
+.analysis-modal.is-loading .progress-body {
+  height: 100%;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
+.analysis-modal .progress-body {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 22px 24px 24px;
+}
+
+.analysis-modal .progress-headline {
+  display: grid;
+  gap: 8px;
+  padding: 20px 22px;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-line);
+  border-radius: 6px;
+}
+
+.analysis-modal .progress-stage {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.analysis-modal .progress-message {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--rp-ink-2);
+  font-size: 13.5px;
+  line-height: 1.65;
+  word-break: keep-all;
+  text-wrap: pretty;
+}
+
+.analysis-modal .progress-meter {
+  height: 3px;
+  margin-top: 6px;
+  overflow: hidden;
+  background: var(--rp-line);
+  border-radius: 2px;
+}
+
+.analysis-modal .progress-meter i {
+  height: 100%;
+  display: block;
+  background: var(--rp-accent);
+  transition: width 240ms ease;
+}
+
+.analysis-modal .progress-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin: 4px 0 0;
+}
+
+.analysis-modal .progress-facts > div {
+  display: grid;
+  gap: 2px;
+}
+
+.analysis-modal .progress-facts dt {
+  color: var(--rp-ink-3);
+  font-size: 12px;
+}
+
+.analysis-modal .progress-facts dd {
+  margin: 0;
+  color: var(--rp-ink);
+  font-family: var(--rp-num);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .progress-steps {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  border-top: 1px solid var(--rp-line);
+}
+
+.analysis-modal .progress-steps li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--rp-line);
+}
+
+.analysis-modal .progress-step-label {
+  color: var(--rp-ink-3);
+  font-size: 13.5px;
+  word-break: keep-all;
+}
+
+.analysis-modal .progress-steps li.is-running .progress-step-label,
+.analysis-modal .progress-steps li.is-completed .progress-step-label {
+  color: var(--rp-ink);
+}
+
+.analysis-modal .progress-step-value {
+  color: var(--rp-ink-3);
+  font-family: var(--rp-num);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .progress-steps li.is-completed .progress-step-value {
+  color: var(--rp-ink);
+  font-weight: 600;
+}
+
+.analysis-modal .progress-steps li.is-failed .progress-step-value {
+  color: var(--red, #d92d3f);
+}
+
+.analysis-modal .progress-steps li > i {
+  grid-column: 1 / -1;
+  height: 2px;
+  overflow: hidden;
+  background: var(--rp-line);
+}
+
+.analysis-modal .progress-steps li > i span {
+  height: 100%;
+  display: block;
+  background: var(--rp-accent);
+  transition: width 240ms ease;
+}
+
+.analysis-modal .progress-steps li.is-pending > i span,
+.analysis-modal .progress-steps li.is-completed > i span {
+  background: var(--rp-line-2);
+}
+
+.analysis-modal .progress-steps li.is-failed > i span {
+  background: var(--red, #d92d3f);
+}
+
+.analysis-modal .progress-log {
+  display: grid;
+  gap: 8px;
+}
+
+.analysis-modal .progress-log-toggle {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  color: var(--rp-ink-3);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.analysis-modal .progress-log-toggle:hover {
+  color: var(--rp-ink);
+}
+
+.analysis-modal .progress-log-toggle svg {
+  transform: rotate(-90deg);
+  transition: transform 160ms ease;
+}
+
+.analysis-modal .progress-log-toggle svg.is-open {
+  transform: none;
+}
+
+.analysis-modal .progress-log-toggle b {
+  color: var(--rp-ink-4);
+  font-family: var(--rp-num);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-modal .progress-log-body {
+  max-height: 200px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 12px 14px;
+  overflow-y: auto;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-line);
+  border-radius: 6px;
+}
+
+.analysis-modal .progress-log-body p {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  color: var(--rp-ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+
+.analysis-modal .progress-log-body p small {
+  color: var(--rp-ink-3);
+  font-size: 11.5px;
+}
+
+.analysis-modal .progress-log-body p.log-failed {
+  color: var(--red, #d92d3f);
+}
+
+.analysis-modal .progress-log-clear {
+  justify-self: end;
+  padding: 0;
+  color: var(--rp-ink-3);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.analysis-modal .progress-log-clear:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.analysis-modal .progress-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.analysis-modal .progress-actions button {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  color: var(--rp-ink-2);
+  background: transparent;
+  border: 1px solid var(--rp-line-2);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.analysis-modal .progress-actions button:hover {
+  color: var(--red, #d92d3f);
+  border-color: var(--red, #d92d3f);
+}
+
+.analysis-modal .progress-actions button:focus-visible {
+  outline: 2px solid var(--rp-accent);
+  outline-offset: 2px;
+}
+
+/* ── 좁은 화면 ──────────────────────────────────────────────── */
+
+@media (max-width: 1100px) {
+  .analysis-modal .axis-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .analysis-modal .report-summary,
+  .analysis-modal .axis-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .analysis-modal .report-score,
+  .analysis-modal .axis-score {
+    padding-right: 0;
+    padding-bottom: 18px;
+    border-right: 0;
+    border-bottom: 1px solid var(--rp-line);
+  }
+
+  .analysis-modal .report-axis-list button {
+    grid-template-columns: minmax(0, 1fr) 86px;
+    gap: 10px 16px;
+  }
+
+  .analysis-modal .axis-row-notes {
+    grid-column: 1 / -1;
+  }
+
+  .analysis-modal .axis-row-go {
+    display: none;
+  }
+
+  .analysis-modal .modal-evidence-head {
+    display: none;
+  }
+
+  .analysis-modal .modal-evidence-table button {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+  }
+}
+
+/* ── 인쇄 ───────────────────────────────────────────────────── */
+
+@media print {
+  .analysis-modal-backdrop > .analysis-modal {
+    box-shadow: none;
+  }
+
+  .analysis-modal .report-axis-list > li,
+  .analysis-modal .modal-evidence-table button,
+  .analysis-modal .report-findings li {
+    break-inside: avoid;
+  }
+
+  .analysis-modal .axis-row-go,
+  .analysis-modal .analysis-modal-actions {
+    display: none;
+  }
+}

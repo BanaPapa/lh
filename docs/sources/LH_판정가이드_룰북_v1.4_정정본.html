@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LH 판정가이드 룰북 v1.4</title>
+<style>
+:root{--navy:#1c2f52;--gold:#b3945a;--ink:#20242b;--muted:#687386;--line:#d8dde6;--soft:#f6f8fb;--ok:#1d6b43;--hold:#8b6500;--no:#a13838;--wait:#6d4ca2;--rev:#c2410c;--revbg:#fff7ed;--rev2:#6d28d9;--rev2bg:#f5f3ff}
+*{box-sizing:border-box}body{margin:0;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:var(--ink);background:#fff;font-size:14px;line-height:1.58}
+main{max-width:1180px;margin:auto;padding:34px 38px 80px}header{border-bottom:3px solid var(--navy);padding-bottom:16px;margin-bottom:20px}
+.ey{font-size:11px;color:var(--gold);font-weight:800;letter-spacing:.05em}h1{margin:5px 0 7px;color:var(--navy);font-size:27px}.meta{color:var(--muted);font-size:12px}
+.notice{margin:16px 0 22px;padding:12px 14px;background:#f8f5ee;border-left:4px solid var(--gold)}
+.revnote{margin:12px 0 22px;padding:11px 14px;background:var(--revbg);border-left:4px solid var(--rev);color:#7c2d12}.rev{color:var(--rev);font-weight:800}.rev2{color:var(--rev2);font-weight:800}.changed2{background:var(--rev2bg)!important}
+h2{margin:30px 0 10px;padding:8px 12px;background:var(--navy);color:#fff;font-size:17px;border-left:4px solid var(--gold)}
+table{width:100%;border-collapse:collapse;margin:8px 0 18px}th,td{border:1px solid var(--line);padding:8px 9px;vertical-align:top;font-size:12.4px}
+th{background:#ece7dd;color:var(--navy);text-align:center}td.c{text-align:center;vertical-align:middle}td.k{background:#fafaf7;font-weight:700;color:var(--navy)}
+.flow{background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--navy);padding:12px 14px;font-weight:700;line-height:1.9}
+.rule{background:var(--soft);border-left:4px solid var(--gold);padding:10px 13px;margin:8px 0}
+.tag{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10.5px;font-weight:800;white-space:nowrap}.ok{background:#edf7f1;color:var(--ok)}.hold{background:#faf3e4;color:var(--hold)}.no{background:#fff0ee;color:var(--no)}.wait{background:#f4eefb;color:var(--wait)}
+.changed{background:var(--revbg)!important}.small{font-size:11.4px;color:var(--muted)}footer{margin-top:42px;padding-top:12px;border-top:2px solid var(--navy);color:var(--muted);font-size:11px}
+@media(max-width:800px){main{padding:20px 12px}table{display:block;overflow-x:auto}}
+</style>
+</head>
+<body><main>
+<header>
+<div class="ey">신축매입약정 생활입지기반 자동 검색엔진 개발 PoC</div>
+<h1>판정가이드 룰북 v1.4</h1>
+<div class="meta">정민재 · 판정규칙·공간분석 담당 · LH 최종 정정회신 반영본</div>
+</header>
+
+<div class="notice"><b>기준 문서</b> — 판정가이드 v1.3, 8/22 LH 회신, 박진주 전북 데이터셋, 진용성 프론트엔드 MVP, 조준환 최신 검토보고 및 LH 「공장데이터매핑 승인요청」 최종 정정회신을 반영.<br><b>원칙</b> — 판정규칙은 본 룰북을 기준으로 하며, LH가 승인·확정한 항목은 확정 Rule로 전환하고 회신되지 않은 항목만 확인대기로 유지한다.</div>
+<div class="revnote"><b>변경 이력 표시:</b> <span class="rev">주황색 = v1.2 → v1.3 변경</span> · <span class="rev2">보라색 = v1.3 → v1.4 변경</span>. 최신 LH 최종 정정회신은 보라색으로 표시한다.</div>
+
+<h2>1. 담당 및 연결 기준</h2>
+<table>
+<tr><th>담당</th><th>역할</th><th>본 룰북과의 관계</th></tr>
+<tr><td class="k">정민재</td><td>판정규칙·공간분석</td><td>판정기준·거리기준·상태값·Rule 적용범위 정본 관리</td></tr>
+<tr><td class="k">박진주</td><td>데이터</td><td>원천데이터 수집·표준화·공장 AND 매칭·PNU 및 보조 Point 데이터 제공</td></tr>
+<tr><td class="k">진용성</td><td>프론트엔드</td><td>심사결과 표시·업무화면·내보내기. 최종 판정값을 프론트에서 별도 재계산하지 않음</td></tr>
+<tr><td class="k">조준환</td><td>총괄 PM·LH 협의</td><td>LH 질의·승인·회신 관리 및 팀 산출물 조립·일정 관리</td></tr>
+</table>
+
+<h2>2. 판정 순서</h2>
+<div class="flow">① 신청 사업지 및 사업지 Polygon 확정<br>② 주택유형·신청유형 확인<br>③ 해당 유형에 적용되는 Rule 선택<br>④ 시설 데이터에서 판정대상 후보 추출<br><span class="rev">⑤ 표준화 완료 데이터만 판정에 투입</span><br>⑥ Rule별 AND 조건 확인<br>⑦ 시설별 거리기준 적용<br>⑧ 임계거리 이내 여부 판정<br>⑨ 데이터·Geometry·법정 예외 미확인 시 지정 상태값으로 종료</div>
+
+<h2>3. 공통 판정 원칙</h2>
+<table>
+<tr><th>항목</th><th>기준</th></tr>
+<tr><td class="k">거리</td><td>사업지 중심점이 아니라 <b>사업지 대지경계 ↔ 대상시설 경계의 최단 수평거리</b></td></tr>
+<tr><td class="k">Point 예외</td><td>지하철·철도 = 가장 가까운 출입구 / 대학교 = 공식 정문</td></tr>
+<tr><td class="k">경계 접촉·중첩</td><td>0m</td></tr>
+<tr><td class="k">임계값 동일</td><td>기준거리 이내로 포함</td></tr>
+<tr><td class="k">경계 미확보</td><td>Polygon 기준 시설을 중심점 거리로 대체해 확정판정하지 않음</td></tr>
+<tr><td class="k">공개정보</td><td>객관적으로 식별 가능한 데이터만 자동판정. 조건을 확인할 수 없으면 추정하지 않음</td></tr>
+<tr><td class="k">재현성</td><td>동일 입력·Rule 버전·데이터 스냅샷·Geometry이면 동일 결과</td></tr>
+<tr class="changed"><td class="k">행정구역 경계</td><td><span class="rev">시설 검색 범위를 시·군 행정경계로 제한하지 않는다. 동일 평가거리 안에 있는 시설이면 인접 시·군 시설도 판정대상에 포함한다.</span></td></tr>
+<tr><td class="k">프론트 표시</td><td>진용성 MVP의 목업 판정값은 최종 판정값이 아님. 실데이터 기반 판정결과를 표시</td></tr>
+</table>
+
+<h2>4. 1차 매입제외 적용 매트릭스</h2>
+<table>
+<tr><th>구분</th><th>유형</th><th>공장</th><th>위험물 저장·처리</th><th>주유소·석유판매·자동차용 천연가스충전소</th><th>위락</th><th>숙박</th><th>화장장·군부대</th></tr>
+<tr><td class="k" rowspan="5">주택</td><td>일반</td><td class="c">50m</td><td class="c">50m</td><td class="c">25m</td><td class="c">—</td><td class="c">—</td><td class="c">500m</td></tr>
+<tr><td>다자녀</td><td class="c">50m</td><td class="c">50m</td><td class="c">25m</td><td class="c">25m</td><td class="c">25m</td><td class="c">500m</td></tr>
+<tr><td>신혼</td><td class="c">50m</td><td class="c">50m</td><td class="c">25m</td><td class="c">—</td><td class="c">—</td><td class="c">500m</td></tr>
+<tr><td>청년</td><td class="c">50m</td><td class="c">50m</td><td class="c">25m</td><td class="c">—</td><td class="c">—</td><td class="c">500m</td></tr>
+<tr><td>고령자</td><td class="c">50m</td><td class="c">50m</td><td class="c">25m</td><td class="c">—</td><td class="c">—</td><td class="c">500m</td></tr>
+<tr><td class="k" rowspan="5">주거용 오피스텔</td><td>일반</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">500m</td></tr>
+<tr><td>다자녀</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">25m</td><td class="c">500m</td></tr>
+<tr><td>신혼</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">500m</td></tr>
+<tr><td>청년</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">500m</td></tr>
+<tr><td>고령자</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">—</td><td class="c">500m</td></tr>
+</table>
+
+<h2>5. 공장 판정 Rule</h2>
+<div class="rule"><b>공장등록 = 유해공장 아님.</b> 법령 가~라 중 해당 항목의 AND 조건이 모두 확인된 공장만 판정대상으로 사용한다.</div>
+<table>
+<tr><th>목</th><th>판정조건</th><th>박진주 데이터 원천</th><th>데이터 상태</th><th>현재 처리</th></tr>
+<tr><td class="k">가</td><td>특정대기유해물질 배출 <b>AND</b> 공장</td><td>현재 적합 공개 원천 미확보</td><td class="c"><span class="tag no">미확보</span></td><td class="changed2"><span class="rev2">판정 미적용 · 별도 수기 확인 — LH 요청2 승인</span></td></tr>
+<tr class="changed2"><td class="k">나</td><td>대기오염물질배출시설 설치 <b>AND</b> 1~3종 <b>AND</b> 공장</td><td>행안부 대기오염물질배출시설설치사업장 + factoryON 등록공장</td><td class="c"><span class="tag ok">승인</span></td><td><span class="rev2">AND 매칭 성립 건을 판정대상으로 사용 — LH 요청1 승인</span></td></tr>
+<tr class="changed2"><td class="k">다</td><td>4~5종 <b>AND</b> 국토부 고시업종 <b>AND</b> 공장</td><td>대기배출시설 + factoryON + 국토부 고시 업종목록</td><td class="c"><span class="tag ok">승인</span></td><td><span class="rev2">AND 매칭 성립 건을 판정대상으로 사용 — LH 요청1 승인</span></td></tr>
+<tr class="changed2"><td class="k">라</td><td>소음배출시설 설치 <b>AND</b> 공장</td><td>전국소음진동배출시설표준데이터 + factoryON</td><td class="c"><span class="tag ok">승인</span></td><td><span class="rev2">AND 매칭 성립 건을 판정대상으로 사용. 50dB/방음시설 예외 미확인 시 REVIEW_REQUIRED — LH 요청1 승인</span></td></tr>
+<tr class="changed"><td class="k">매칭키</td><td colspan="4"><span class="rev">공장 원천 간 동일시설 매칭은 지번 문자열보다 PNU를 우선키로 사용한다. PNU 불일치·결측 시 임의 문자열 유사매칭으로 확정하지 않는다.</span></td></tr>
+</table>
+
+<h2>6. 데이터 표준화 전제 <span class="rev">[v1.3 추가]</span></h2>
+<table>
+<tr><th>순서</th><th>처리</th><th>판정 전 기준</th></tr>
+<tr class="changed"><td class="c">①</td><td><b>좌표계 변환</b></td><td><span class="rev">투영좌표 원천은 원좌표계를 확인한 뒤 WGS84로 변환하고 변환 후 전북 범위 재검사.</span></td></tr>
+<tr class="changed"><td class="c">②</td><td><b>지오코딩 / 위치보완</b></td><td><span class="rev">좌표 결측 행은 지번주소·도로명주소·PNU를 이용해 위치 보완. 실패 행은 삭제하지 않고 격리.</span></td></tr>
+<tr class="changed"><td class="c">③</td><td><b>운영상태 필터</b></td><td><span class="rev">폐업·취소·말소는 판정 투입 전 제외. 휴업 및 상태 공란 처리기준은 아직 확정하지 않으며 확인대기로 관리.</span></td></tr>
+<tr class="changed"><td class="c">④</td><td><b>중복 처리</b></td><td><span class="rev">판정근거 원천을 보존한다. 특히 공장 가~라 AND 매칭에 필요한 서로 다른 원천 레코드는 중복으로 삭제하지 않는다.</span></td></tr>
+<tr class="changed"><td class="c">⑤</td><td><b>오류행 격리</b></td><td><span class="rev">보완 실패·주소 결측 등은 삭제하지 않고 사유와 함께 별도 관리. 자동판정에는 사용하지 않음.</span></td></tr>
+</table>
+
+<h2>7. 위험물 저장·처리시설</h2>
+<table>
+<tr><th>시설</th><th>거리</th><th>박진주 데이터 원천</th><th>확보</th><th>판정</th></tr>
+<tr><td class="k">주유소</td><td class="c">25m</td><td>산업통상부 전국 주유소 등록현황</td><td class="c"><span class="tag ok">확보</span></td><td>적용</td></tr>
+<tr class="changed2"><td class="k">석유판매업·석유대체연료 판매업</td><td class="c">25m</td><td>행정안전부 석유판매업 등 공개자료</td><td class="c"><span class="tag ok">확정</span></td><td><span class="rev2">석유대체연료 판매업 포함 — LH 요청3 회신</span></td></tr>
+<tr class="changed"><td class="k">LPG 충전소·판매소</td><td class="c">50m</td><td>한국가스안전공사 충전소 + 확보된 LPG 판매소 자료</td><td class="c"><span class="tag ok">확보</span></td><td><span class="rev">충전소와 판매소를 구분해 사용. 저장소는 별도 미확보로 처리.</span></td></tr>
+<tr><td class="k">LPG 저장소</td><td class="c">50m</td><td>적합 위치 원천 미확보</td><td class="c"><span class="tag no">미확보</span></td><td>미적용</td></tr>
+<tr><td class="k">위험물 제조·저장·취급소</td><td class="c">50m</td><td>전북 위치자료 미확보</td><td class="c"><span class="tag no">미확보</span></td><td>미적용</td></tr>
+<tr><td class="k">액화가스·고압가스</td><td class="c">50m</td><td>일반도시가스업·고압가스업</td><td class="c"><span class="tag hold">부분확보</span></td><td>시설종류 확인 건만</td></tr>
+<tr><td class="k">유독물</td><td class="c">50m</td><td>전북 위치자료 미확보</td><td class="c"><span class="tag no">미확보</span></td><td>미적용</td></tr>
+<tr><td class="k">도시가스 제조시설</td><td class="c">50m</td><td>한국가스안전공사 가스제품 제조업소</td><td class="c"><span class="tag ok">확보</span></td><td>적용</td></tr>
+<tr class="changed2"><td class="k">화약류 저장소</td><td class="c">50m</td><td>경찰청 자료는 위치정보 미포함</td><td class="c"><span class="tag ok">처리 승인</span></td><td><span class="rev2">위치자료 미확보 시 판정 미적용 · 별도 수기 확인 — LH 요청4 승인</span></td></tr>
+</table>
+
+<h2>8. 숙박·위락·화장장</h2>
+<table>
+<tr><th>시설</th><th>적용</th><th>거리</th><th>데이터</th><th>비고</th></tr>
+<tr><td class="k">위락시설</td><td>다자녀</td><td class="c">25m</td><td>단란주점·유흥주점·테마파크·무도 관련 + 건축물대장 교차확인</td><td>카지노 미확보</td></tr>
+<tr class="changed2"><td class="k">일반숙박시설</td><td>다자녀</td><td class="c">25m</td><td>행정안전부 숙박업 원장</td><td><span class="rev2">관광호텔 제외 확정 — 관광숙박시설에 해당하여 일반숙박시설 25m 판정대상 아님</span></td></tr>
+<tr><td class="k">화장장</td><td>전 유형</td><td class="c">500m</td><td>보건복지부 전국 화장시설 현황</td><td>적용</td></tr>
+</table>
+
+<h2>9. 2차 생활편의성</h2>
+<table>
+<tr><th>평가영역</th><th>주요 데이터</th><th>거리·판정 기준</th><th>현재 상태</th></tr>
+<tr><td class="k">교통</td><td>버스정류장·철도·KTX·터미널</td><td>유형별 심사기준. 철도/지하철은 가장 가까운 출입구 기준</td><td><span class="tag ok">연결 가능</span></td></tr>
+<tr class="changed2"><td class="k">상업시설</td><td><span class="rev2">대형마트·백화점·재래시장(전통시장) 3종</span></td><td><span class="rev2">대형마트·백화점은 공공데이터포털 「대규모점포」 조회 결과에 나타나는 시설만 인정한다. 아울렛·기타 명칭이라도 해당 조회 결과에 포함되면 인정하고, 조회되지 않으면 제외한다. 재래시장은 공적 데이터에서 지자체 인정 시설로 조회되는 경우만 인정한다.</span></td><td><span class="tag ok">LH 확정</span></td></tr>
+<tr><td class="k">의료·공공·문화·공원</td><td>확정된 각 시설군 데이터</td><td>행정구역이 아니라 실제 거리 기준으로 탐색. 인접 시·군 시설도 평가거리 안에 있으면 포함.</td><td><span class="tag ok">적용</span></td></tr>
+<tr><td class="k">교육</td><td>초·중·고·대학교</td><td>초·중·고는 부지경계, 대학교는 공식 정문 Point</td><td><span class="tag hold">대학 정문 보강 필요</span></td></tr>
+</table>
+
+<h2>10. Geometry 및 데이터 연결</h2>
+<table>
+<tr><th>항목</th><th>기준</th><th>현재 상태</th></tr>
+<tr><td class="k">사업지 Polygon</td><td>신청 필지 전체 실제 대지경계</td><td>연속지적도 스냅샷 연결 필요</td></tr>
+<tr><td class="k">시설 Polygon</td><td>PNU 기반 실제 시설 대지경계</td><td>박진주 PNU 보완자료 기반 연결 필요</td></tr>
+<tr><td class="k">대학교 정문</td><td>공식 정문 Point</td><td>박진주 보강 예정</td></tr>
+<tr><td class="k">지하철 출입구</td><td>가장 가까운 출입구 Point</td><td>전북 도시철도 없음 / 서울 단계 대비</td></tr>
+</table>
+
+<h2>11. 판정 상태값</h2>
+<table>
+<tr><th>상태</th><th>의미</th></tr>
+<tr><td class="k">EXCLUSION_MATCH</td><td>적용 Rule·데이터·Geometry가 충족되고 임계거리 이내</td></tr>
+<tr><td class="k">NO_CONFLICT_IN_SNAPSHOT</td><td>사용 데이터 스냅샷 범위에서 충돌 미발견. 매입 적격을 의미하지 않음</td></tr>
+<tr><td class="k">REVIEW_REQUIRED</td><td>후보는 있으나 Rule 조건·매칭·예외·Geometry 중 하나가 확정되지 않음</td></tr>
+<tr><td class="k">DATASET_MISSING</td><td>필요 데이터셋 미확보</td></tr>
+<tr><td class="k">GEOMETRY_MISSING</td><td>사업지 또는 시설 Geometry 미확보</td></tr>
+<tr><td class="k">NOT_APPLICABLE</td><td>해당 주택유형·신청유형에는 Rule 미적용</td></tr>
+</table>
+
+<h2>12. 현재 미확정 사항</h2>
+<table>
+<tr><th>항목</th><th>상태</th><th>확인 주체</th></tr>
+<tr class="changed2"><td>공장 나·다·라 데이터 매핑</td><td class="c"><span class="tag ok">확정</span></td><td class="c"><span class="rev2">LH 승인 완료</span></td></tr>
+<tr class="changed2"><td>미확보 항목의 판정 미적용 처리</td><td class="c"><span class="tag ok">확정</span></td><td class="c"><span class="rev2">LH 승인 완료</span></td></tr>
+<tr class="changed2"><td>석유대체연료 판매업 포함 여부</td><td class="c"><span class="tag ok">포함 확정</span></td><td class="c"><span class="rev2">LH 회신 완료</span></td></tr>
+<tr class="changed2"><td>화약류 저장소 위치 미확보 처리</td><td class="c"><span class="tag ok">확정</span></td><td class="c"><span class="rev2">판정 미적용·수기확인 승인</span></td></tr>
+<tr class="changed2"><td>관광호텔 포함 여부</td><td class="c"><span class="tag ok">제외 확정</span></td><td class="c"><span class="rev2">관광숙박시설로 구분 → 일반숙박시설 판정대상 제외</span></td></tr>
+<tr class="changed2"><td>상업시설 인정 범위</td><td class="c"><span class="tag ok">3종 확정</span></td><td class="c"><span class="rev2">대형마트·백화점·재래시장</span></td></tr>
+<tr><td>기숙사형 1차 매트릭스</td><td class="c"><span class="tag wait">확인대기</span></td><td class="c">LH / 조준환</td></tr>
+<tr><td>1차 제외 후 참고분석 허용</td><td class="c"><span class="tag wait">확인대기</span></td><td class="c">LH / 조준환</td></tr>
+<tr class="changed"><td>휴업 시설 처리</td><td class="c"><span class="tag wait">확인대기</span></td><td class="c"><span class="rev">LH / 조준환</span></td></tr>
+<tr class="changed"><td>영업상태 공란 원천 처리</td><td class="c"><span class="tag wait">확인대기</span></td><td class="c"><span class="rev">LH / 조준환</span></td></tr>
+<tr class="changed"><td>공장 AND 실제 최종 매칭률</td><td class="c"><span class="tag hold">후속 실측</span></td><td class="c"><span class="rev">박진주</span></td></tr>
+<tr><td>대학 정문 Point</td><td class="c"><span class="tag hold">보강 필요</span></td><td class="c">박진주</td></tr>
+</table>
+
+<footer>판정가이드 룰북 v1.4 · 정민재 정본 초안 · 주황색=v1.3 변경이력 / 보라색=v1.4 변경이력 · 판정규칙 외 일정·PM 업무·UI 구현지시는 포함하지 않음</footer>
+</main></body></html>

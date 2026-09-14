@@ -1,0 +1,614 @@
+"""완성 어댑터 3종(연속지적도·로컬 원천·건축물대장)과 safemap 콜드스타트 배선 회귀.
+
+핵심 불변식을 고정한다.
+- 확인불가(건축물대장)는 비해당으로 취급해 매입제외로 승격하지 않는다.
+- 캐시·인덱스 미준비가 '충돌 없음'으로 둔갑하지 않는다.
+- 로컬 지적도 미적재 시 시설 경계 폴백이 점 좌표로 정직하게 남는다.
+- factoryON PNU 집합으로 공장 AND 가 실제로 성립/미성립한다.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import importlib
+from datetime import UTC, datetime
+from typing import Any
+
+import httpx
+
+import app.hazard_review.service as hazard_service_module
+
+from app.hazard_review.models import (
+    HazardParcel,
+    HazardReviewRequest,
+    HazardReviewResult,
+    HazardSite,
+)
+from app.hazard_review.service import HazardReviewService, offset_coordinates
+from app.models import Coordinates
+from app.services.building_register import (
+    BuildingUse,
+    BuildingUseResult,
+    UseVerdict,
+    parse_pnu,
+)
+from app.services.facility_store import StoredFacility
+from app.services.local_sources import LocalSourceRecord
+from app.services.local_wiring import LocalSourcesBundle
+from app.services.safemap import SafemapFuelClient
+from app.services.vworld import ParcelFeature
+
+
+SITE_CENTER = Coordinates(lat=37.40111, lng=127.10853)
+FACILITY_PNU = "4146125628108640000"  # FakeVWorld/Cadastral 이 돌려주는 PNU
+
+
+# ---------------------------------------------------------------------------
+# 공용 도구 (self-contained)
+# ---------------------------------------------------------------------------
+def square_ring(half_size_m: float, center: Coordinates = SITE_CENTER) -> list[Coordinates]:
+    return [
+        offset_coordinates(center, -half_size_m, -half_size_m),
+        offset_coordinates(center, -half_size_m, half_size_m),
+        offset_coordinates(center, half_size_m, half_size_m),
+        offset_coordinates(center, half_size_m, -half_size_m),
+        offset_coordinates(center, -half_size_m, -half_size_m),
+    ]
+
+
+def build_request(
+    housing: str = "house",
+    application: str = "general",
+    geometry_source: str = "parcel_polygon",
+    half_size_m: float = 30,
+) -> HazardReviewRequest:
+    return HazardReviewRequest(
+        site=HazardSite(
+            name="검증 사업지",
+            address="경기도 성남시 분당구 판교역로 235",
+            coordinates=SITE_CENTER,
+            housing_type=housing,  # type: ignore[arg-type]
+            application_type=application,  # type: ignore[arg-type]
+            parcels=[
+                HazardParcel(
+                    parcel_id="prototype-parcel",
+                    pnu="",
+                    geometry=square_ring(half_size_m),
+                    geometry_source=geometry_source,  # type: ignore[arg-type]
+                )
+            ],
+        ),
+        rule_pack_id="lh-rulebook-v1.4",
+    )
+
+
+class FakeKakaoClient:
+    enabled = False
+
+
+class FakeFacilityStore:
+    def __init__(self, rows: list[Any] | None = None) -> None:
+        self.rows = rows or []
+        self.available = bool(self.rows)
+
+    def facilities_around(self, center, radius_m, dataset_keys):
+        keys = set(dataset_keys)
+        return [row for row in self.rows if row.dataset_key in keys]
+
+    def ready_datasets(self) -> set[str]:
+        return {row.dataset_key for row in self.rows}
+
+    def latest_sync(self) -> None:
+        return None
+
+
+def stored_facility(
+    dataset_key: str, name: str, north_m: float, east_m: float,
+    status: str = "영업/정상", category: str = "",
+) -> StoredFacility:
+    coordinates = offset_coordinates(SITE_CENTER, north_m, east_m)
+    return StoredFacility(
+        dataset_key=dataset_key, record_id=f"rec-{name}", name=name,
+        address="지번주소", road_address="도로명주소", coordinates=coordinates,
+        status=status, category=category, distance_m=abs(north_m) + abs(east_m),
+    )
+
+
+class FakeVWorldForFacilities:
+    def __init__(self, half_size_m: float = 5) -> None:
+        self.half_size_m = half_size_m
+        self.enabled = True
+
+    async def parcel_at(self, lat: float, lng: float):
+        centre = Coordinates(lat=lat, lng=lng)
+        return ParcelFeature(
+            pnu=FACILITY_PNU, address="시설 필지", jibun="864",
+            ring=square_ring(self.half_size_m, centre),
+            area_m2=(2 * self.half_size_m) ** 2,
+        )
+
+    async def zoning_at(self, lat: float, lng: float):
+        # 용도지역은 석유대체연료 판매업에만 붙는다. 배선 테스트에는 해당 후보가
+        # 없어 호출되지 않지만, 인터페이스를 맞춰 둔다(미확인 → None).
+        return None
+
+
+class FakeCadastralStore:
+    """연속지적도 로컬 인덱스 스텁. status().available·parcel_at 만 쓴다."""
+
+    def __init__(self, half_size_m: float = 5, available: bool = True) -> None:
+        self.half_size_m = half_size_m
+        self._available = available
+
+    def status(self) -> Any:
+        available = self._available
+
+        class _Status:
+            pass
+
+        s = _Status()
+        s.available = available
+        return s
+
+    def parcel_at(self, lat: float, lng: float) -> Any | None:
+        if not self._available:
+            return None
+
+        class _Local:
+            pass
+
+        local = _Local()
+        local.pnu = FACILITY_PNU
+        local.jibun = "864"
+        local.address = ""
+        local.ring = square_ring(self.half_size_m, Coordinates(lat=lat, lng=lng))
+        local.area_m2 = (2 * self.half_size_m) ** 2
+        return local
+
+
+class FakeBuildingRegister:
+    """건축물대장 표제부 교차확인 스텁. pnu→(제2종근생·운동시설·주용도·기타용도)."""
+
+    def __init__(self, verdicts: dict[str, tuple], fail: bool = False) -> None:
+        self.verdicts = verdicts
+        self.fail = fail
+        self.looked_up: list[str] = []
+
+    @property
+    def enabled(self) -> bool:
+        return True
+
+    async def lookup_many(self, pnus: list[str]) -> dict[str, Any]:
+        from app.services.building_register import BuildingRegisterAPIError
+
+        self.looked_up = list(pnus)
+        if self.fail:
+            raise BuildingRegisterAPIError("조회 실패")
+        out: dict[str, Any] = {}
+        for pnu in pnus:
+            spec = self.verdicts.get(pnu)
+            if spec is None:
+                continue
+            second, sports, main, etc = spec
+            uses = (BuildingUse(dong_name="", main_purpose=main, etc_purpose=etc),)
+            out[pnu] = BuildingUseResult(
+                pnu=pnu, params=parse_pnu(pnu), uses=uses,
+                second_class_neighborhood=second, sports_facility=sports,
+            )
+        return out
+
+
+def run_review(request: HazardReviewRequest, **kwargs: Any) -> HazardReviewResult:
+    service = HazardReviewService(
+        kakao=FakeKakaoClient(),  # type: ignore[arg-type]
+        demo_mode=False,
+        **kwargs,
+    )
+
+    async def progress(*_args: Any) -> None:
+        return None
+
+    return asyncio.run(service.review(request, progress, asyncio.Event()))
+
+
+def category_for(result: HazardReviewResult, key: str):
+    return next(c for c in result.categories if c.key == key)
+
+
+def factory_record(pnu: str, north_m: float, east_m: float) -> LocalSourceRecord:
+    return LocalSourceRecord(
+        source_id="factory_standard", record_id=f"F-{north_m}-{east_m}",
+        name="등록공장", coordinates=offset_coordinates(SITE_CENTER, north_m, east_m),
+        status_class="active", pnu=pnu, origin="standard",
+    )
+
+
+def cng_record(north_m: float, east_m: float) -> LocalSourceRecord:
+    return LocalSourceRecord(
+        source_id="cng_stations", record_id=f"C-{north_m}-{east_m}",
+        name="CNG충전소", coordinates=offset_coordinates(SITE_CENTER, north_m, east_m),
+        status_class="active", origin="raw",
+    )
+
+
+# ---------------------------------------------------------------------------
+# factoryON PNU AND / 공장 인접 / CNG
+# ---------------------------------------------------------------------------
+class TestFactoryRegistryWiring:
+    """LH 확정 2026-09-11 (안건 ①): 등록공장 소재만 「공장 있음」 검토 표시.
+    대기배출·소음 원장은 판정 근거가 아니라 부가 정보(주석) 전용이다.
+    """
+
+    def test_registered_factory_within_50m_is_present_review(self) -> None:
+        bundle = LocalSourcesBundle(
+            factory_registry_loaded=True,
+            factory_pnus=frozenset({FACILITY_PNU}),
+            factory_facilities=(factory_record(FACILITY_PNU, 0, 20),),
+        )
+        result = run_review(
+            build_request(), local_sources=bundle,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        factory = category_for(result, "factory_registered")
+        assert factory.candidate_count >= 1
+        assert factory.status == "review_required", factory.note
+        assert "공장 있음" in factory.note
+        factory_categories = [
+            c for c in result.categories if c.rule_id == "RB14-FACTORY"
+        ]
+        assert all(c.status != "exclusion_match" for c in factory_categories)
+
+    def test_air_emission_alone_is_not_a_factory_candidate(self) -> None:
+        # 대기배출 사업장만 있고 좌표 보유 등록공장이 없으면 공장 후보를 만들지 않는다
+        # (우체국 냉방기·홈플러스 보일러 오검출 방지, LH 확정 2026-09-11).
+        store = FakeFacilityStore(
+            [stored_facility("air_pollution", "대기1종공장", 0, 25, category="대기1종")]
+        )
+        bundle = LocalSourcesBundle(
+            factory_pnus=frozenset({FACILITY_PNU}), factory_registry_loaded=True,
+        )
+        result = run_review(
+            build_request(), facility_store=store, local_sources=bundle,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        factory = category_for(result, "factory_registered")
+        assert factory.status == "dataset_missing", factory.note
+        assert factory.candidate_count == 0
+
+    def test_factory_registry_missing_is_dataset_missing(self) -> None:
+        result = run_review(
+            build_request(), local_sources=LocalSourcesBundle(),
+        )
+        factory = category_for(result, "factory_registered")
+        assert factory.status == "dataset_missing"
+        assert "factoryON" in factory.note
+
+    def test_registered_factory_gets_air_emission_annotation(self) -> None:
+        # 등록공장과 같은 좌표(40m 이내)에 대기배출 신고가 있으면 부가 정보로 주석한다.
+        # 판정은 여전히 「공장 있음」 검토이며 매입제외로 올리지 않는다.
+        store = FakeFacilityStore(
+            [stored_facility("air_pollution", "대기2종공장", 0, 20, category="대기2종")]
+        )
+        bundle = LocalSourcesBundle(
+            factory_registry_loaded=True,
+            factory_pnus=frozenset({FACILITY_PNU}),
+            factory_facilities=(factory_record(FACILITY_PNU, 0, 20),),
+        )
+        result = run_review(
+            build_request(), facility_store=store, local_sources=bundle,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        factory = category_for(result, "factory_registered")
+        assert factory.status == "review_required", factory.note
+        assert any(
+            "대기배출 신고 있음" in f.classification_note for f in factory.facilities
+        )
+
+    def test_cng_from_local_source_is_wired(self) -> None:
+        bundle = LocalSourcesBundle(cng_facilities=(cng_record(0, 20),))
+        result = run_review(
+            build_request(), local_sources=bundle,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        cng = category_for(result, "cng_station")
+        assert cng.candidate_count >= 1
+        assert cng.status in ("exclusion_match", "geometry_missing")
+
+    def test_cng_without_local_source_stays_dataset_missing(self) -> None:
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(),
+        )
+        cng = category_for(result, "cng_station")
+        assert cng.status == "dataset_missing"
+
+
+# ---------------------------------------------------------------------------
+# 건축물대장 AND (§6.4 단란주점·테마파크)
+# ---------------------------------------------------------------------------
+def _singing_request_store():
+    request = build_request("house", "multi_child")
+    store = FakeFacilityStore(
+        [stored_facility("singing_bars", "단란주점A", 0, 20, category="단란주점")]
+    )
+    return request, store
+
+
+class TestBuildingRegisterWiring:
+    def test_singing_bar_not_second_class_reaches_exclusion(self) -> None:
+        request, store = _singing_request_store()
+        br = FakeBuildingRegister(
+            {FACILITY_PNU: (UseVerdict.NOT_APPLICABLE, UseVerdict.UNKNOWN,
+                            "위락시설", "단란주점")}
+        )
+        result = run_review(
+            request, facility_store=store, building_register=br,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        singing = category_for(result, "singing_bar")
+        assert singing.status == "exclusion_match", singing.note
+        assert br.looked_up == [FACILITY_PNU]
+
+    def test_singing_bar_unknown_stays_review_not_exclusion(self) -> None:
+        request, store = _singing_request_store()
+        br = FakeBuildingRegister(
+            {FACILITY_PNU: (UseVerdict.UNKNOWN, UseVerdict.UNKNOWN, "", "")}
+        )
+        result = run_review(
+            request, facility_store=store, building_register=br,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        singing = category_for(result, "singing_bar")
+        assert singing.status == "review_required", singing.note
+        assert singing.status != "exclusion_match"
+
+    def test_singing_bar_second_class_is_no_conflict(self) -> None:
+        request, store = _singing_request_store()
+        br = FakeBuildingRegister(
+            {FACILITY_PNU: (UseVerdict.APPLICABLE, UseVerdict.UNKNOWN,
+                            "제2종근린생활시설", "")}
+        )
+        result = run_review(
+            request, facility_store=store, building_register=br,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        singing = category_for(result, "singing_bar")
+        assert singing.status == "no_conflict_in_snapshot", singing.note
+
+    def test_building_register_error_stays_review(self) -> None:
+        request, store = _singing_request_store()
+        br = FakeBuildingRegister({}, fail=True)
+        result = run_review(
+            request, facility_store=store, building_register=br,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        singing = category_for(result, "singing_bar")
+        assert singing.status == "review_required", singing.note
+        assert singing.status != "exclusion_match"
+
+    def test_theme_park_both_not_applicable_reaches_exclusion(self) -> None:
+        request = build_request("house", "multi_child")
+        store = FakeFacilityStore(
+            [stored_facility("general_amusement_facilities", "일반테마", 0, 20)]
+        )
+        br = FakeBuildingRegister(
+            {FACILITY_PNU: (UseVerdict.NOT_APPLICABLE, UseVerdict.NOT_APPLICABLE,
+                            "위락시설", "")}
+        )
+        result = run_review(
+            request, facility_store=store, building_register=br,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        general = category_for(result, "theme_park_general")
+        assert general.status == "exclusion_match", general.note
+
+    def test_theme_park_sports_unknown_stays_review(self) -> None:
+        request = build_request("house", "multi_child")
+        store = FakeFacilityStore(
+            [stored_facility("general_amusement_facilities", "일반테마", 0, 20)]
+        )
+        br = FakeBuildingRegister(
+            {FACILITY_PNU: (UseVerdict.NOT_APPLICABLE, UseVerdict.UNKNOWN,
+                            "위락시설", "")}
+        )
+        result = run_review(
+            request, facility_store=store, building_register=br,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        general = category_for(result, "theme_park_general")
+        assert general.status == "review_required", general.note
+        assert general.status != "exclusion_match"
+
+    def test_no_building_register_client_keeps_review(self) -> None:
+        request, store = _singing_request_store()
+        result = run_review(
+            request, facility_store=store,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        singing = category_for(result, "singing_bar")
+        assert singing.status == "review_required"
+        assert "건축물대장" in singing.note
+
+
+# ---------------------------------------------------------------------------
+# 시설 필지 경계 로컬 지적도 폴백
+# ---------------------------------------------------------------------------
+class TestCadastralFacilityFallback:
+    def test_cadastral_attaches_facility_polygon_when_no_vworld(self) -> None:
+        store = FakeFacilityStore(
+            [stored_facility("oil_retailers", "가까운석유", 0, 20, category="석유")]
+        )
+        result = run_review(
+            build_request(), facility_store=store, vworld=None,
+            cadastral=FakeCadastralStore(half_size_m=5),
+        )
+        oil = category_for(result, "oil_retailer")
+        assert oil.facilities and oil.facilities[0].geometry_type == "polygon"
+        assert oil.status == "exclusion_match", oil.note
+
+    def test_missing_cadastral_index_keeps_point_fallback(self) -> None:
+        store = FakeFacilityStore(
+            [stored_facility("oil_retailers", "가까운석유", 0, 20, category="석유")]
+        )
+        result = run_review(
+            build_request(), facility_store=store, vworld=None,
+            cadastral=FakeCadastralStore(available=False),
+        )
+        oil = category_for(result, "oil_retailer")
+        assert oil.status == "geometry_missing", oil.note
+        assert all(f.geometry_type == "point" for f in oil.facilities)
+
+
+# ---------------------------------------------------------------------------
+# safemap 콜드스타트는 '충돌 없음'으로 둔갑하지 않는다
+# ---------------------------------------------------------------------------
+class TestSafemapColdStartInReview:
+    def test_cold_safemap_only_source_is_dataset_missing(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "header": {"resultCode": "00", "resultMsg": "NORMAL_SERVICE"},
+                    "body": {"totalCount": 0, "items": {"item": []}},
+                },
+            )
+
+        safemap = SafemapFuelClient(
+            service_key="k", transport=httpx.MockTransport(handler)
+        )
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            safemap=safemap,
+        )
+        gas = category_for(result, "gas_station")
+        assert gas.status == "dataset_missing", gas.note
+        assert gas.status != "no_conflict_in_snapshot"
+
+
+# ---------------------------------------------------------------------------
+# 여유구간(BOUNDARY_BUFFER_M) 양성 대조 — 네트워크를 타지 않는 결정적 테스트
+# ---------------------------------------------------------------------------
+class TestBoundaryBufferPositiveControl:
+    """여유구간 배관이 살아 있음을 증명한다(팀 안건 ⑤ 선행조건).
+
+    기준거리(FUEL25 일반 25m) 밖·여유구간 안에 놓은 가짜 주유소가, 여유구간을
+    바꿨을 때 판정을 review_required ↔ no_conflict_in_snapshot 로 실제로 뒤집는지
+    본다. 시설 경계-대-점 거리 약 89.7m 지점이라 여유구간 100m 면 잡히고 50m 면
+    빠진다. 라이브 5,000m 양성 대조가 오피넷 노이즈에 묻혀 폐기됐으므로 이 테스트가
+    배관 생존을 대신 증명한다(2026-08-30).
+    """
+
+    def _store(self) -> FakeFacilityStore:
+        # 사업지 경계에서 약 89.7m 떨어진 여유구간 주유소 한 곳.
+        return FakeFacilityStore(
+            [stored_facility("oil_retailers", "여유구간주유소", 120, 0)]
+        )
+
+    def test_module_global_reassignment_flips_verdict(self) -> None:
+        # --buffers 가 쓰는 경로: 모듈 전역 BOUNDARY_BUFFER_M 을 런타임에 재대입한다.
+        store = self._store()
+        original = hazard_service_module.BOUNDARY_BUFFER_M
+        try:
+            hazard_service_module.BOUNDARY_BUFFER_M = 100
+            wide = run_review(build_request(), facility_store=store)
+            assert category_for(wide, "oil_retailer").status == "review_required"
+
+            hazard_service_module.BOUNDARY_BUFFER_M = 50
+            narrow = run_review(build_request(), facility_store=store)
+            assert (
+                category_for(narrow, "oil_retailer").status
+                == "no_conflict_in_snapshot"
+            )
+        finally:
+            hazard_service_module.BOUNDARY_BUFFER_M = original
+
+    def test_env_var_path_flips_verdict(self, monkeypatch) -> None:
+        # 환경변수 경로: HAZARD_BOUNDARY_BUFFER_M 을 임포트 시점에 읽어 전역에 넣는다.
+        # 두 스냅샷이 완전히 같게 나오는 「영향 0」과 「플래그 미반영」을 이 테스트가 가른다.
+        store = self._store()
+        original = hazard_service_module.BOUNDARY_BUFFER_M
+        try:
+            monkeypatch.setenv("HAZARD_BOUNDARY_BUFFER_M", "100")
+            importlib.reload(hazard_service_module)
+            assert hazard_service_module.BOUNDARY_BUFFER_M == 100
+
+            async def prog(*_args: Any) -> None:
+                return None
+
+            wide_service = hazard_service_module.HazardReviewService(
+                kakao=FakeKakaoClient(), demo_mode=False, facility_store=store,
+            )
+            wide = asyncio.run(
+                wide_service.review(build_request(), prog, asyncio.Event())
+            )
+            assert category_for(wide, "oil_retailer").status == "review_required"
+
+            monkeypatch.setenv("HAZARD_BOUNDARY_BUFFER_M", "50")
+            importlib.reload(hazard_service_module)
+            assert hazard_service_module.BOUNDARY_BUFFER_M == 50
+            narrow_service = hazard_service_module.HazardReviewService(
+                kakao=FakeKakaoClient(), demo_mode=False, facility_store=store,
+            )
+            narrow = asyncio.run(
+                narrow_service.review(build_request(), prog, asyncio.Event())
+            )
+            assert (
+                category_for(narrow, "oil_retailer").status
+                == "no_conflict_in_snapshot"
+            )
+        finally:
+            monkeypatch.delenv("HAZARD_BOUNDARY_BUFFER_M", raising=False)
+            importlib.reload(hazard_service_module)
+            hazard_service_module.BOUNDARY_BUFFER_M = original
+
+
+def test_cli_and_app_build_service_with_identical_wiring():
+    """대조 도구(run_ours)와 앱(router)이 같은 인자로 서비스를 조립하는지 고정한다.
+
+    run_ours 가 서비스를 자체 조립하면서 앱이 넘기는 인자 7종(cadastral·safemap·
+    crematorium·noise_emission·building_register·pnu_resolver·local_sources loader)을
+    빠뜨려 공장·화장장·소음·시설경계 폴백이 통째로 빠진 스냅샷이 나온 사고가 있었다.
+    조립 경로가 두 벌이면 재발하므로, 두 진입점이 만든 서비스의 배선이 동일함을
+    회귀로 못 박는다.
+    """
+
+    from app.hazard_review import router as hazard_router
+    import tools.lh_baseline.run_ours as run_ours
+
+    hazard_router.get_hazard_service.cache_clear()
+    app_service = hazard_router.get_hazard_service()
+    cli_screening, _resolver, loader = run_ours.build_service()
+    cli_service = cli_screening.hazard
+
+    collaborators = [
+        "opinet",
+        "kgs_lpg",
+        "facility_store",
+        "vworld",
+        "safemap",
+        "crematorium",
+        "cadastral",
+        "building_register",
+        "noise_emission",
+        "pnu_resolver",
+    ]
+    app_wired = {name for name in collaborators if getattr(app_service, name) is not None}
+    cli_wired = {name for name in collaborators if getattr(cli_service, name) is not None}
+    assert app_wired == cli_wired
+
+    # 과거에 누락됐던 7종은 두 경로 모두에서 반드시 배선돼야 한다.
+    for name in (
+        "cadastral",
+        "safemap",
+        "crematorium",
+        "noise_emission",
+        "building_register",
+        "pnu_resolver",
+    ):
+        assert getattr(cli_service, name) is not None, name
+
+    # 로컬 원천 묶음 loader 가 두 경로 모두에 있어야 공장 축을 채울 수 있다.
+    assert getattr(app_service, "_local_sources_loader", None) is not None
+    assert callable(loader)
+
+    hazard_router.get_hazard_service.cache_clear()
