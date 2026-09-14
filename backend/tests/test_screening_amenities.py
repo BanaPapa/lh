@@ -675,14 +675,19 @@ async def test_school_is_measured_to_its_parcel_boundary() -> None:
 async def test_exception_groups_keep_their_point_basis() -> None:
     site = square_ring(CENTER, 20.0)
     kakao = FakeKakao(categories={"SW8": [place("판교역", 400)]})
+    stop = offset_coordinates(CENTER, 300, 0)
+    tago = FakeTago([{"nodenm": "정류장", "gpslati": stop.lat, "gpslong": stop.lng, "nodeid": "s1"}])
     vworld = FakeVWorld(half=30.0)
-    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=vworld)
+    collector = AmenityCollector(kakao=kakao, tago=tago, vworld=vworld)
 
     result = await collector.collect([site], CENTER)
 
     facility = result["subway"].facilities[0]
     assert facility.measurement_tier == "coordinate"
     assert facility.distance_m == pytest.approx(380, abs=3)
+    # 버스정류장은 도로 필지 위라 필지경계로 재지 않고 정류장 좌표로 잰다.
+    if result["bus_stop"].facilities:
+        assert result["bus_stop"].facilities[0].measurement_tier == "coordinate"
     assert vworld.calls == []
 
 

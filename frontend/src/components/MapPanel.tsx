@@ -1830,8 +1830,13 @@ export function MapPanel({
       const hasNotice = Boolean(hit.front_door_notice);
 
       // 2차 근거 시설도 핀이 아니라 파란 영역으로. 지적도 타일에서 점이 든 필지를
-      // 찾아 칠하고, 타일이 없는 축척에서는 핀으로 물러선다.
-      const hitParcel = parcelContaining(hit.coordinates, parcelPool);
+      // 찾아 칠하고, 타일이 없는 축척에서는 핀으로 물러선다. 점으로 재는 시설
+      // (버스정류장·역 출입구 등 measurement_tier=coordinate)은 필지를 칠하지
+      // 않는다 — 정류장이 놓인 도로 필지 전체가 파랗게 칠해지면 오해를 낳는다.
+      const hitParcel =
+        hit.measurement_tier === "coordinate"
+          ? null
+          : parcelContaining(hit.coordinates, parcelPool);
       const hitHasArea = Boolean(hitParcel);
       let hitHoverRing: Array<{ lat: number; lng: number }> | null = null;
       if (hitParcel) {

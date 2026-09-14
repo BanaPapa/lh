@@ -61,11 +61,11 @@ MAX_SUBDIVIDE_DEPTH = 2
 MAX_HITS_PER_GROUP = 20
 
 # 시설 경계(필지)에서 재는 시설군(docs/hazards/MEASUREMENT.md §3). 역·지하철은
-# 출입구, 대학·종합병원은 정문이라 여기 없다. 버스정류장은 정류장이 속한 필지의
-# 경계에서 잰다(2026-09-14 사용자 결정).
+# 출입구, 대학·종합병원은 정문이라 여기 없다. 버스정류장도 없다 — 정류장은 도로
+# 필지 위에 있어 필지경계로 재면 도로 전체가 경계가 된다(2026-09-14 검수: 26m 오판).
+# 정류장은 정류장 좌표(점)로 잰다.
 BOUNDARY_GROUPS: frozenset[str] = frozenset(
     {
-        "bus_stop",
         "terminal",
         "transfer",
         "retail",
@@ -80,9 +80,6 @@ BOUNDARY_GROUPS: frozenset[str] = frozenset(
 # 시설군마다 필지를 조회할 최근접 시설 수. 경계로 재면 거리는 줄기만 하므로
 # 등급 판정에 쓰이는 최근접 몇 곳만 정확히 재면 되고, 그 뒤는 점 거리로 둔다.
 BOUNDARY_LOOKUP_PER_GROUP = 5
-# 통필지 안전장치가 적용되지 않는 시설군. 버스정류장은 도로 필지에 놓이므로
-# 면적 임계로 거르면 대부분 좌표로 되돌아가 결정과 어긋난다.
-BOUNDARY_NO_AREA_GUARD: frozenset[str] = frozenset({"bus_stop"})
 BOUNDARY_FALLBACK_NOTICE = "시설 경계(필지)를 확인하지 못해 시설 좌표로 쟀습니다."
 
 # 담당자 수기 기준점 지정을 허용하는 역·터미널 계열 시설군(#11 「출구 여럿이면
@@ -552,15 +549,7 @@ class AmenityCollector:
                     if can_fetch
                     else None
                 )
-                measured.append(
-                    _measure_to_parcel(
-                        facility,
-                        parcel,
-                        rings,
-                        center,
-                        area_guard=key not in BOUNDARY_NO_AREA_GUARD,
-                    )
-                )
+                measured.append(_measure_to_parcel(facility, parcel, rings, center))
             facilities = sorted(measured + list(tail), key=lambda f: f.distance_m)
             shown = len(collection.facilities)
             distances = sorted(
@@ -1514,14 +1503,12 @@ def _measure_to_parcel(
     parcel: ParcelFeature | None,
     rings: Sequence[Sequence[Coordinates]],
     center: Coordinates,
-    *,
-    area_guard: bool,
 ) -> CollectedFacility:
     """시설 한 곳을 필지 경계 기준으로 바꾼 새 값. 못 바꾸면 사유만 적어 돌려준다."""
 
     if parcel is None:
         return facility._replace(front_door_notice=BOUNDARY_FALLBACK_NOTICE)
-    if area_guard and parcel.area_m2 >= CAMPUS_PARCEL_MAX_AREA_M2:
+    if parcel.area_m2 >= CAMPUS_PARCEL_MAX_AREA_M2:
         # 좌표가 떨어진 필지가 통필지(하천·단지 전체 등)면 경계가 시설 실체보다
         # 훨씬 넓어 거리가 부당하게 줄어든다. 좌표 기준을 유지하고 사유를 적는다.
         notice = (
