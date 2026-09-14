@@ -53,6 +53,13 @@ function App() {
   const [query, setQuery] = useState("");
   // 심사표(상세) 열림 여부.
   const [sheetOpen, setSheetOpen] = useState(false);
+  // 필지를 새로 고른 뒤 「심사 실행」을 다시 눌러야 함을 알리는 반짝임.
+  const [runAttention, setRunAttention] = useState(false);
+  useEffect(() => {
+    if (!runAttention) return;
+    const timer = window.setTimeout(() => setRunAttention(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [runAttention]);
   const [railVisible, setRailVisible] = useState(true);
   const [selectedCandidate, setSelectedCandidate] =
     useState<GeocodeCandidate | null>(null);
@@ -556,6 +563,9 @@ function App() {
    */
   const handleCadastralRevive = () => {
     if (!screeningResult && !screeningRunning) return;
+    // 같은 클릭에서 이어지는 필지 토글이 잠금을 보므로 ref 를 즉시 푼다.
+    parcelsLockedRef.current = false;
+    setRunAttention(true);
     screeningRunRef.current += 1;
     setScreeningResult(null);
     setScreeningProgress(null);
@@ -572,6 +582,7 @@ function App() {
   /** 심사를 실행한다. 결과 레일을 펼치고 열려 있던 심사표는 닫는다. */
   const handleRun = async () => {
     if (!selectedCandidate) return;
+    setRunAttention(false);
     setRailVisible(true);
     setSheetOpen(false);
     await runScreening();
@@ -615,6 +626,7 @@ function App() {
         onRun={handleRun}
         onResetSite={handleResetSite}
         running={screeningRunning}
+        runAttention={runAttention}
         canPrint={Boolean(screeningResult)}
         theme={theme}
         onToggleTheme={toggleTheme}

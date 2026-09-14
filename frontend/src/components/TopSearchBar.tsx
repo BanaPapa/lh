@@ -17,6 +17,8 @@ interface TopSearchBarProps {
   /** 사업지·결과를 비우고 검색 상태로 되돌린다. */
   onResetSite: () => void;
   running: boolean;
+  /** 필지가 바뀌어 다시 심사해야 할 때 실행 버튼을 반짝인다. */
+  runAttention?: boolean;
   canPrint: boolean;
   theme: ThemeMode;
   onToggleTheme: () => void;
@@ -40,6 +42,7 @@ export function TopSearchBar({
   onRun,
   onResetSite,
   running,
+  runAttention = false,
   canPrint,
   theme,
   onToggleTheme,
@@ -74,7 +77,7 @@ export function TopSearchBar({
               <>
                 <button
                   type="button"
-                  className="solo-run-button"
+                  className={`solo-run-button${runAttention ? " is-attention" : ""}`}
                   disabled={running}
                   onClick={onRun}
                   title="1차 매입제외 판정과 2차 생활편의성 배점을 실행합니다."

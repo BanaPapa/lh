@@ -1240,3 +1240,20 @@
 .solo-settings-link > svg:last-child {
   color: var(--muted-2);
 }
+
+/* 필지를 새로 골라 다시 심사해야 할 때 실행 버튼이 몇 번 반짝인다. */
+.solo-run-button.is-attention {
+  animation: run-attention 1s ease-in-out 4;
+}
+
+@keyframes run-attention {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--blue) 55%, transparent);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--blue) 0%, transparent);
+    filter: brightness(1.25);
+  }
+}
