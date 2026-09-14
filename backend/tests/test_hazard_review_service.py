@@ -461,7 +461,7 @@ class TestFactoryLogic:
         factory = category_for(result, "factory_registered")
         assert factory.status == "dataset_missing"
         assert factory.status not in ("exclusion_match", "no_conflict_in_snapshot")
-        assert "factoryON" in factory.note
+        assert "등록공장 원천 없음" in factory.note
         # 대기배출 사업장만으로는 공장 후보를 만들지 않는다(오검출 방지).
         assert factory.candidate_count == 0
 

@@ -8,7 +8,7 @@ export type ApplyMode = "same" | "adapted" | "manual";
 
 export interface RulebookSource {
   name: string;
-  /** API · LOCALDATA(인허가 원장 적재) · 지도 검색 · 로컬 파일 · 미확보 */
+  /** API · API(인허가 원장) · 지도 검색 · 담당자 지정 · 연결 필요 */
   kind: string;
   note: string;
 }
@@ -65,7 +65,7 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
           ],
         },
         sources: [
-          { name: "브이월드 지적도(parcel_at)", kind: "API", note: "사업지 필지 확보와 시설 필지 경계. 키가 없으면 로컬 연속지적도 → 그것도 없으면 좌표 폴백." },
+          { name: "브이월드 지적도(parcel_at)", kind: "API", note: "사업지 필지 확보와 시설 필지 경계. 필지를 못 찾으면 좌표로 재고 「경계 미확보」로 표시한다." },
           { name: "카카오 로컬 주소검색", kind: "API", note: "사업지 주소 → 좌표. 검색 지점의 필지를 대표필지로 삼고 지도 클릭으로 필지를 더한다." },
         ],
       },
@@ -90,14 +90,12 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
           paragraphs: [
             "LH 결정대로 등록공장은 매입제외로 확정하지 않고 「공장 있음 · 검토」로만 표시한다. 대기·소음 배출 신고는 부가 정보로 붙일 뿐 판정 근거로 쓰지 않는다.",
             "등록공장 목록은 산단공 공장등록 필지정보 API 로 받는다(2026-09-15 배선). 이 API 는 회사명 검색용이지만 공백 와일드카드와 법정동코드 필터로 사업지 시군구의 등록공장 전량을 받을 수 있다. 좌표가 없어 도로명주소를 카카오로 지오코딩하고(결과는 디스크 캐시), 시설 필지는 브이월드로 다시 붙여 경계 거리로 잰다. 좌표를 못 붙인 행은 격리 목록에 남기고 삭제하지 않는다.",
-            "로컬 factoryON 표준본(공장 PNU 5,582)이 연결돼 있으면 그쪽이 정본이고 API 는 쓰지 않는다.",
           ],
         },
         sources: [
           { name: "산단공 공장등록 필지정보(15087615)", kind: "API", note: "시군구 단위 등록공장 전량(PUBLIC_DATA_SERVICE_KEY). 도로명주소 → 카카오 지오코딩 → 브이월드 필지." },
-          { name: "factoryON 등록공장(표준본 XLSX)", kind: "로컬 파일", note: "LH_LOCAL_RAW_PATH. 연결돼 있으면 API 대신 정본으로 쓴다(현재 연결 해제)." },
-          { name: "대기오염물질배출시설(1741000)", kind: "LOCALDATA", note: "부가 정보(나·다목 종별)만. 판정 근거로 쓰지 않음(2026-09-11 #1)." },
-          { name: "소음진동배출시설 API", kind: "미확보", note: "활용신청 미승인(403). 스키마에 소음도·방음시설 필드가 없어 라목 예외는 원천으로 확인 불가." },
+          { name: "대기오염물질배출시설(1741000)", kind: "API(인허가 원장)", note: "부가 정보(나·다목 종별)만. 판정 근거로 쓰지 않음(2026-09-11 #1)." },
+          { name: "소음진동배출시설 API(15139233)", kind: "연결 필요", note: "활용신청 미승인(403). 스키마에 소음도·방음시설 필드가 없어 라목 예외는 원천으로 확인 불가." },
         ],
       },
       {
@@ -129,10 +127,10 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
           ],
         },
         sources: [
-          { name: "고압가스업 · 특정고압가스업 · 일반도시가스업(1741000)", kind: "LOCALDATA", note: "행안부 인허가 원장을 API 로 동기화해 적재(facilities.db). 자가설비 필터 적용." },
-          { name: "석유대체연료판매업(1741000)", kind: "LOCALDATA", note: "도료류 판매소 전용 원장이 없어 이 원장으로 근사(사목)." },
-          { name: "LPG 판매소 현황(ODcloud 15091481)", kind: "미확보", note: "활용신청 승인 대기(401). 승인되면 코드 수정 없이 붙는다." },
-          { name: "LPG 저장소 · 위험물 취급소 · 유독물 · 화약류", kind: "미확보", note: "공개 위치 원천 없음. 화약류·특정대기유해물질은 LH 승인으로 수기 확인." },
+          { name: "고압가스업 · 특정고압가스업 · 일반도시가스업(1741000)", kind: "API(인허가 원장)", note: "행안부 인허가 원장을 API 로 받아 씁니다. 자가설비 필터 적용." },
+          { name: "석유대체연료판매업(1741000)", kind: "API(인허가 원장)", note: "도료류 판매소 전용 원장이 없어 이 원장으로 근사(사목)." },
+          { name: "LPG 판매소 현황(ODcloud 15091481)", kind: "연결 필요", note: "활용신청 승인 대기(401). 승인되면 코드 수정 없이 붙는다." },
+          { name: "LPG 저장소 · 위험물 취급소 · 유독물 · 화약류", kind: "연결 필요", note: "공개 위치 원천을 아직 확보하지 못함. 화약류·특정대기유해물질은 LH 승인으로 수기 확인." },
         ],
       },
       {
@@ -154,8 +152,8 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
           { name: "한국석유공사 오피넷", kind: "API", note: "주유소·충전소 반경 조회(OPINET_API_KEY)." },
           { name: "가스안전공사 LPG 충전소 현황", kind: "API", note: "전국 목록을 기동 시 예열해 캐시(PUBLIC_DATA_SERVICE_KEY)." },
           { name: "생활안전지도 주유시설(IF_0033)", kind: "API", note: "보충 원천. 이 PC 는 키 미설정." },
-          { name: "석유판매업 · 석유대체연료판매업(1741000)", kind: "LOCALDATA", note: "인허가 원장 적재본. 업태 주유소/판매소 구분." },
-          { name: "가스안전공사 CNG 충전소(ODcloud 15001508)", kind: "API", note: "어댑터 배선 완료, 활용신청 승인 대기(401). 승인 전엔 미확보." },
+          { name: "석유판매업 · 석유대체연료판매업(1741000)", kind: "API(인허가 원장)", note: "행안부 인허가 원장. 업태 주유소/판매소 구분." },
+          { name: "가스안전공사 CNG 충전소(ODcloud 15001508)", kind: "연결 필요", note: "어댑터 배선 완료, 활용신청 승인 대기(401)." },
           { name: "브이월드 용도지역", kind: "API", note: "석유대체연료 후보의 주거/공업지역 표시(LH #5)." },
         ],
       },
@@ -183,9 +181,9 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
           ],
         },
         sources: [
-          { name: "단란주점 · 유흥주점 · 테마파크 3종 · 무도장 · 무도학원(1741000)", kind: "LOCALDATA", note: "행안부 인허가 원장 적재본(영업 중만)." },
+          { name: "단란주점 · 유흥주점 · 테마파크 3종 · 무도장 · 무도학원(1741000)", kind: "API(인허가 원장)", note: "행안부 인허가 원장(영업 중만)." },
           { name: "국토부 건축물대장 표제부(1613000 BldRgstHubService)", kind: "API", note: "임계거리 이내 후보의 필지 PNU 로 용도 조회(PUBLIC_DATA_SERVICE_KEY)." },
-          { name: "카지노영업소", kind: "미확보", note: "공개 위치 원천 없음." },
+          { name: "카지노영업소", kind: "연결 필요", note: "공개 위치 원천을 아직 확보하지 못함." },
         ],
       },
       {
@@ -210,7 +208,7 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
           ],
         },
         sources: [
-          { name: "숙박업(1741000 lodgings)", kind: "LOCALDATA", note: "행안부 인허가 원장 적재본. 업태로 생활숙박 제외." },
+          { name: "숙박업(1741000 lodgings)", kind: "API(인허가 원장)", note: "행안부 인허가 원장. 업태로 생활숙박 제외." },
         ],
       },
       {
@@ -229,7 +227,7 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
         },
         sources: [
           { name: "보건복지부 전국 화장시설(1352000 ODMS_DATA_05_1)", kind: "API", note: "전국 목록을 기동 시 예열(PUBLIC_DATA_SERVICE_KEY). 카카오로 주소 지오코딩." },
-          { name: "군부대 · 사격장", kind: "미확보", note: "판정 제외 확정(2026-08-27 협의)." },
+          { name: "군부대 · 사격장", kind: "판정 제외", note: "판정 제외 확정(2026-08-27 협의)." },
         ],
       },
     ],
@@ -257,7 +255,7 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
         sources: [
           { name: "카카오 로컬 키워드(출구 · 지하철출구 분류)", kind: "API", note: "역 출입구 번호별 조회." },
           { name: "네이버 지역검색", kind: "API", note: "대학·종합병원 정문, 출구 보충(질의당 5건)." },
-          { name: "브이월드 지적도", kind: "API", note: "시설 필지 경계(로컬 연속지적도 폴백)." },
+          { name: "브이월드 지적도", kind: "API", note: "시설 필지 경계." },
         ],
       },
       {
@@ -286,8 +284,10 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
         },
         sources: [
           { name: "카카오 로컬(SW8 지하철역 · 기차역 · 버스터미널 키워드)", kind: "지도 검색", note: "지정 원천 대체(근사). 이름이 「역」으로 끝나는 것만 남긴다." },
+          { name: "레일포털 역·출구 정보 · 코레일 역위치 · 터미널 정보", kind: "연결 필요", note: "심사표 지정 원천. API 확보 시 지도 검색을 대체." },
+          { name: "버스 운행주기(15분) 확인 원천", kind: "연결 필요", note: "노선별 배차간격 API 확보 시 15분 이내 정류장만 인정." },
           { name: "TAGO 국토교통 정류소 근접조회", kind: "API", note: "버스정류장. 15분 운행주기 확인 불가 → 전체 정류장." },
-          { name: "환승시설", kind: "미확보", note: "간선급행버스체계법 §2-3-다 정의 시설의 위치 원천 없음." },
+          { name: "환승시설", kind: "연결 필요", note: "간선급행버스체계법 §2-3-다 정의 시설의 위치 원천을 아직 확보하지 못함." },
         ],
       },
       {
@@ -311,15 +311,16 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
         apply: {
           mode: "adapted",
           paragraphs: [
-            "등급표는 심사표 그대로다. 상업시설은 대규모점포 인허가 원장(지정 원천)으로 세고 전통시장은 아직 미배선이라 상업시설 축이 다소 보수적일 수 있다. 의료시설은 국립중앙의료원 원장에서 종류=종합병원만 세고, 상급종합병원은 함께 계산하되 구분해 둔다.",
+            "등급표는 심사표 그대로다. 상업시설은 대규모점포 인허가 원장(지정 원천)으로 세고 전통시장은 아직 연결하지 못해 상업시설 축이 다소 보수적일 수 있다. 의료시설은 국립중앙의료원 원장에서 종류=종합병원만 세고, 상급종합병원은 함께 계산하되 구분해 둔다.",
             "공원·문화·공공은 심사표 지정 원천(도시공원정보 표준데이터·공연장/박물관/영화관 원장·관공서·행정복지센터·도서관 총람) 대신 지도 분류 검색으로 근사하며, 그 사실을 시설군마다 고지한다. 거리는 시설 필지경계 기준.",
           ],
         },
         sources: [
-          { name: "대규모점포(1741000 large_scale_retail_stores)", kind: "LOCALDATA", note: "상업시설 지정 원천(적재본)." },
-          { name: "전통시장통통", kind: "미배선", note: "좌표·PNU 보유 표준셋 있음. 로컬 연결 대상." },
+          { name: "대규모점포(1741000 large_scale_retail_stores)", kind: "API(인허가 원장)", note: "상업시설 지정 원천." },
+          { name: "전통시장통통", kind: "연결 필요", note: "소상공인시장진흥공단 전통시장 API 확보 필요." },
           { name: "국립중앙의료원 병·의원(B552657)", kind: "API", note: "시도별 종합병원·상급종합병원. 카카오 역지오코딩으로 시도 결정." },
           { name: "카카오 로컬(공원 키워드 · CT1 문화시설 · PO3 공공기관 · 도서관 키워드)", kind: "지도 검색", note: "지정 원천 대체(근사). 분류 필터로 오탐 제거." },
+          { name: "도시공원정보 표준데이터 · 공연장/박물관/영화관 원장 · 행정기관 · 공공도서관 총람", kind: "연결 필요", note: "심사표 지정 원천. API 확보 시 지도 검색을 대체." },
         ],
       },
       {
@@ -347,6 +348,7 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
         },
         sources: [
           { name: "카카오 로컬(SC4 학교 분류)", kind: "지도 검색", note: "지정 원천 대체(근사)." },
+          { name: "교육데이터플랫폼 학교별 위치정보", kind: "연결 필요", note: "심사표 지정 원천. API 확보 시 지도 검색을 대체." },
           { name: "브이월드 지적도", kind: "API", note: "학교 필지 경계." },
         ],
       },
@@ -376,8 +378,9 @@ export const RULEBOOK_GROUPS: RulebookGroup[] = [
         },
         sources: [
           { name: "카카오 로컬(SC4 · 대학교 키워드)", kind: "지도 검색", note: "대학 후보. 지정 원천(대학알리미) 대체." },
+          { name: "대학알리미 학교개황정보", kind: "연결 필요", note: "심사표 지정 원천. API 확보 시 지도 검색을 대체." },
           { name: "네이버 지역검색", kind: "API", note: "「{대학명} 정문」 문 후보 전부." },
-          { name: "담당자 정문 지정(front_doors.json)", kind: "로컬 파일", note: "지도에서 고른 정문 필지/좌표. 최우선." },
+          { name: "담당자 정문 지정", kind: "담당자 지정", note: "지도에서 고른 정문 필지/좌표. 최우선." },
         ],
       },
       {

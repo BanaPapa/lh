@@ -281,7 +281,7 @@ class TestFactoryRegistryWiring:
         )
         factory = category_for(result, "factory_registered")
         assert factory.status == "dataset_missing"
-        assert "factoryON" in factory.note
+        assert "등록공장 원천 없음" in factory.note
 
     def test_registered_factory_gets_air_emission_annotation(self) -> None:
         # 등록공장과 같은 좌표(40m 이내)에 대기배출 신고가 있으면 부가 정보로 주석한다.

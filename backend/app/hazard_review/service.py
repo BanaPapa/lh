@@ -174,8 +174,7 @@ APPLIED_NOT_CONNECTED_NOTE = (
 # 공장: factoryON 등록공장 원천이 적재되기 전까지 「공장 있음」 판정 불가.
 # 등록공장 원천이 없으면 공장 소재 여부를 확인할 수 없으므로 dataset_missing 이다.
 FACTORY_REGISTRY_MISSING_NOTE = (
-    "등록공장 원천 없음 — 산단공 공장등록 API 키(PUBLIC_DATA_SERVICE_KEY) 또는 "
-    "factoryON 표준본을 연결하면 판정"
+    "등록공장 원천 없음 — 산단공 공장등록 API 키(PUBLIC_DATA_SERVICE_KEY)를 연결하면 판정"
 )
 
 # §6.4 단란주점·테마파크: 건축물대장 용도 교차확인이 AND 조건이나 어댑터 미구현.

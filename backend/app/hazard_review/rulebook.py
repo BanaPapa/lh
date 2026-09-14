@@ -324,7 +324,7 @@ CATEGORIES: tuple[Category, ...] = (
         key="factory_registered",
         label="공장 있음 (등록공장)",
         rule_id="RB14-FACTORY",
-        source_label="factoryON 등록공장",
+        source_label="한국산업단지공단 공장등록 필지정보(API)",
         data_state="applied",
         note=(
             "등록공장이 기준 50m(+여유구간) 이내면 「공장 있음」으로 검토 표시한다 "
