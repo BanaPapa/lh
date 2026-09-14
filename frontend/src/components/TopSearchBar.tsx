@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   ClipboardCheck,
   Moon,
   Plug,
@@ -12,6 +13,7 @@ import type { MapProvider } from "../types";
 import type { ThemeMode } from "../theme";
 import { ApiKeysPanel } from "./ApiKeysPanel";
 import { SettingsMenu } from "./SettingsMenu";
+import { RulebookModal } from "../rulebook/RulebookModal";
 
 interface TopSearchBarProps {
   query: string;
@@ -59,6 +61,8 @@ export function TopSearchBar({
 }: TopSearchBarProps) {
   // API 연결 패널(상단 바 전용 버튼이 연다).
   const [apiOpen, setApiOpen] = useState(false);
+  // 심사 룰북 모달(API 연결 옆 버튼이 연다).
+  const [rulebookOpen, setRulebookOpen] = useState(false);
   return (
     <header className="solo-topbar">
       <div className="solo-bar-primary">
@@ -152,6 +156,16 @@ export function TopSearchBar({
             <Plug size={18} />
           </button>
 
+          <button
+            type="button"
+            className={`solo-icon-button ${rulebookOpen ? "is-active" : ""}`}
+            onClick={() => setRulebookOpen(true)}
+            aria-label="심사 룰북"
+            title="심사 룰북"
+          >
+            <BookOpen size={18} />
+          </button>
+
           <SettingsMenu
             mapProvider={mapProvider}
             onMapProviderChange={onMapProviderChange}
@@ -170,6 +184,7 @@ export function TopSearchBar({
         </div>
       </div>
       <ApiKeysPanel open={apiOpen} onClose={() => setApiOpen(false)} />
+      <RulebookModal open={rulebookOpen} onClose={() => setRulebookOpen(false)} />
     </header>
   );
 }
