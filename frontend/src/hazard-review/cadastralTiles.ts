@@ -188,3 +188,36 @@ export function boxCenter(box: LatLngBox): LatLng {
     lng: (box.west + box.east) / 2,
   };
 }
+
+/** 점이 링(닫힌 다각형) 안에 있는지. 레이 캐스팅. 경계 위는 안으로 본다. */
+export function pointInRing(point: LatLng, ring: LatLng[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i];
+    const b = ring[j];
+    const crosses =
+      a.lat > point.lat !== b.lat > point.lat &&
+      point.lng <
+        ((b.lng - a.lng) * (point.lat - a.lat)) / (b.lat - a.lat) + a.lng;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * 좌표를 품은 필지를 지적도 타일 목록에서 찾는다. 시설은 점 좌표만 있고 경계는
+ * 없는 경우가 많다(참고 시설·2차 근거 시설). 화면에 이미 깔린 지적도 필지에서
+ * 그 점이 든 필지를 찾아 "영역"으로 칠하면 별도 조회 없이 경계를 보여줄 수 있다.
+ * 타일이 아직 안 깔린 축척(레벨 5 이상)이나 3km 밖에서는 null 이다.
+ */
+export function parcelContaining<T extends { geometry: LatLng[] }>(
+  point: LatLng,
+  parcels: readonly T[],
+): T | null {
+  for (const parcel of parcels) {
+    if (parcel.geometry.length >= 4 && pointInRing(point, parcel.geometry)) {
+      return parcel;
+    }
+  }
+  return null;
+}

@@ -42,6 +42,7 @@ import {
   boxCenter,
   boxesOverlap,
   metersBetween,
+  parcelContaining,
   subdivideTile,
   tileCenter,
   tilesForViewport,
@@ -1328,13 +1329,13 @@ export function MapPanel({
 
     // 대지경계 기준 밴드가 있으면 중심점 원 대신 필지를 확장한 도형을 그린다.
     const ruleBands = hazardMode ? (hazardReview?.rule_bands ?? []) : [];
-    const cadastralParcels = hazardParcels.filter(
+    const siteParcelRings = hazardParcels.filter(
       (item) =>
         item.geometry.length >= 4 &&
         (item.geometry_source === "parcel_polygon" ||
           item.geometry_source === "official_polygon"),
     );
-    const hasCadastralParcel = cadastralParcels.length > 0;
+    const hasCadastralParcel = siteParcelRings.length > 0;
     // 대지경계 밴드를 못 그릴 때만 중심점 기준 원으로 물러선다.
     const hazardBufferRules =
       !hazardMode || ruleBands.length > 0 || hasCadastralParcel
@@ -1448,8 +1449,17 @@ export function MapPanel({
       // 1차=빨강(markerColor), 기준 밖=회색. 선택 시설은 더 진하게. 핀보다 낮은
       // zIndex 로 깔고 클릭은 그 시설 선택으로 잇는다. overlaysRef 에 넣어 재렌더
       // 시 함께 정리돼 누수가 없다. 판정창 안 시설만이라 개수는 많지 않다.
-      const ring = facility.geometry ?? [];
-      if (ring.length >= 4) {
+      // 시설 도형이 없으면(점 좌표만) 화면에 깔린 지적도 타일에서 그 점이 든
+      // 필지를 찾아 영역으로 칠한다. 유해시설은 핀이 아니라 빨간 영역으로 읽혀야
+      // 한다. 타일이 없는 축척에서는 핀으로 물러선다.
+      const ownRing = facility.geometry ?? [];
+      const ring =
+        ownRing.length >= 4
+          ? ownRing
+          : (parcelContaining(facility.coordinates, cadastralParcels)?.geometry ??
+            []);
+      const hasArea = ring.length >= 4;
+      if (hasArea) {
         const ringPath = ring.map((point) =>
           toMapPosition(runtime, point.lat, point.lng),
         );
@@ -1459,11 +1469,11 @@ export function MapPanel({
             ? { path: ringPath }
             : { paths: ringPath }),
           strokeWeight: selected ? 2.5 : 1.5,
-          strokeColor: markerColor,
-          strokeOpacity: nearby ? 0.6 : 0.9,
-          strokeStyle: "solid",
-          fillColor: markerColor,
-          fillOpacity: nearby ? 0.06 : selected ? 0.22 : 0.12,
+          strokeColor: "#dc2626",
+          strokeOpacity: nearby ? 0.55 : 0.9,
+          strokeStyle: nearby ? "shortdash" : "solid",
+          fillColor: "#dc2626",
+          fillOpacity: nearby ? (selected ? 0.18 : 0.09) : selected ? 0.3 : 0.18,
           clickable: true,
           zIndex: nearby ? 1 : 2,
         });
@@ -1493,7 +1503,7 @@ export function MapPanel({
       markerNode.type = "button";
       markerNode.className = `hazard-map-marker is-${finding.status}${
         nearby ? " is-nearby" : ""
-      }${selected ? " is-selected" : ""}`;
+      }${hasArea ? " is-area" : ""}${selected ? " is-selected" : ""}`;
       markerNode.style.setProperty("--hazard-tone", markerColor);
       markerNode.setAttribute(
         "aria-label",
@@ -1611,6 +1621,32 @@ export function MapPanel({
       const selected = hit.name === selectedScreeningHitName;
       const distanceText = `${Math.round(hit.distance_m).toLocaleString()}m`;
       const hasNotice = Boolean(hit.front_door_notice);
+
+      // 2차 근거 시설도 핀이 아니라 파란 영역으로. 지적도 타일에서 점이 든 필지를
+      // 찾아 칠하고, 타일이 없는 축척에서는 핀으로 물러선다.
+      const hitParcel = parcelContaining(hit.coordinates, cadastralParcels);
+      const hitHasArea = Boolean(hitParcel);
+      if (hitParcel) {
+        const hitPath = hitParcel.geometry.map((point) =>
+          toMapPosition(runtime, point.lat, point.lng),
+        );
+        const hitPolygon = new runtime.sdk.maps.Polygon({
+          map,
+          ...(runtime.provider === "kakao" ? { path: hitPath } : { paths: hitPath }),
+          strokeWeight: selected ? 2.5 : 1.5,
+          strokeColor: "#2563eb",
+          strokeOpacity: 0.9,
+          strokeStyle: "solid",
+          fillColor: "#2563eb",
+          fillOpacity: selected ? 0.3 : 0.18,
+          clickable: true,
+          zIndex: 2,
+        });
+        addOverlayClick(runtime, hitPolygon, () => {
+          onSelectScreeningHit?.(selected ? null : hit.name);
+        });
+        overlaysRef.current.push(hitPolygon);
+      }
       const metaText = `${ref.groupLabel} · ${distanceText} · ${measurementShortLabel(
         hit,
       )}${hasNotice ? " · ⚠" : ""}`;
@@ -1618,8 +1654,8 @@ export function MapPanel({
       const markerNode = document.createElement("button");
       markerNode.type = "button";
       markerNode.className = `hazard-map-marker is-screening${
-        selected ? " is-selected" : ""
-      }`;
+        hitHasArea ? " is-area" : ""
+      }${selected ? " is-selected" : ""}`;
       markerNode.setAttribute(
         "aria-label",
         `${ref.criterionLabel} · ${hit.name || "이름 미확보"} · ${distanceText}`,
@@ -1778,6 +1814,7 @@ export function MapPanel({
     hazardMarkers,
     hazardMode,
     hazardParcels,
+    cadastralParcels,
     onToggleParcelAt,
     hazardReview?.review_id,
     hazardReview?.rule_bands,
