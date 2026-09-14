@@ -1416,3 +1416,67 @@
   min-height: 0;
   align-content: start;
 }
+
+/* 브라우저 키·서버 키 표 — 연결 현황과 같은 한 줄 배치 */
+.api-key-table th:nth-child(1) { width: 24%; }
+.api-key-table th:nth-child(2) { width: 26%; }
+.api-key-table th:nth-child(3) { width: 32%; }
+.api-key-table th:nth-child(4) { width: 18%; }
+
+/* 값 칸(입력창)은 넘쳐도 보이게, 나머지 칸은 말줄임. */
+.api-key-table td.api-key-value {
+  overflow: visible;
+}
+
+.api-key-table td.api-conn-meta a {
+  display: inline-flex;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.api-key-table .api-conn-label label {
+  cursor: pointer;
+}
+
+.api-key-table .api-conn-label .api-keys-tag,
+.api-key-table .api-conn-label .api-keys-state {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.api-key-value input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 18px;
+}
+
+.api-key-value input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.api-key-value .api-keys-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.api-key-value .api-keys-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.api-conn-meta .api-keys-issuer:first-child {
+  margin-left: 0;
+}
+
+.api-conn-none {
+  color: var(--muted-2);
+}

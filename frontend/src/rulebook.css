@@ -5,7 +5,7 @@
 .rulebook-modal {
   box-sizing: border-box;
   /* 화면 가로 60% · 세로 70%(좁은 화면은 꽉 채운다). */
-  width: max(60vw, min(900px, 100%));
+  width: max(80vw, min(900px, 100%));
   height: max(70vh, min(640px, calc(100vh - 48px)));
   max-width: 100%;
   max-height: calc(100vh - 48px);

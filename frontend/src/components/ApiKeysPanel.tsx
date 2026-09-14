@@ -437,44 +437,61 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
               <p>지도 SDK 용 공개 식별자입니다. 이 브라우저에만 저장됩니다.</p>
             </header>
 
-            <div className="api-keys-fields">
-              {BROWSER_KEYS.map((meta) => {
-                const overridden = hasRuntimeKeyOverride(meta.name);
-                return (
-                  <div className="api-keys-field" key={meta.name}>
-                    <label htmlFor={`bk-${meta.name}`}>
-                      <span className="api-keys-field-label">
-                        {meta.label}
+            <table className="api-conn-table api-key-table">
+              <thead>
+                <tr>
+                  <th>키</th>
+                  <th>쓰임</th>
+                  <th>값</th>
+                  <th>비고</th>
+                </tr>
+              </thead>
+              <tbody>
+                {BROWSER_KEYS.map((meta) => {
+                  const overridden = hasRuntimeKeyOverride(meta.name);
+                  return (
+                    <tr key={meta.name}>
+                      <td className="api-conn-label">
+                        <label htmlFor={`bk-${meta.name}`}>
+                          <strong>{meta.label}</strong>
+                        </label>
                         {overridden && (
                           <span className="api-keys-tag">이 브라우저 저장됨</span>
                         )}
-                      </span>
-                      <small>{meta.description}</small>
-                    </label>
-                    <input
-                      id={`bk-${meta.name}`}
-                      type="text"
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={browserInputs[meta.name]}
-                      placeholder="미설정"
-                      onChange={(event) =>
-                        setBrowserInputs((current) => ({
-                          ...current,
-                          [meta.name]: event.target.value,
-                        }))
-                      }
-                    />
-                    {meta.hint && (
-                      <p className="api-keys-note">
-                        <Info size={12} aria-hidden="true" />
-                        <span>{meta.hint}</span>
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                      </td>
+                      <td className="api-conn-purpose" title={meta.description}>
+                        {meta.description}
+                      </td>
+                      <td className="api-key-value">
+                        <input
+                          id={`bk-${meta.name}`}
+                          type="text"
+                          autoComplete="off"
+                          spellCheck={false}
+                          value={browserInputs[meta.name]}
+                          placeholder="미설정"
+                          onChange={(event) =>
+                            setBrowserInputs((current) => ({
+                              ...current,
+                              [meta.name]: event.target.value,
+                            }))
+                          }
+                        />
+                      </td>
+                      <td className="api-conn-purpose" title={meta.hint ?? ""}>
+                        {meta.hint ? (
+                          <>
+                            <Info size={13} aria-hidden="true" /> {meta.hint}
+                          </>
+                        ) : (
+                          ""
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
             <div className="api-keys-actions">
               <span className="api-keys-actions-hint">
@@ -509,15 +526,25 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
                 설정 상태를 불러오는 중…
               </p>
             ) : (
-              <div className="api-keys-fields">
-                {status?.keys.map((spec) => {
-                  const value = serverInputs[spec.key] ?? "";
-                  const show = revealed[spec.key] ?? false;
-                  return (
-                    <div className="api-keys-field" key={spec.key}>
-                      <label htmlFor={`sk-${spec.key}`}>
-                        <span className="api-keys-field-label">
-                          {spec.label}
+              <table className="api-conn-table api-key-table">
+                <thead>
+                  <tr>
+                    <th>키</th>
+                    <th>쓰임</th>
+                    <th>값</th>
+                    <th>발급처</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {status?.keys.map((spec) => {
+                    const value = serverInputs[spec.key] ?? "";
+                    const show = revealed[spec.key] ?? false;
+                    return (
+                      <tr key={spec.key}>
+                        <td className="api-conn-label">
+                          <label htmlFor={`sk-${spec.key}`}>
+                            <strong>{spec.label}</strong>
+                          </label>
                           <span
                             className={`api-keys-state ${
                               spec.configured ? "is-on" : "is-off"
@@ -525,69 +552,72 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
                           >
                             {spec.configured ? "설정됨" : "미설정"}
                           </span>
-                        </span>
-                        <small>{spec.description}</small>
-                      </label>
-                      <div className="api-keys-input-row">
-                        <input
-                          id={`sk-${spec.key}`}
-                          type={show ? "text" : "password"}
-                          autoComplete="off"
-                          spellCheck={false}
-                          value={value}
-                          placeholder={spec.hint || "미설정"}
-                          onChange={(event) =>
-                            setServerInputs((current) => ({
-                              ...current,
-                              [spec.key]: event.target.value,
-                            }))
-                          }
-                        />
-                        <button
-                          type="button"
-                          className="api-keys-icon-btn"
-                          onClick={() =>
-                            setRevealed((current) => ({
-                              ...current,
-                              [spec.key]: !show,
-                            }))
-                          }
-                          aria-label={show ? "값 숨기기" : "값 보기"}
-                          title={show ? "값 숨기기" : "값 보기"}
-                        >
-                          {show ? <EyeOff size={15} /> : <Eye size={15} />}
-                        </button>
-                        <button
-                          type="button"
-                          className="api-keys-icon-btn is-danger"
-                          onClick={() => handleDeleteServerKey(spec)}
-                          disabled={!spec.configured || savingServer}
-                          aria-label={`${spec.label} 삭제`}
-                          title="서버에서 이 키를 삭제"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                      {/* 발급처 링크. 서버가 URL 을 준 키만 렌더한다(없으면 숨김). */}
-                      {spec.issuer_url ? (
-                        <a
-                          className="api-keys-issuer"
-                          href={spec.issuer_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <ExternalLink size={12} aria-hidden="true" />
-                          {spec.issuer_name
-                            ? `${spec.issuer_name}에서 발급받기`
-                            : "발급처 열기"}
-                        </a>
-                      ) : (
-                        <span className="api-keys-issuer is-empty" aria-hidden="true" />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        </td>
+                        <td className="api-conn-purpose" title={spec.description}>
+                          {spec.description}
+                        </td>
+                        <td className="api-key-value">
+                          <div className="api-keys-input-row">
+                            <input
+                              id={`sk-${spec.key}`}
+                              type={show ? "text" : "password"}
+                              autoComplete="off"
+                              spellCheck={false}
+                              value={value}
+                              placeholder={spec.hint || "미설정"}
+                              onChange={(event) =>
+                                setServerInputs((current) => ({
+                                  ...current,
+                                  [spec.key]: event.target.value,
+                                }))
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="api-keys-icon-btn"
+                              onClick={() =>
+                                setRevealed((current) => ({
+                                  ...current,
+                                  [spec.key]: !show,
+                                }))
+                              }
+                              aria-label={show ? "값 숨기기" : "값 보기"}
+                              title={show ? "값 숨기기" : "값 보기"}
+                            >
+                              {show ? <EyeOff size={15} /> : <Eye size={15} />}
+                            </button>
+                            <button
+                              type="button"
+                              className="api-keys-icon-btn is-danger"
+                              onClick={() => handleDeleteServerKey(spec)}
+                              disabled={!spec.configured || savingServer}
+                              aria-label={`${spec.label} 삭제`}
+                              title="서버에서 이 키를 삭제"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="api-conn-meta">
+                          {spec.issuer_url ? (
+                            <a
+                              className="api-keys-issuer"
+                              href={spec.issuer_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <ExternalLink size={13} aria-hidden="true" />
+                              {spec.issuer_name || "발급처"}
+                            </a>
+                          ) : (
+                            <span className="api-conn-none">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
 
             <div className="api-keys-demo">
