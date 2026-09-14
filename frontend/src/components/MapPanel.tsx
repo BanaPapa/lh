@@ -101,8 +101,9 @@ interface MapViewport {
 // 검색 직후 첫 화면에 즉시 요청할 사업지 주변 반경(m). 인접 필지를 고르기에
 // 충분하다. 이후는 지도 idle 마다 뷰포트와 겹치는 타일을 반경 3km 까지 채운다.
 const CADASTRAL_RADIUS_M = 350;
-// 지적도가 없는 자리를 눌렀을 때 그 주변으로 새로 받는 반경(m).
-const CADASTRAL_CLICK_RADIUS_M = 300;
+// 시설 영역이 아닌 자리를 눌렀을 때 그 주변으로 새로 받는 반경(m). 검색 직후
+// 사업지 주변과 같은 폭이다.
+const CADASTRAL_CLICK_RADIUS_M = 350;
 
 const METERS_PER_DEGREE_LAT = 111_320;
 
@@ -1040,20 +1041,12 @@ export function MapPanel({
     }
 
     cadastralViewportRef.current = box;
-    // 레이어가 꺼져 있으면(심사 뒤) 새로 받지도, 그리지도 않는다.
-    if (!cadastralAutoRef.current) {
-      recomputeVisibleParcels();
-      return;
-    }
-    // 뷰포트와 겹치고 3km 안인 타일만 요청 대상.
-    const pending = tilesForViewport(box).filter((tile) =>
-      tileWithinRadius(center, tile, CADASTRAL_MAX_RADIUS_M),
-    );
-    enqueueTiles(pending, cadastralGenRef.current);
+    // 지도를 옮긴다고 새로 받지 않는다. 타일은 검색 직후 사업지 주변 350m 와
+    // 빈 자리 클릭 주변 350m 에서만 받고, 여기서는 받아 둔 것을 뷰포트에 맞춰 그린다.
     recomputeVisibleParcels();
-  }, [mapReady, site, enqueueTiles, recomputeVisibleParcels]);
+  }, [mapReady, site, recomputeVisibleParcels]);
 
-  /** 누른 자리 주변 300m 타일만 따로 받는다(자동 갱신과 무관). */
+  /** 누른 자리 주변 350m 타일만 따로 받는다(스위치 상태와 무관). */
   const loadCadastralAround = useCallback(
     (point: { lat: number; lng: number }) => {
       const center = cadastralCenterRef.current;
@@ -1297,14 +1290,10 @@ export function MapPanel({
             }
             // 심사 결과가 있으면 먼저 내려 필지 잠금을 푼다(App 이 동기로 푼다).
             onCadastralReviveRef.current?.();
-            // 그 자리에 지적도가 안 깔려 있으면 주변 300m 를 받고 레이어를 켠다.
-            const pool: CadastralParcel[] = [];
-            tileCacheRef.current.forEach((parcels) => pool.push(...parcels));
-            if (!parcelContaining(point, pool)) {
-              loadCadastralAroundRef.current(point);
-              cadastralAutoRef.current = true;
-              setCadastralAutoOn(true);
-            }
+            // 스위치 상태와 무관하게: 레이어를 켜고 누른 자리 주변 350m 타일을 받는다.
+            cadastralAutoRef.current = true;
+            setCadastralAutoOn(true);
+            loadCadastralAroundRef.current(point);
             // 누른 자리의 필지를 사업지에 더한다(좌표로 필지를 조회한다).
             toggleParcelRef.current?.(point.lat, point.lng);
           },
@@ -2107,7 +2096,7 @@ export function MapPanel({
               className={`map-zoning-toggle${cadastralAutoOn ? " is-on" : ""}`}
               role="switch"
               aria-checked={cadastralAutoOn}
-              title="지적도(필지 경계) 레이어 켜기/끄기 — 켜면 지도를 옮길 때마다 불러온다"
+              title="지적도(필지 경계) 레이어 켜기/끄기 — 받아 둔 필지를 보이거나 숨긴다"
               onClick={() => {
                 const next = !cadastralAutoOn;
                 setCadastralAutoOn(next);
