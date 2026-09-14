@@ -546,6 +546,20 @@ function addOverlayClick(
   addMapListener(runtime, overlay, "click", listener);
 }
 
+/** 영역(폴리곤)에 마우스를 올리면 이름표를 세우고, 나가면 접는다. */
+function addOverlayHover(
+  runtime: MapRuntime,
+  overlay: any,
+  node: HTMLElement,
+) {
+  addMapListener(runtime, overlay, "mouseover", () => {
+    node.classList.add("is-hover");
+  });
+  addMapListener(runtime, overlay, "mouseout", () => {
+    node.classList.remove("is-hover");
+  });
+}
+
 interface MapPanelProps {
   site: GeocodeCandidate | null;
   mapProvider: MapProvider;
@@ -1462,6 +1476,7 @@ export function MapPanel({
           : (parcelContaining(facility.coordinates, cadastralParcels)?.geometry ??
             []);
       const hasArea = ring.length >= 4;
+      let facilityPolygonForHover: any = null;
       if (hasArea) {
         const ringPath = ring.map((point) =>
           toMapPosition(runtime, point.lat, point.lng),
@@ -1485,6 +1500,7 @@ export function MapPanel({
           onSelectHazardFacility?.(facility.facility_id);
         });
         overlaysRef.current.push(facilityPolygon);
+        facilityPolygonForHover = facilityPolygon;
       }
 
       const distanceText = `${Math.round(
@@ -1543,6 +1559,10 @@ export function MapPanel({
         // 참고 시설은 판정 핀보다 낮게 깔아 판단을 방해하지 않게 한다.
         zIndex: selected ? 9 : nearby ? 4 : 6,
       });
+      // 영역으로 그린 시설은 핀이 없어 호버할 곳이 없다. 영역 호버가 이름표를 세운다.
+      if (facilityPolygonForHover) {
+        addOverlayHover(runtime, facilityPolygonForHover, markerNode);
+      }
       markerNode.addEventListener("click", (event) => {
         event.stopPropagation();
         onSelectHazardFinding?.(finding.finding_id);
@@ -1638,6 +1658,7 @@ export function MapPanel({
       // 찾아 칠하고, 타일이 없는 축척에서는 핀으로 물러선다.
       const hitParcel = parcelContaining(hit.coordinates, cadastralParcels);
       const hitHasArea = Boolean(hitParcel);
+      let hitPolygonForHover: any = null;
       if (hitParcel) {
         const hitPath = hitParcel.geometry.map((point) =>
           toMapPosition(runtime, point.lat, point.lng),
@@ -1658,6 +1679,7 @@ export function MapPanel({
           onSelectScreeningHit?.(selected ? null : hit.name);
         });
         overlaysRef.current.push(hitPolygon);
+        hitPolygonForHover = hitPolygon;
       }
       const metaText = `${ref.groupLabel} · ${distanceText} · ${measurementShortLabel(
         hit,
@@ -1696,6 +1718,9 @@ export function MapPanel({
         onSelectScreeningHit?.(selected ? null : hit.name);
       });
       overlaysRef.current.push(screeningMarker);
+      if (hitPolygonForHover) {
+        addOverlayHover(runtime, hitPolygonForHover, markerNode);
+      }
 
       // 최단거리선 + 거리 라벨. nearest_boundary_point 가 없으면 사업지 중심에서 긋는다.
       const origin = hit.nearest_boundary_point;
