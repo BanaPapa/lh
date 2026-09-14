@@ -526,6 +526,30 @@ function App() {
     );
   }, []);
 
+  /** 사업지·필지·결과를 비우고 검색 상태로 되돌린다(상단 바의 되돌리기). */
+  const handleResetSite = () => {
+    screeningRunRef.current += 1;
+    siteParcelRunRef.current += 1;
+    setSelectedCandidate(null);
+    setHazardParcels([]);
+    setParcelNote("");
+    setScreeningResult(null);
+    setScreeningProgress(null);
+    setScreeningRunning(false);
+    setScreeningError("");
+    setSheetOpen(false);
+    setRailVisible(true);
+    setSelectedHazardFindingId(null);
+    setSelectedHazardFacilityId(null);
+    setDesignationTarget(null);
+    setDesignationError("");
+    setScreeningDiff(null);
+    setExpandedScreeningGroupKey(null);
+    setSelectedScreeningHitName(null);
+    setSearchError("");
+    setSearchNotice("");
+  };
+
   /** 심사를 실행한다. 결과 레일을 펼치고 열려 있던 심사표는 닫는다. */
   const handleRun = async () => {
     if (!selectedCandidate) return;
@@ -570,6 +594,7 @@ function App() {
           setMapProvider(nextProvider);
         }}
         onRun={handleRun}
+        onResetSite={handleResetSite}
         running={screeningRunning}
         canPrint={Boolean(screeningResult)}
         theme={theme}

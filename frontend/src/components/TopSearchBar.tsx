@@ -1,4 +1,4 @@
-import { ClipboardCheck, Moon, Printer, Search, Sun } from "lucide-react";
+import { ClipboardCheck, Moon, Printer, RotateCcw, Search, Sun } from "lucide-react";
 import type { MapProvider } from "../types";
 import type { ThemeMode } from "../theme";
 import { SettingsMenu } from "./SettingsMenu";
@@ -14,6 +14,8 @@ interface TopSearchBarProps {
   mapProvider: MapProvider;
   onMapProviderChange: (provider: MapProvider) => void;
   onRun: () => void;
+  /** 사업지·결과를 비우고 검색 상태로 되돌린다. */
+  onResetSite: () => void;
   running: boolean;
   canPrint: boolean;
   theme: ThemeMode;
@@ -21,8 +23,9 @@ interface TopSearchBarProps {
 }
 
 /**
- * 상단 바 한 줄. 사업지 검색과 곧바로 이어지는 심사 실행을 붙여 놓고,
- * 사업지가 잡히기 전에는 실행 버튼을 잠가 순서를 드러낸다.
+ * 상단 바 한 줄. 입력창 옆 버튼 하나가 흐름을 끌고 간다 — 사업지가 없으면
+ * 「검색」, 검색이 끝나면 같은 자리가 「심사 실행」으로 바뀐다. 다시 검색하려면
+ * 실행 버튼 옆 되돌리기 아이콘으로 사업지를 비우고 검색 상태로 돌아간다.
  */
 export function TopSearchBar({
   query,
@@ -35,6 +38,7 @@ export function TopSearchBar({
   mapProvider,
   onMapProviderChange,
   onRun,
+  onResetSite,
   running,
   canPrint,
   theme,
@@ -45,7 +49,7 @@ export function TopSearchBar({
       <div className="solo-bar-primary">
         <div className="solo-brand">
           <ClipboardCheck size={19} aria-hidden="true" />
-          <span>LH 서류심사</span>
+          <span>LH 매입약정 서류심사</span>
         </div>
 
         <div className="solo-search-shell">
@@ -54,7 +58,7 @@ export function TopSearchBar({
               className="solo-search-form"
               onSubmit={(event) => {
                 event.preventDefault();
-                onSearch();
+                if (!searching && query.trim().length >= 2) onSearch();
               }}
             >
               <Search size={17} aria-hidden="true" />
@@ -64,29 +68,41 @@ export function TopSearchBar({
                 onChange={(event) => onQueryChange(event.target.value)}
                 placeholder="주소, 건물명, 역명으로 사업지 검색"
               />
+            </form>
+
+            {hasSite ? (
+              <>
+                <button
+                  type="button"
+                  className="solo-run-button"
+                  disabled={running}
+                  onClick={onRun}
+                  title="1차 매입제외 판정과 2차 생활편의성 배점을 실행합니다."
+                >
+                  {running ? "심사 중" : "심사 실행"}
+                </button>
+                <button
+                  type="button"
+                  className="solo-icon-button solo-reset-button"
+                  disabled={running}
+                  onClick={onResetSite}
+                  aria-label="다시 검색"
+                  title="사업지를 비우고 다시 검색"
+                >
+                  <RotateCcw size={17} />
+                </button>
+              </>
+            ) : (
               <button
-                type="submit"
+                type="button"
+                className="solo-run-button"
                 disabled={searching || query.trim().length < 2}
+                onClick={onSearch}
+                title="주소나 장소명으로 사업지를 찾습니다."
               >
                 {searching ? "검색 중" : "검색"}
               </button>
-            </form>
-
-            {/* 검색 다음에 오는 동작이라 검색 옆에 둔다. 사업지가 잡히기
-                전에는 누를 수 없다. */}
-            <button
-              type="button"
-              className="solo-run-button"
-              disabled={!hasSite || running}
-              onClick={onRun}
-              title={
-                hasSite
-                  ? "1차 매입제외 판정과 2차 생활편의성 배점을 실행합니다."
-                  : "사업지를 먼저 검색하세요."
-              }
-            >
-              {running ? "심사 중" : "심사 실행"}
-            </button>
+            )}
           </div>
           {searchError && (
             <p className="solo-search-error" role="alert">
