@@ -4,8 +4,11 @@
 
 .rulebook-modal {
   box-sizing: border-box;
-  width: min(1120px, 100%);
-  height: min(820px, calc(100vh - 48px));
+  /* 화면 가로 60% · 세로 70%(좁은 화면은 꽉 채운다). */
+  width: max(60vw, min(900px, 100%));
+  height: max(70vh, min(640px, calc(100vh - 48px)));
+  max-width: 100%;
+  max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
   color: var(--fg);

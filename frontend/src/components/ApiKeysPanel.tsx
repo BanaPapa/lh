@@ -34,6 +34,14 @@ import {
   type RuntimeKeyName,
 } from "../runtime-keys";
 
+type ApiTab = "status" | "browser" | "server";
+
+const TABS: { key: ApiTab; label: string }[] = [
+  { key: "status", label: "연결 현황" },
+  { key: "browser", label: "브라우저 키" },
+  { key: "server", label: "서버 키" },
+];
+
 interface ApiKeysPanelProps {
   open: boolean;
   onClose: () => void;
@@ -93,6 +101,8 @@ function payloadField(spec: ServerKeyStatus): ServerKeyField {
 export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
   const [status, setStatus] = useState<KeysStatusResponse | null>(null);
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
+  // 상단 탭: 연결 현황 / 브라우저 키 / 서버 키
+  const [tab, setTab] = useState<ApiTab>("status");
   const [checking, setChecking] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingBrowser, setSavingBrowser] = useState(false);
@@ -273,6 +283,20 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
             <X size={18} />
           </button>
         </header>
+        <div className="api-keys-tabs" role="tablist" aria-label="API 연결">
+          {TABS.map((entry) => (
+            <button
+              key={entry.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === entry.key}
+              className={tab === entry.key ? "is-active" : ""}
+              onClick={() => setTab(entry.key)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
 
         <div className="api-keys-body">
           {error && (
@@ -289,6 +313,7 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
           )}
 
           {/* ── 연결 현황 ──────────────────────────────── */}
+          {tab === "status" && (
           <section className="api-keys-group is-status">
             <header className="api-keys-group-head">
               <span className="api-keys-badge is-health">
@@ -391,7 +416,10 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
             )}
           </section>
 
+          )}
+
           {/* ── A. 브라우저 키 ─────────────────────────── */}
+          {tab === "browser" && (
           <section className="api-keys-group">
             <header className="api-keys-group-head">
               <span className="api-keys-badge is-browser">
@@ -454,7 +482,10 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
             </div>
           </section>
 
+          )}
+
           {/* ── B. 서버 키 ─────────────────────────────── */}
+          {tab === "server" && (
           <section className="api-keys-group">
             <header className="api-keys-group-head">
               <span className="api-keys-badge is-server">
@@ -590,7 +621,7 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
               </button>
             </div>
           </section>
-
+          )}
         </div>
       </section>
     </div>,

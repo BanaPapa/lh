@@ -698,7 +698,10 @@
 
 .api-keys-modal {
   box-sizing: border-box;
-  width: min(760px, 100%);
+  /* 룰북 모달과 같은 크기: 화면 가로 60% · 세로 70%(좁은 화면은 꽉 채운다). */
+  width: max(60vw, min(900px, 100%));
+  height: max(70vh, min(640px, calc(100vh - 48px)));
+  max-width: 100%;
   max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
@@ -1388,4 +1391,38 @@
   background: #dc2626;
 }
 
+/* API 연결 모달 상단 탭 */
+.api-keys-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
 
+.api-keys-tabs button {
+  padding: 10px 14px;
+  margin-bottom: -1px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.api-keys-tabs button:hover {
+  color: var(--fg);
+}
+
+.api-keys-tabs button.is-active {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+}
+
+.api-keys-body {
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+}
