@@ -39,7 +39,8 @@ export function ScreeningProgressModal({
   siteName,
   onStop,
 }: ScreeningProgressModalProps) {
-  const [logOpen, setLogOpen] = useState(false);
+  // 상세 로그는 처음부터 펼쳐 둔다. 접는 건 사용자가 고른 경우뿐이다.
+  const [logOpen, setLogOpen] = useState(true);
   const logBodyRef = useRef<HTMLDivElement>(null);
   const activeUnitRef = useRef<HTMLLIElement>(null);
   const items = progress?.items ?? [];

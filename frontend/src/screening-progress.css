@@ -80,7 +80,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 22px;
 }
 
 .sp-head b {
@@ -107,7 +107,8 @@
   padding: 0 6px 0 0;
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  /* 단계가 셋뿐이라 촘촘하면 한 덩어리로 읽힌다. 행 사이를 넉넉히 띄운다. */
+  gap: 22px;
   list-style: none;
   min-height: 0;
 }
@@ -120,7 +121,7 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
 }
 
 .sp-nm {
@@ -188,7 +189,7 @@
 
 .sp-log-wrap {
   margin-top: auto;
-  padding-top: 16px;
+  padding-top: 24px;
 }
 
 .sp-log-toggle {
@@ -223,7 +224,7 @@
 }
 
 .sp-log-body {
-  height: 200px;
+  height: 220px;
   margin-top: 8px;
   padding: 10px 12px;
   overflow-y: auto;
