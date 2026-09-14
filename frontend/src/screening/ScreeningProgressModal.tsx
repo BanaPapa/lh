@@ -1,13 +1,12 @@
-import { ChevronDown } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { ScreeningJobStatus } from "./types";
 
 /**
  * 심사 진행 모달.
  *
- * 좌: 단계별 진행률 막대 + 상세 로그(접힘) · 우: 라이브 카운트(확인한 건수)와
- * 중지 버튼. 심사가 끝나면 App 이 모달을 내리고 결과 레일이 이어받으므로
+ * 좌: 단계별 진행률 막대(행 아래에 그 단계의 메시지) · 우: 라이브 카운트(확인한
+ * 건수)와 중지 버튼. 심사가 끝나면 App 이 모달을 내리고 결과 레일이 이어받으므로
  * 완료 화면은 없다.
  */
 interface ScreeningProgressModalProps {
@@ -39,23 +38,12 @@ export function ScreeningProgressModal({
   siteName,
   onStop,
 }: ScreeningProgressModalProps) {
-  // 상세 로그는 처음부터 펼쳐 둔다. 접는 건 사용자가 고른 경우뿐이다.
-  const [logOpen, setLogOpen] = useState(true);
-  const logBodyRef = useRef<HTMLDivElement>(null);
   const activeUnitRef = useRef<HTMLLIElement>(null);
   const items = progress?.items ?? [];
   const completedCount = items.filter(
     (item) => item.status === "completed",
   ).length;
   const evidenceCount = items.reduce((sum, item) => sum + (item.count ?? 0), 0);
-  const logs = items.filter((item) => item.status !== "pending");
-
-  useEffect(() => {
-    if (logOpen && logBodyRef.current) {
-      logBodyRef.current.scrollTop = logBodyRef.current.scrollHeight;
-    }
-  }, [items, logOpen]);
-
   useEffect(() => {
     activeUnitRef.current?.scrollIntoView({ block: "nearest" });
   }, [progress?.stage]);
@@ -65,7 +53,7 @@ export function ScreeningProgressModal({
   return createPortal(
     <div className="sp-overlay">
       <section
-        className={`sp-card${logOpen ? " is-log-open" : ""}`}
+        className="sp-card"
         role="dialog"
         aria-modal="true"
         aria-label="심사 진행"
@@ -76,7 +64,7 @@ export function ScreeningProgressModal({
             <div className="sp-head">
               <b>심사 진행{siteName ? ` · ${siteName}` : ""}</b>
               <span className="sp-frac">
-                {completedCount} / {items.length || 3}
+                {completedCount} / {items.length || 4}
               </span>
             </div>
 
@@ -114,48 +102,13 @@ export function ScreeningProgressModal({
                       }}
                     />
                   </div>
+                  {item.message && item.status !== "pending" && (
+                    <p className="sp-unit-msg">{item.message}</p>
+                  )}
                 </li>
               ))}
             </ol>
 
-            <div className="sp-log-wrap">
-              <button
-                type="button"
-                className="sp-log-toggle"
-                aria-expanded={logOpen}
-                onClick={() => setLogOpen((current) => !current)}
-              >
-                <ChevronDown size={15} className={logOpen ? "is-open" : ""} />
-                상세 로그
-                <span className="sp-log-count">{logs.length || ""}</span>
-              </button>
-              {logOpen && (
-                <div className="sp-log-body" ref={logBodyRef}>
-                  {logs.length === 0 ? (
-                    <p className="sp-log-empty">로그가 없습니다</p>
-                  ) : (
-                    logs.map((item) => (
-                      <p
-                        key={`${item.id}-${item.status}`}
-                        className={`sp-log-entry is-${item.status}`}
-                      >
-                        <span className="sp-log-ic" aria-hidden="true">
-                          {item.status === "completed"
-                            ? "✓"
-                            : item.status === "failed"
-                              ? "✕"
-                              : "●"}
-                        </span>
-                        <span className="sp-log-msg">
-                          <b>{item.label}</b>
-                          {item.message && <small>{item.message}</small>}
-                        </span>
-                      </p>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
           </div>
 
           {/* 우: 라이브 카운트 */}

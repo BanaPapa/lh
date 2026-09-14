@@ -113,35 +113,40 @@ class ScreeningService:
         site = request.site
         report = _progress_reporter(progress)
 
-        # --- 1차 매입제외 ------------------------------------------------
-        await report("STAGE1", "1차 매입제외 판정", "running", 5, None, "유해요소 판정을 시작합니다.")
+        # --- 1차: 유해시설 조회 → 매입제외 판정 -----------------------------
+        await report(
+            "STAGE1_COLLECT", "1차 유해시설 조회", "running", 5, None,
+            "사업지 주변 유해시설 후보를 조회합니다.",
+        )
         review = await self._review(request, report)
         stage_one = _build_stage_one(review)
+        facility_count = sum(len(item.facilities) for item in stage_one.items)
         await report(
-            "STAGE1",
-            "1차 매입제외 판정",
-            "completed",
-            100,
-            len(stage_one.items),
-            stage_one.summary,
+            "STAGE1_COLLECT", "1차 유해시설 조회", "completed", 100, facility_count,
+            f"항목 {len(stage_one.items)}종에서 시설 {facility_count}곳을 확인했습니다.",
+        )
+        await report(
+            "STAGE1_JUDGE", "1차 매입제외 판정", "completed", 100,
+            len(stage_one.items), stage_one.summary,
         )
 
-        # --- 생활편의시설 조회 --------------------------------------------
-        await report("AMENITY", "생활편의시설 조회", "running", 20, None, "시설군을 병렬 조회합니다.")
+        # --- 2차: 생활편의시설 조회 → 생활편의성 배점 ------------------------
+        await report(
+            "STAGE2_COLLECT", "2차 생활편의시설 조회", "running", 20, None,
+            "시설군을 병렬 조회합니다.",
+        )
         rings = _site_rings(site.parcels)
         collections = await self.amenities.collect(rings, site.coordinates, MAX_RADIUS_M)
         collected = sum(1 for item in collections.values() if item.state != "missing")
         await report(
-            "AMENITY",
-            "생활편의시설 조회",
-            "completed",
-            100,
-            collected,
+            "STAGE2_COLLECT", "2차 생활편의시설 조회", "completed", 100, collected,
             f"시설군 {len(collections)}종 중 {collected}종을 확보했습니다.",
         )
 
-        # --- 2차 생활편의성 배점 ------------------------------------------
-        await report("SCORE", "생활편의성 배점", "running", 40, None, "심사표 등급을 대조합니다.")
+        await report(
+            "STAGE2_SCORE", "2차 생활편의성 배점", "running", 40, None,
+            "심사표 등급을 대조합니다.",
+        )
         stage_two = _build_stage_two(
             site.application_type,
             collections,
@@ -149,12 +154,8 @@ class ScreeningService:
             reference_only=stage_one.verdict == "fail",
         )
         await report(
-            "SCORE",
-            "생활편의성 배점",
-            "completed",
-            100,
-            stage_two.living_score_max,
-            _score_message(stage_two),
+            "STAGE2_SCORE", "2차 생활편의성 배점", "completed", 100,
+            stage_two.living_score_max, _score_message(stage_two),
         )
 
         return ScreeningResult(
@@ -193,10 +194,10 @@ class ScreeningService:
             count: int | None,
             message: str,
         ) -> None:
-            # 유해요소 엔진의 항목별 진행률을 1차 단계 하나로 접어서 올린다.
+            # 유해요소 엔진의 항목별 진행률을 「1차 유해시설 조회」 한 줄로 접어 올린다.
             await report(
-                "STAGE1",
-                "1차 매입제외 판정",
+                "STAGE1_COLLECT",
+                "1차 유해시설 조회",
                 "running",
                 max(5, min(95, item_progress)),
                 count,

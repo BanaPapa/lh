@@ -410,17 +410,24 @@ async def test_review_required_and_not_applicable_are_not_failures() -> None:
 
 
 @pytest.mark.asyncio
-async def test_screen_reports_progress_for_three_stages() -> None:
+async def test_screen_reports_progress_for_four_stages() -> None:
+    # 1차 조회 → 1차 판정 → 2차 조회 → 2차 배점. 단계 이름이 1차·2차 모두
+    # 「조회 / 판정·배점」 짝으로 맞아야 진행 화면에서 한눈에 읽힌다.
     service = build_service([category("a", "dataset_missing")])
-    seen: list[tuple[str, str, int]] = []
+    seen: list[tuple[str, str, str]] = []
 
     async def progress(item_id, label, status, item_progress, count, message):
-        seen.append((item_id, status, item_progress))
+        seen.append((item_id, label, status))
 
     await service.screen(ScreeningRequest(site=site()), progress)
 
-    completed = {item_id for item_id, status, _ in seen if status == "completed"}
-    assert completed == {"STAGE1", "AMENITY", "SCORE"}
+    completed = [(i, l) for i, l, s in seen if s == "completed"]
+    assert completed == [
+        ("STAGE1_COLLECT", "1차 유해시설 조회"),
+        ("STAGE1_JUDGE", "1차 매입제외 판정"),
+        ("STAGE2_COLLECT", "2차 생활편의시설 조회"),
+        ("STAGE2_SCORE", "2차 생활편의성 배점"),
+    ]
 
 
 @pytest.mark.asyncio

@@ -185,105 +185,17 @@
   background: var(--red, #d92d3f);
 }
 
-/* 상세 로그 — 목록 아래에 붙고, 펼치면 카드가 세로로 자란다 */
+/* 단계 메시지 — 막대 아래 한 줄. 로그 창을 따로 두지 않고 행에 붙인다. */
 
-.sp-log-wrap {
-  margin-top: auto;
-  padding-top: 24px;
-}
-
-.sp-log-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0;
+.sp-unit-msg {
+  margin: 8px 0 0;
   color: var(--muted);
-  background: transparent;
-  border: 0;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.sp-log-toggle:hover {
-  color: var(--fg);
-}
-
-.sp-log-toggle svg {
-  transition: transform 140ms ease;
-}
-
-.sp-log-toggle svg.is-open {
-  transform: rotate(180deg);
-}
-
-.sp-log-count {
-  color: var(--muted-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.sp-log-body {
-  height: 220px;
-  margin-top: 8px;
-  padding: 10px 12px;
-  overflow-y: auto;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-
-.sp-card.is-log-open .sp-log-body {
-  height: 320px;
-}
-
-.sp-log-empty {
-  margin: 0;
-  padding: 16px;
-  color: var(--muted);
-  font-size: 15px;
-  text-align: center;
-}
-
-.sp-log-entry {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0;
-  padding: 5px 0;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.5;
 }
 
-.sp-log-ic {
-  flex: none;
-  width: 16px;
-  color: var(--muted-2);
-  text-align: center;
-}
-
-.sp-log-entry.is-completed .sp-log-ic {
-  color: var(--blue);
-}
-
-.sp-log-entry.is-failed .sp-log-ic {
-  color: var(--red, #d92d3f);
-}
-
-.sp-log-msg {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
-}
-
-.sp-log-msg b {
-  color: var(--fg);
-  font-weight: 700;
-}
-
-.sp-log-msg small {
-  color: var(--muted);
-  font-size: 13.5px;
+.sp-unit.is-running .sp-unit-msg {
+  color: var(--fg-2);
 }
 
 /* 우측 라이브 카운트 */

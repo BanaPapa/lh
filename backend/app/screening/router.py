@@ -56,9 +56,10 @@ screening_tasks: set[asyncio.Task[None]] = set()
 
 # 진행 단계. 서비스가 올리는 item_id 와 1:1로 맞춘다.
 PROGRESS_ITEMS: tuple[tuple[str, str], ...] = (
-    ("STAGE1", "1차 매입제외 판정"),
-    ("AMENITY", "생활편의시설 조회"),
-    ("SCORE", "생활편의성 배점"),
+    ("STAGE1_COLLECT", "1차 유해시설 조회"),
+    ("STAGE1_JUDGE", "1차 매입제외 판정"),
+    ("STAGE2_COLLECT", "2차 생활편의시설 조회"),
+    ("STAGE2_SCORE", "2차 생활편의성 배점"),
 )
 
 # 심사표는 3종뿐이므로 목록 응답에서 전부 펼친다.
@@ -387,8 +388,8 @@ async def start_screening_job(
     async def run_job() -> None:
         job = screening_jobs[job_id]
         job.status = "running"
-        job.stage = "1차 매입제외 판정"
-        job.message = "유해요소 판정을 시작합니다."
+        job.stage = "1차 유해시설 조회"
+        job.message = "사업지 주변 유해시설 후보를 조회합니다."
         try:
             result = await service.screen(payload, update_progress)
             if cancel_event.is_set():
