@@ -4,7 +4,15 @@
    톤은 `--screening-tone` 한 변수로 모아 `.tone-*` 가 값만 갈아끼운다.
    토큰이 라이트/다크에서 각각 정의돼 있으므로 테마 분기 규칙은 두지 않는다. */
 
+/* 글꼴 체계 — 심사표 안 모든 글자는 이 7단 중 하나만 쓴다. */
 .screening-sheet {
+  --sh-display: 36px;
+  --sh-h1: 28px;
+  --sh-h2: 22px;
+  --sh-h3: 20px;
+  --sh-body: 19px;
+  --sh-small: 16px;
+  --sh-micro: 14px;
   display: grid;
   gap: 14px;
   padding: 14px 16px 26px;
@@ -55,20 +63,20 @@
 
 .screening-head-title small {
   color: var(--blue);
-  font-size: 13.8px;
+  font-size: var(--sh-micro);
   font-weight: 800;
   letter-spacing: 0.08em;
 }
 
 .screening-head-title h2 {
   margin: 0;
-  font-size: 27.5px;
+  font-size: var(--sh-h1);
 }
 
 .screening-head-title p {
   margin: 0;
   color: var(--muted);
-  font-size: 16.2px;
+  font-size: var(--sh-small);
 }
 
 .screening-head-controls {
@@ -85,7 +93,7 @@
 
 .screening-field > span {
   color: var(--muted);
-  font-size: 13.8px;
+  font-size: var(--sh-micro);
   font-weight: 700;
 }
 
@@ -98,7 +106,7 @@
   border: 1px solid var(--border-2);
   border-radius: 8px;
   font-family: inherit;
-  font-size: 16.2px;
+  font-size: var(--sh-small);
   cursor: pointer;
 }
 
@@ -143,7 +151,7 @@
   background: color-mix(in srgb, var(--blue) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--blue) 20%, var(--border));
   border-radius: 8px;
-  font-size: 15px;
+  font-size: var(--sh-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -160,7 +168,7 @@
   background: color-mix(in srgb, var(--screening-tone) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--screening-tone) 30%, transparent);
   border-radius: 8px;
-  font-size: 15px;
+  font-size: var(--sh-small);
   line-height: 1.5;
 }
 
@@ -201,20 +209,20 @@
 
 .screening-verdict small {
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--sh-small);
   font-weight: 700;
 }
 
 .screening-verdict strong {
   color: var(--screening-tone);
-  font-size: 37.5px;
+  font-size: var(--sh-display);
   line-height: 1.15;
 }
 
 .screening-verdict p {
   margin: 0;
   color: var(--fg-2);
-  font-size: 17.5px;
+  font-size: var(--sh-body);
   line-height: 1.55;
 }
 
@@ -240,12 +248,12 @@
 }
 
 .screening-reasons > header strong {
-  font-size: 18.8px;
+  font-size: var(--sh-h3);
 }
 
 .screening-reasons > header b {
   margin-left: auto;
-  font-size: 16.2px;
+  font-size: var(--sh-small);
 }
 
 .screening-reasons ol {
@@ -254,7 +262,7 @@
   display: grid;
   gap: 6px;
   color: var(--fg);
-  font-size: 17.5px;
+  font-size: var(--sh-body);
   line-height: 1.6;
 }
 
@@ -292,17 +300,17 @@
   color: var(--blue);
   background: var(--blue-dim);
   border-radius: 999px;
-  font-size: 13.8px;
+  font-size: var(--sh-micro);
   font-weight: 900;
 }
 
 .screening-section-heading strong {
-  font-size: 21.2px;
+  font-size: var(--sh-h2);
 }
 
 .screening-section-heading small {
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--sh-small);
 }
 
 /* ── C. 단계 탭 ─────────────────────────────────────────────── */
@@ -326,7 +334,7 @@
   border: 0;
   border-bottom: 2px solid transparent;
   font: inherit;
-  font-size: 15px;
+  font-size: var(--sh-small);
   font-weight: 600;
   cursor: pointer;
   transition:
@@ -350,7 +358,7 @@
 
 .screening-stage-tabs b {
   color: var(--muted-2);
-  font-size: 13px;
+  font-size: var(--sh-micro);
   font-weight: 500;
 }
 
@@ -371,7 +379,7 @@
   width: 100%;
   min-width: 720px;
   border-collapse: collapse;
-  font-size: 20.2px;
+  font-size: var(--sh-body);
 }
 
 .screening-table thead th {
@@ -379,7 +387,7 @@
   color: var(--muted);
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
-  font-size: 17.8px;
+  font-size: var(--sh-small);
   font-weight: 800;
   text-align: left;
   white-space: nowrap;
@@ -467,12 +475,12 @@
   display: block;
   margin-top: 2px;
   color: var(--muted-2);
-  font-size: 16.5px;
+  font-size: var(--sh-small);
 }
 
 .screening-row-label {
   color: var(--fg);
-  font-size: 20.2px;
+  font-size: var(--sh-body);
   font-weight: 700;
 }
 
@@ -485,7 +493,7 @@
   background: transparent;
   border: 0;
   font-family: inherit;
-  font-size: 20.2px;
+  font-size: var(--sh-body);
   font-weight: 700;
   text-align: left;
   cursor: pointer;
@@ -509,7 +517,7 @@
   color: var(--muted);
   background: var(--surface-2);
   border-radius: 999px;
-  font-size: 16.5px;
+  font-size: var(--sh-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -523,7 +531,7 @@
   display: block;
   margin: 4px 0 0;
   color: var(--amber);
-  font-size: 17.8px;
+  font-size: var(--sh-body);
   line-height: 1.5;
 }
 
@@ -552,7 +560,7 @@
   border: 1px solid
     color-mix(in srgb, var(--screening-tone, var(--muted)) 32%, transparent);
   border-radius: 999px;
-  font-size: 17.8px;
+  font-size: var(--sh-small);
   font-style: normal;
   font-weight: 800;
   white-space: nowrap;
@@ -586,7 +594,7 @@
   display: inline-flex;
   padding: 2px 8px;
   border-radius: 6px;
-  font-size: 16.5px;
+  font-size: var(--sh-small);
   font-style: normal;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -623,7 +631,7 @@
   gap: 4px;
   padding: 2px 7px;
   border-radius: 999px;
-  font-size: 16.5px;
+  font-size: var(--sh-small);
   line-height: 1.5;
   font-weight: 600;
   text-decoration: none;
@@ -729,24 +737,24 @@
 
 .screening-facility-list strong {
   overflow: hidden;
-  font-size: 15px;
+  font-size: var(--sh-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .screening-facility-list small {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--sh-micro);
 }
 
 .screening-facility-list b {
   color: var(--fg-2);
-  font-size: 15px;
+  font-size: var(--sh-small);
 }
 
 .screening-facility-list em {
   color: var(--muted-2);
-  font-size: 12.5px;
+  font-size: var(--sh-micro);
   font-style: normal;
   white-space: nowrap;
 }
@@ -764,7 +772,7 @@
 
 .screening-facility-list em.screening-badge {
   color: var(--screening-tone, var(--muted));
-  font-size: 13.8px;
+  font-size: var(--sh-micro);
 }
 
 .screening-passthrough-notes {
@@ -776,7 +784,7 @@
 
 .screening-passthrough-notes strong {
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--sh-small);
   font-weight: 800;
 }
 
@@ -786,7 +794,7 @@
   display: grid;
   gap: 4px;
   color: var(--fg-2);
-  font-size: 15px;
+  font-size: var(--sh-small);
   line-height: 1.55;
 }
 
@@ -803,7 +811,7 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--sh-small);
   line-height: 1.6;
 }
 
@@ -811,7 +819,7 @@
   caption-side: top;
   padding: 0 0 6px;
   color: var(--muted);
-  font-size: 14.4px;
+  font-size: var(--sh-small);
   text-align: left;
 }
 
@@ -835,19 +843,19 @@
 
 .screening-score-head small {
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--sh-small);
   font-weight: 700;
 }
 
 .screening-score-head strong {
   color: var(--fg);
-  font-size: 32.5px;
+  font-size: var(--sh-h1);
 }
 
 .screening-score-head p {
   margin: 0;
   color: var(--muted);
-  font-size: 13.8px;
+  font-size: var(--sh-small);
   line-height: 1.55;
   font-variant-numeric: tabular-nums;
 }
@@ -890,26 +898,26 @@
 }
 
 .screening-criterion > header strong {
-  font-size: 18.8px;
+  font-size: var(--sh-h3);
 }
 
 .screening-criterion > header b {
   color: var(--fg);
-  font-size: 21.2px;
+  font-size: var(--sh-h2);
   white-space: nowrap;
 }
 
 .screening-criterion-tier {
   margin: 0;
   color: var(--fg-2);
-  font-size: 16.2px;
+  font-size: var(--sh-body);
   line-height: 1.55;
 }
 
 .screening-criterion-basis {
   margin: 6px 0 0;
   color: var(--muted-2);
-  font-size: 13.8px;
+  font-size: var(--sh-small);
   line-height: 1.5;
 }
 
@@ -929,7 +937,7 @@
   border: 1px solid var(--border);
   border-radius: 999px;
   font-family: inherit;
-  font-size: 13.8px;
+  font-size: var(--sh-small);
   font-weight: 700;
   cursor: pointer;
 }
@@ -965,19 +973,19 @@
   background: var(--surface-2);
   border: 1px solid transparent;
   border-radius: 7px;
-  font-size: 15px;
+  font-size: var(--sh-small);
   line-height: 1.5;
 }
 
 .screening-tier-list li b {
   color: var(--fg-2);
-  font-size: 15px;
+  font-size: var(--sh-small);
   text-align: right;
 }
 
 .screening-tier-list li em {
   color: var(--teal);
-  font-size: 12.5px;
+  font-size: var(--sh-micro);
   font-style: normal;
   font-weight: 800;
   white-space: nowrap;
@@ -1014,12 +1022,12 @@
 
 .screening-out-of-scope > header strong {
   color: var(--muted);
-  font-size: 16.2px;
+  font-size: var(--sh-h3);
 }
 
 .screening-out-of-scope > header b {
   color: var(--fg-2);
-  font-size: 17.5px;
+  font-size: var(--sh-h3);
 }
 
 .screening-out-of-scope ul {
@@ -1040,19 +1048,19 @@
 
 .screening-out-of-scope li span {
   color: var(--fg-2);
-  font-size: 15px;
+  font-size: var(--sh-small);
 }
 
 .screening-out-of-scope li b {
   color: var(--fg-2);
-  font-size: 15px;
+  font-size: var(--sh-small);
   text-align: right;
 }
 
 .screening-out-of-scope li small {
   grid-column: 1 / -1;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--sh-micro);
   line-height: 1.5;
 }
 
@@ -1069,13 +1077,13 @@
 .screening-footer p {
   margin: 0;
   color: var(--muted);
-  font-size: 13.8px;
+  font-size: var(--sh-small);
   line-height: 1.6;
 }
 
 .screening-footer strong {
   color: var(--muted-2);
-  font-size: 13.8px;
+  font-size: var(--sh-small);
   font-weight: 700;
   line-height: 1.6;
 }
@@ -1092,7 +1100,7 @@
   border: 1px solid var(--border-2);
   border-radius: 8px;
   font-family: inherit;
-  font-size: 15px;
+  font-size: var(--sh-small);
   cursor: pointer;
 }
 
@@ -1139,19 +1147,19 @@
 
 .screening-empty small {
   color: var(--blue);
-  font-size: 13.8px;
+  font-size: var(--sh-micro);
   font-weight: 800;
   letter-spacing: 0.08em;
 }
 
 .screening-empty strong {
-  font-size: 20px;
+  font-size: var(--sh-h3);
 }
 
 .screening-empty p {
   margin: 0;
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--sh-small);
   line-height: 1.55;
 }
 
@@ -1161,7 +1169,7 @@
   gap: 6px;
   margin-top: 5px;
   color: var(--red);
-  font-size: 15px;
+  font-size: var(--sh-small);
   font-style: normal;
 }
 
@@ -1253,7 +1261,7 @@
 
 .screening-hit-select strong {
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--sh-small);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1262,7 +1270,7 @@
 .screening-hit-select small {
   overflow: hidden;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--sh-micro);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1271,7 +1279,7 @@
   margin-left: auto;
   flex: none;
   color: var(--fg-2);
-  font-size: 14px;
+  font-size: var(--sh-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1282,7 +1290,7 @@
 .screening-hit-meta {
   margin: 6px 0 0;
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--sh-micro);
   line-height: 1.5;
 }
 
@@ -1296,7 +1304,7 @@
 
 .screening-hit-badge-row small {
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--sh-micro);
 }
 
 .screening-hit-clear {
@@ -1307,7 +1315,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--sh-micro);
   cursor: pointer;
 }
 
@@ -1338,7 +1346,7 @@
   align-items: center;
   gap: 5px;
   color: var(--fg-2);
-  font-size: 12px;
+  font-size: var(--sh-micro);
 }
 
 .screening-hit-door > svg {
@@ -1353,7 +1361,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--sh-micro);
 }
 
 .screening-hit-designate {
@@ -1367,7 +1375,7 @@
   border: 1px solid var(--blue);
   border-radius: 7px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--sh-micro);
   cursor: pointer;
 }
 
@@ -1394,7 +1402,7 @@
   border: 1px solid currentColor;
   border-radius: 6px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--sh-micro);
   cursor: pointer;
 }
 
@@ -1408,7 +1416,7 @@
   color: var(--blue);
   background: color-mix(in srgb, var(--blue) 14%, transparent);
   border-radius: 999px;
-  font-size: 10.5px;
+  font-size: var(--sh-micro);
   font-style: normal;
   font-weight: 600;
   vertical-align: middle;
@@ -1417,7 +1425,7 @@
 .site-parcel-note {
   margin: 6px 0 0;
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--sh-micro);
   line-height: 1.5;
 }
 
