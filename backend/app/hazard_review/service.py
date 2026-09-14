@@ -217,6 +217,12 @@ SPECIFIC_GAS_REVIEW_NOTE = (
 # 본다(병원 저장소 = 업태 저장소 · 소방서 공기충전 = 제조구분 충전).
 GAS_SELF_USE_STORAGE_KEYWORDS: tuple[str, ...] = ("저장",)
 GAS_SELF_USE_FILLING_KEYWORDS: tuple[str, ...] = ("충전",)
+# 특정고압가스 사용신고 원장(specific_high_pressure_gas)의 사용목적(USE_PRPS). 사용신고
+# 시설은 가스를 쓰는 곳이라 업태·제조구분 컬럼이 비어 있어 위 판별에 걸리지 않았다
+# (2026-09-14 건국대학교병원 사례: 사용목적 「의료용」이 50m 위험물로 표시). 사용목적이
+# 「의료」면 기관 명칭과 무관하게 자체 사용이고, 기관 명칭 패턴이면서 사용목적이 적혀
+# 있으면(= 사용신고 행) 역시 자체 사용으로 본다.
+GAS_SELF_USE_PURPOSE_KEYWORDS: tuple[str, ...] = ("의료",)
 GAS_INSTITUTION_NAME_KEYWORDS: tuple[str, ...] = (
     "소방", "119", "병원", "의료원", "보건소", "요양", "대학교", "학교",
     "연구소", "연구원", "수자원공사", "토지주택공사", "전기안전공사", "가스안전공사",
@@ -228,15 +234,20 @@ def is_self_use_gas(
     name: str,
     business_category: str,
     manufacture_type: str,
+    use_purpose: str = "",
 ) -> bool:
     """고압가스 자가설비(기관 자체 사용) 행인지 판별한다 (LH 확정 2026-09-11 안건 ③).
 
     순수 함수. 명칭이 기관 패턴에 해당하면서, 업태가 「저장소」이거나 제조구분이
-    「충전」이면 자가 사용 목적으로 보아 유해시설 판정·검토·참고 핀에서 완전히 뺀다.
-    냉동(냉방설비)은 여기서 다루지 않는다 — 기존 _classify_gas_facilities 의 판정
-    미적용 처리를 그대로 둔다.
+    「충전」이거나 사용목적이 적혀 있으면(특정고압가스 사용신고 행) 자가 사용 목적으로
+    보아 유해시설 판정·검토·참고 핀에서 완전히 뺀다. 사용목적이 「의료」면 명칭과
+    무관하게 자가 사용이다. 냉동(냉방설비)은 여기서 다루지 않는다 — 기존
+    _classify_gas_facilities 의 판정 미적용 처리를 그대로 둔다.
     """
 
+    purpose = use_purpose or ""
+    if any(word in purpose for word in GAS_SELF_USE_PURPOSE_KEYWORDS):
+        return True
     name = name or ""
     if not any(word in name for word in GAS_INSTITUTION_NAME_KEYWORDS):
         return False
@@ -244,7 +255,7 @@ def is_self_use_gas(
     manufacture = manufacture_type or ""
     is_storage = any(word in business for word in GAS_SELF_USE_STORAGE_KEYWORDS)
     is_filling = any(word in manufacture for word in GAS_SELF_USE_FILLING_KEYWORDS)
-    return is_storage or is_filling
+    return is_storage or is_filling or bool(purpose.strip())
 
 # 테마파크(다목) 건축물용도 필터 — H-04-다 §6-1. 원장 BLDG_USG_NM 이 「체육시설」이면
 # 운동시설 해당으로 즉시 제외, 「근린생활시설」은 제2종 여부 추가 확인(검토).
@@ -1029,6 +1040,7 @@ class HazardReviewService:
                 row.name,
                 row.category,
                 str((getattr(row, "extra", None) or {}).get("MNFTR_SE_NM") or ""),
+                str((getattr(row, "extra", None) or {}).get("USE_PRPS") or ""),
             ):
                 continue
             distance = self._measure_distance(request, row.coordinates, None)

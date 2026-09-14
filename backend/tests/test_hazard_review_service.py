@@ -937,6 +937,18 @@ class TestSelfUseGas:
         # 기관 명칭이 아닌 일반 충전소 → 유지.
         assert is_self_use_gas("행복엘피지충전소", "제조", "충전") is False
 
+    def test_hospital_specific_gas_use_report_is_self_use(self) -> None:
+        # 특정고압가스 사용신고 행은 업태·제조구분이 비어 있다. 기관 명칭 + 사용목적
+        # (의료용)으로 자가설비로 본다(2026-09-14 건국대학교병원 사례).
+        assert is_self_use_gas("건국대학교병원", "", "", "의료용") is True
+
+    def test_medical_purpose_is_self_use_regardless_of_name(self) -> None:
+        assert is_self_use_gas("혜민의원", "", "", "의료용(병실의 환자 호흡용 등)") is True
+
+    def test_plant_specific_gas_use_report_is_not_self_use(self) -> None:
+        # 기관 명칭이 아닌 공장의 사용신고는 종전대로 검토 후보로 남는다(§7-3 미확정).
+        assert is_self_use_gas("삼성전자 화성사업장", "", "", "반도체 공정용") is False
+
     def test_refrigeration_non_institution_is_not_self_use_here(self) -> None:
         # 냉동(냉방설비)은 이 함수가 제외하지 않는다 — 기존 _classify_gas_facilities 의
         # 「냉동=판정 미적용」 처리를 그대로 둔다.
