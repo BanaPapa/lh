@@ -355,7 +355,9 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
               <table className="api-conn-table">
                 <thead>
                   <tr>
-                    <th>원천 · 쓰임</th>
+                    <th>원천</th>
+                    <th>쓰임</th>
+                    <th>키 · 발급처</th>
                     <th>상태</th>
                     <th aria-label="점검" />
                   </tr>
@@ -365,23 +367,30 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
                     <tr key={row.id} className={`is-${row.state}`}>
                       <td className="api-conn-label">
                         <strong>{row.label}</strong>
-                        <span className="api-conn-purpose">{row.purpose}</span>
-                        <span className="api-conn-meta">
-                          <code>{row.key_name}</code>
-                          {row.issuer_url && (
-                            <a
-                              href={row.issuer_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="api-keys-issuer"
-                            >
-                              <ExternalLink size={11} aria-hidden="true" />
-                              {row.issuer_name || "발급처"}
-                            </a>
-                          )}
-                        </span>
                       </td>
-                      <td className="api-conn-state">
+                      <td className="api-conn-purpose" title={row.purpose}>
+                        {row.purpose}
+                      </td>
+                      <td className="api-conn-meta">
+                        <code>{row.key_name}</code>
+                        {row.issuer_url && (
+                          <a
+                            href={row.issuer_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="api-keys-issuer"
+                          >
+                            <ExternalLink size={13} aria-hidden="true" />
+                            {row.issuer_name || "발급처"}
+                          </a>
+                        )}
+                      </td>
+                      <td
+                        className="api-conn-state"
+                        title={[row.detail, formatCheckedAt(row.checked_at)]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      >
                         <span className={`api-keys-chip is-${row.state}`}>
                           <i aria-hidden="true" />
                           {CONNECTION_STATE_LABEL[row.state]}

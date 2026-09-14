@@ -33,7 +33,7 @@
   align-items: center;
   gap: 8px;
   margin: 0;
-  font-size: 19px;
+  font-size: 24px;
 }
 
 .rulebook-head h2 > svg {
@@ -43,14 +43,14 @@
 .rulebook-head p {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 14.5px;
+  font-size: 19.5px;
 }
 
 .rulebook-body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 320px 1fr;
 }
 
 /* 왼쪽 목록 */
@@ -69,7 +69,7 @@
   margin: 0 0 6px;
   padding: 0 10px;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 17.5px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -95,14 +95,14 @@
   border: 1px solid transparent;
   border-radius: 9px;
   font: inherit;
-  font-size: 14.5px;
+  font-size: 19.5px;
   text-align: left;
   cursor: pointer;
 }
 
 .rulebook-nav button small {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 17.5px;
 }
 
 .rulebook-nav button:hover {
@@ -134,12 +134,12 @@
 
 .rulebook-content-head h3 {
   margin: 0;
-  font-size: 21px;
+  font-size: 26px;
 }
 
 .rulebook-tag {
   color: var(--muted);
-  font-size: 13.5px;
+  font-size: 18.5px;
 }
 
 .rulebook-section {
@@ -157,7 +157,7 @@
   align-items: center;
   gap: 10px;
   margin: 0 0 12px;
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--muted);
@@ -167,7 +167,7 @@
 /* 문단 사이 행간을 넓혀 항목 구분이 보이게 한다. */
 .rulebook-section p {
   margin: 0;
-  font-size: 15.5px;
+  font-size: 20.5px;
   line-height: 1.8;
 }
 
@@ -180,7 +180,7 @@
   align-items: center;
   padding: 2px 9px;
   border-radius: 999px;
-  font-size: 12.5px;
+  font-size: 17.5px;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -230,20 +230,20 @@
 }
 
 .rulebook-source-head strong {
-  font-size: 15px;
+  font-size: 20px;
 }
 
 .rulebook-kind {
   padding: 1px 7px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 17px;
   color: var(--muted);
   background: var(--surface-2);
   border: 1px solid var(--border);
 }
 
 .rulebook-sources p {
-  font-size: 14.5px;
+  font-size: 19.5px;
   line-height: 1.6;
   color: var(--muted);
 }

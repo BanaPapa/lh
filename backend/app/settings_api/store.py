@@ -35,7 +35,13 @@ class KeySpec:
 
 # 화면에 노출할 서버 비밀키 목록. 순서가 화면 순서가 된다.
 SERVER_KEY_SPECS: list[KeySpec] = [
-    KeySpec("KAKAO_REST_API_KEY", "카카오 REST API 키", "주소 검색·좌표 변환에 씁니다."),
+    KeySpec(
+        "KAKAO_REST_API_KEY",
+        "카카오 REST API 키",
+        "주소 검색·좌표 변환에 씁니다.",
+        issuer_name="카카오 개발자 콘솔",
+        issuer_url="https://developers.kakao.com/console/app",
+    ),
     KeySpec(
         "TAGO_SERVICE_KEY",
         "TAGO 국토교통 대중교통 서비스 키",
@@ -50,8 +56,20 @@ SERVER_KEY_SPECS: list[KeySpec] = [
         issuer_name="공공데이터포털",
         issuer_url="https://www.data.go.kr/iim/main/mypageMain.do",
     ),
-    KeySpec("NAVER_SEARCH_CLIENT_ID", "네이버 검색 Client ID", "대학·종합병원 정문과 역 출구 후보 조회에 씁니다."),
-    KeySpec("NAVER_SEARCH_CLIENT_SECRET", "네이버 검색 Client Secret", "대학·종합병원 정문과 역 출구 후보 조회에 씁니다."),
+    KeySpec(
+        "NAVER_SEARCH_CLIENT_ID",
+        "네이버 검색 Client ID",
+        "대학·종합병원 정문과 역 출구 후보 조회에 씁니다.",
+        issuer_name="네이버 개발자센터",
+        issuer_url="https://developers.naver.com/apps/#/list",
+    ),
+    KeySpec(
+        "NAVER_SEARCH_CLIENT_SECRET",
+        "네이버 검색 Client Secret",
+        "대학·종합병원 정문과 역 출구 후보 조회에 씁니다.",
+        issuer_name="네이버 개발자센터",
+        issuer_url="https://developers.naver.com/apps/#/list",
+    ),
     KeySpec(
         "VWORLD_API_KEY",
         "브이월드 API 키",

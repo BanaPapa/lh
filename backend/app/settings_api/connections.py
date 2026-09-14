@@ -221,7 +221,7 @@ def build_connections(hazard: Any, screening: Any, demo_mode: bool) -> Connectio
         if not configured:
             state, detail, at = "missing_key", "키가 없어 이 원천은 쓰지 않습니다.", None
         elif last is None:
-            state, detail, at = "ready", "키 있음 · 아직 점검하지 않음", None
+            state, detail, at = "ready", "키 있음 · 미점검", None
         else:
             state, detail, at = ("ok" if last.ok else "failed"), last.detail, last.at
         rows.append(
