@@ -348,11 +348,6 @@ export function ScreeningSheet({
             <em className={`screening-badge tone-${outcome.tone}`}>
               {item.outcome_label}
             </em>
-            {item.passthrough && (
-              <em className="screening-badge is-passthrough">
-                판정 미적용 · 통과 처리
-              </em>
-            )}
           </td>
           <td>
             <span className="screening-row-reason">{item.reason}</span>

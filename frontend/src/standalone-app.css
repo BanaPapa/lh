@@ -1485,7 +1485,7 @@
 .sheet-modal {
   box-sizing: border-box;
   width: max(80vw, min(900px, 100%));
-  height: max(70vh, min(640px, calc(100vh - 48px)));
+  height: max(90vh, min(640px, calc(100vh - 48px)));
   max-width: 100%;
   max-height: calc(100vh - 48px);
   overflow-y: auto;

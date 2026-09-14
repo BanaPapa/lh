@@ -809,3 +809,42 @@ async def test_station_exit_lookup_ignores_other_stations_and_shops() -> None:
     facility = result["subway"].facilities[0]
     assert facility.distance_m == pytest.approx(350, abs=3)
     assert [c.label for c in facility.front_door_candidates] == ["판교역 신분당선 1번출구"]
+
+
+@pytest.mark.asyncio
+async def test_road_parcel_is_not_used_as_facility_boundary() -> None:
+    # 지도 POI 가 시설 앞 도로 필지 위에 찍히면 도로망 전체가 시설 경계가 된다.
+    # 지목(지번 끝 글자)이 도로면 필지를 버리고 좌표로 잰다(2026-09-15 검수).
+    from app.services.parcel_sanity import parcel_rejection_reason
+
+    assert parcel_rejection_reason("170-1도")
+    assert parcel_rejection_reason("12천")
+    assert parcel_rejection_reason("903-14대") == ""
+    assert parcel_rejection_reason("903-14") == ""
+
+    site = square_ring(CENTER, 20.0)
+    kakao = FakeKakao(categories={"SC4": [place("전주초등학교", 400, "교육,학문 > 학교 > 초등학교")]})
+
+    class RoadVWorld(FakeVWorld):
+        async def parcel_at(self, lat, lng):
+            parcel = await super().parcel_at(lat, lng)
+            return parcel._replace(jibun="170-1도")
+
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=RoadVWorld(half=300.0))
+    result = await collector.collect([site], CENTER)
+    facility = result["school_elementary"].facilities[0]
+    assert facility.measurement_tier == "coordinate"
+    assert facility.distance_m == pytest.approx(380, abs=3)
+    assert "도로" in facility.front_door_notice
+    assert facility.facility_ring == ()
+
+
+@pytest.mark.asyncio
+async def test_measured_parcel_ring_is_carried_on_the_facility() -> None:
+    site = square_ring(CENTER, 20.0)
+    kakao = FakeKakao(categories={"SC4": [place("전주초등학교", 400, "교육,학문 > 학교 > 초등학교")]})
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=FakeVWorld(half=30.0))
+    result = await collector.collect([site], CENTER)
+    facility = result["school_elementary"].facilities[0]
+    assert facility.measurement_tier == "site_boundary"
+    assert len(facility.facility_ring) == 5

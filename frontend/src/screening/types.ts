@@ -159,6 +159,8 @@ export interface ScreeningFacilityHit {
   /** 사업지↔시설 최단거리 선분(1차 HazardFacility 와 같은 형태, #5). */
   nearest_boundary_point?: Coordinates | null;
   nearest_facility_point?: Coordinates | null;
+  /** 거리를 잰 시설 필지 경계(site_boundary). 지도는 이 링을 그대로 칠한다. */
+  facility_ring?: Coordinates[];
 }
 
 /** 시설군 하나의 수집 상태. 지정 원천과 실제 원천을 함께 보인다. */

@@ -570,6 +570,7 @@ def _group_status(
                 coordinates=facility.coordinates,
                 nearest_boundary_point=facility.nearest_boundary_point,
                 nearest_facility_point=facility.nearest_facility_point,
+                facility_ring=list(facility.facility_ring),
             )
             for facility in collection.facilities
         ],

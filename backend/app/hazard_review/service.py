@@ -71,6 +71,7 @@ from app.services.kakao import KakaoClient
 from app.services.cng import CngStationClient
 from app.services.factory_registry import FactoryRegistryClient
 from app.services.kgs import KgsLpgClient, PublicDataAPIError
+from app.services.parcel_sanity import parcel_rejection_reason
 from app.services.localdata import DATASET_BY_KEY
 from app.services.building_register import (
     BuildingRegisterAPIError,
@@ -1704,6 +1705,9 @@ class HazardReviewService:
             except VWorldAPIError:
                 parcel = None
             if parcel:
+                if parcel_rejection_reason(parcel.jibun):
+                    # 도로·하천 필지 위 좌표 — 필지를 붙이지 않고 점으로 남긴다.
+                    return [], parcel.pnu
                 return parcel.ring, parcel.pnu
         if cadastral_ready:
             try:
@@ -1719,6 +1723,8 @@ class HazardReviewService:
             except Exception:
                 local = None
             if local is not None:
+                if parcel_rejection_reason(local.jibun):
+                    return [], local.pnu
                 return local.ring, local.pnu
         return [], ""
 

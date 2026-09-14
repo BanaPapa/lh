@@ -156,6 +156,8 @@ class ScreeningFacilityHit(BaseModel):
     #   nearest_facility_point: 거리를 만든 시설 측 기준점(정문·출구·좌표)
     nearest_boundary_point: Coordinates | None = None
     nearest_facility_point: Coordinates | None = None
+    # 거리를 잰 시설 필지 경계(site_boundary). 지도가 재계산하지 않고 이 링을 칠한다.
+    facility_ring: list[Coordinates] = Field(default_factory=list)
 
 
 class ScreeningGroupStatus(BaseModel):

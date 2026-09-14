@@ -1836,9 +1836,14 @@ export function MapPanel({
       // 찾아 칠하고, 타일이 없는 축척에서는 핀으로 물러선다. 점으로 재는 시설
       // (버스정류장·역 출입구 등 measurement_tier=coordinate)은 필지를 칠하지
       // 않는다 — 정류장이 놓인 도로 필지 전체가 파랗게 칠해지면 오해를 낳는다.
-      const hitParcel = pointBased
-        ? null
-        : parcelContaining(hit.coordinates, parcelPool);
+      // 백엔드가 거리를 잰 필지 링을 주면 그것만 칠한다(지도에서 필지를 다시 찾지
+      // 않는다 — 좌표가 도로 필지에 떨어져 블록 전체가 칠해지던 문제). 링이 없으면
+      // 점 마커다.
+      const measuredRing = hit.facility_ring ?? [];
+      const hitParcel =
+        !pointBased && measuredRing.length >= 4
+          ? { geometry: measuredRing }
+          : null;
       const hitHasArea = Boolean(hitParcel);
       let hitHoverRing: Array<{ lat: number; lng: number }> | null = null;
       if (hitParcel) {

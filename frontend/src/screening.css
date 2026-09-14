@@ -63,7 +63,7 @@
 
 .screening-head-title small {
   color: var(--blue);
-  font-size: var(--sh-micro);
+  font-size: var(--sh-small);
   font-weight: 800;
   letter-spacing: 0.08em;
 }
@@ -93,7 +93,7 @@
 
 .screening-field > span {
   color: var(--muted);
-  font-size: var(--sh-micro);
+  font-size: var(--sh-small);
   font-weight: 700;
 }
 

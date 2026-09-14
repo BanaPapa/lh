@@ -43,6 +43,7 @@ from app.services.geo import (
 )
 from app.services.kakao import KakaoClient
 from app.services.naver_search import NaverSearchClient
+from app.services.parcel_sanity import parcel_rejection_reason
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
 from app.services.vworld import ParcelFeature, VWorldClient
@@ -249,6 +250,8 @@ class CollectedFacility(NamedTuple):
     # 사업지↔시설 최단거리 선분(1차 HazardFacility 와 같은 형태, #5).
     nearest_boundary_point: Coordinates | None = None
     nearest_facility_point: Coordinates | None = None
+    # 거리를 잰 시설 필지의 경계(site_boundary 일 때). 지도가 이 링을 그대로 칠한다.
+    facility_ring: tuple[Coordinates, ...] = ()
 
 
 class GroupCollection(NamedTuple):
@@ -1589,6 +1592,11 @@ def _measure_to_parcel(
 
     if parcel is None:
         return facility._replace(front_door_notice=BOUNDARY_FALLBACK_NOTICE)
+    rejection = parcel_rejection_reason(parcel.jibun)
+    if rejection:
+        # 좌표가 도로·하천 필지 위에 떨어진 경우(지도 POI 가 시설 앞 도로에 찍힘).
+        # 그 필지를 경계로 쓰면 도로망 전체가 시설이 된다. 좌표로 잰다.
+        return facility._replace(front_door_notice=f"{rejection} — 시설 좌표로 쟀습니다.")
     if parcel.area_m2 >= CAMPUS_PARCEL_MAX_AREA_M2:
         # 좌표가 떨어진 필지가 통필지(하천·단지 전체 등)면 경계가 시설 실체보다
         # 훨씬 넓어 거리가 부당하게 줄어든다. 좌표 기준을 유지하고 사유를 적는다.
@@ -1617,6 +1625,7 @@ def _measure_to_parcel(
         front_door_notice=notice,
         nearest_facility_point=facility_point or facility.nearest_facility_point,
         nearest_boundary_point=boundary_point or facility.nearest_boundary_point,
+        facility_ring=tuple(parcel.ring),
     )
 
 
