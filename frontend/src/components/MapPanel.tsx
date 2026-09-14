@@ -43,8 +43,10 @@ import {
   boxesOverlap,
   metersBetween,
   parcelContaining,
+  pointInRing,
   subdivideTile,
   tileCenter,
+  tileKey,
   tilesForViewport,
   tileWithinRadius,
   viewportOutsideRadius,
@@ -102,6 +104,22 @@ interface MapViewport {
 const CADASTRAL_RADIUS_M = 350;
 // 지적도가 없는 자리를 눌렀을 때 그 주변으로 새로 받는 반경(m).
 const CADASTRAL_CLICK_RADIUS_M = 300;
+
+/** 타일 또는 그 조상(쿼드 분할 전 부모)이 허용 집합에 있으면 그린다. */
+function isTileAllowed(
+  tile: CadastralTile,
+  allowed: Set<string> | null,
+): boolean {
+  if (allowed === null) return true;
+  let { row, col, depth } = tile;
+  while (depth >= 0) {
+    if (allowed.has(tileKey(row, col, depth))) return true;
+    row = Math.floor(row / 2);
+    col = Math.floor(col / 2);
+    depth -= 1;
+  }
+  return false;
+}
 const METERS_PER_DEGREE_LAT = 111_320;
 
 // 지적도 타일 동시 요청 상한. 나머지는 큐에 두고 하나 끝날 때마다 채운다.
@@ -683,6 +701,14 @@ export function MapPanel({
     cadastralAutoRef.current = cadastralAutoOn;
   }, [cadastralAutoOn]);
   const cadastralParcelsRef = useRef<CadastralParcel[]>([]);
+  // 자동 갱신이 꺼진 동안 그려도 되는 타일 키. null 이면 제한 없음(ON 상태).
+  // 심사 결과가 오는 순간 그때 화면에 있던 타일로 고정하고, 빈 자리 클릭으로
+  // 받은 타일만 여기에 더한다 — 인접 지역으로 옮겨도 이전에 받아 둔 타일이
+  // 되살아나지 않는다.
+  const allowedTileKeysRef = useRef<Set<string> | null>(null);
+  // 지도에 영역으로 그린 시설 링(유해시설·2차 근거 시설). 지도 클릭이 영역 안이면
+  // 필지 토글·타일 로드를 하지 않는다(영역 클릭은 시설 선택이다).
+  const facilityRingsRef = useRef<Array<{ lat: number; lng: number }[]>>([]);
   const onCadastralReviveRef = useRef(onCadastralRevive);
   useEffect(() => {
     onCadastralReviveRef.current = onCadastralRevive;
@@ -863,7 +889,9 @@ export function MapPanel({
           return;
         }
       }
-      if (tileCacheRef.current.has(tile.key)) leaves.push(tile);
+      if (!tileCacheRef.current.has(tile.key)) return;
+      if (!isTileAllowed(tile, allowedTileKeysRef.current)) return;
+      leaves.push(tile);
     };
     tilesForViewport(box).forEach(walk);
 
@@ -1063,6 +1091,9 @@ export function MapPanel({
           tileWithinRadius(point, tile, CADASTRAL_CLICK_RADIUS_M) &&
           tileWithinRadius(center, tile, CADASTRAL_MAX_RADIUS_M),
       );
+      if (allowedTileKeysRef.current) {
+        pending.forEach((tile) => allowedTileKeysRef.current!.add(tile.key));
+      }
       enqueueTiles(pending, cadastralGenRef.current);
     },
     [enqueueTiles],
@@ -1097,6 +1128,9 @@ export function MapPanel({
     setCadastralParcels([]);
     setCadastralNote("");
     setCadastralAutoOn(true);
+    cadastralAutoRef.current = true;
+    allowedTileKeysRef.current = null;
+    facilityRingsRef.current = [];
     if (!site) return;
     cadastralCenterRef.current = site.coordinates;
 
@@ -1119,9 +1153,18 @@ export function MapPanel({
     enqueueTiles(pending, gen);
   }, [site, enqueueTiles]);
 
-  // 심사 결과가 오면 지적도 자동 갱신을 끈다(심사 시점 뷰포트까지만 남긴다).
+  // 심사 결과가 오면 지적도 자동 갱신을 끄고, 그 순간 뷰포트에 걸린 타일로 고정한다.
   useEffect(() => {
-    if (screeningResult) setCadastralAutoOn(false);
+    if (!screeningResult) return;
+    // 심사 시점까지 받아 둔 타일(사업지 주변 + 그때까지 둘러본 곳)만 남긴다.
+    // 결과 직후 지도는 축소돼(L5~6) 뷰포트 타일이 없으므로, 뷰포트가 아니라 캐시로
+    // 고정해야 다시 확대했을 때 사업지 주변 필지가 그대로 보인다.
+    allowedTileKeysRef.current = new Set<string>([
+      ...tileCacheRef.current.keys(),
+      ...tileSupersededRef.current,
+    ]);
+    cadastralAutoRef.current = false;
+    setCadastralAutoOn(false);
   }, [screeningResult]);
 
   useEffect(() => {
@@ -1274,11 +1317,16 @@ export function MapPanel({
           (event) => {
             const point = clickCoordinates(event);
             if (!point) return;
-            const covered = parcelContaining(point, cadastralParcelsRef.current);
-            if (covered) {
+            // 유해시설·편의시설 영역 안 클릭은 시설 선택이다(폴리곤 리스너가 처리).
+            if (facilityRingsRef.current.some((ring) => pointInRing(point, ring))) {
+              return;
+            }
+            // 화면에 그려진 필지 위면 종전대로 필지 토글.
+            if (parcelContaining(point, cadastralParcelsRef.current)) {
               toggleParcelRef.current?.(point.lat, point.lng);
               return;
             }
+            // 지적도가 안 깔린 자리: 주변 300m 를 받고, 심사 결과가 있으면 되돌린다.
             loadCadastralAroundRef.current(point);
             onCadastralReviveRef.current?.();
           },
@@ -1405,6 +1453,7 @@ export function MapPanel({
 
     overlaysRef.current.forEach((overlay) => overlay.setMap?.(null));
     overlaysRef.current = [];
+    facilityRingsRef.current = [];
 
     const center = toMapPosition(
       runtime,
@@ -1575,6 +1624,7 @@ export function MapPanel({
         });
         overlaysRef.current.push(facilityPolygon);
         facilityPolygonForHover = facilityPolygon;
+        facilityRingsRef.current.push(ring);
       }
 
       const distanceText = `${Math.round(
@@ -1754,6 +1804,7 @@ export function MapPanel({
         });
         overlaysRef.current.push(hitPolygon);
         hitPolygonForHover = hitPolygon;
+        facilityRingsRef.current.push(hitParcel.geometry);
       }
       const metaText = `${ref.groupLabel} · ${distanceText} · ${measurementShortLabel(
         hit,
@@ -2080,7 +2131,15 @@ export function MapPanel({
                 const next = !cadastralAutoOn;
                 setCadastralAutoOn(next);
                 cadastralAutoRef.current = next;
-                if (next) cadastralRefreshRef.current();
+                if (next) {
+                  allowedTileKeysRef.current = null;
+                  cadastralRefreshRef.current();
+                } else {
+                  allowedTileKeysRef.current = new Set<string>([
+                    ...tileCacheRef.current.keys(),
+                    ...tileSupersededRef.current,
+                  ]);
+                }
               }}
             >
               <Layers size={16} aria-hidden="true" />

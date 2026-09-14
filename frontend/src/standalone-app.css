@@ -416,7 +416,8 @@
 
 /* 결과 패널이 떠 있는 동안에는 지도 확대·축소 컨트롤을 그 왼쪽으로 비켜 놓는다. */
 
-.solo-map-stage[data-rail="open"] .map-zoom-control {
+.solo-map-stage[data-rail="open"] .map-zoom-control,
+.solo-map-stage[data-rail="open"] .map-zoning-control {
   right: calc(var(--rail-w) + var(--rail-gap) + 14px);
 }
 
