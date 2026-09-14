@@ -550,6 +550,25 @@ function App() {
     setSearchNotice("");
   };
 
+  /**
+   * 지적도 없는 자리를 눌러 타일을 새로 받았을 때. 심사 결과가 있으면 결과를 내려
+   * 필지를 다시 고를 수 있게 한다(사업지·이미 고른 필지는 그대로).
+   */
+  const handleCadastralRevive = () => {
+    if (!screeningResult && !screeningRunning) return;
+    screeningRunRef.current += 1;
+    setScreeningResult(null);
+    setScreeningProgress(null);
+    setScreeningRunning(false);
+    setScreeningError("");
+    setSheetOpen(false);
+    setSelectedHazardFindingId(null);
+    setSelectedHazardFacilityId(null);
+    setScreeningDiff(null);
+    setExpandedScreeningGroupKey(null);
+    setSelectedScreeningHitName(null);
+  };
+
   /** 심사를 실행한다. 결과 레일을 펼치고 열려 있던 심사표는 닫는다. */
   const handleRun = async () => {
     if (!selectedCandidate) return;
@@ -625,6 +644,7 @@ function App() {
             onSelectCandidate={handleSelectCandidate}
             designationTarget={designationTarget}
             onCancelDesignation={() => setDesignationTarget(null)}
+            onCadastralRevive={handleCadastralRevive}
             viewportRequest={viewportRequest}
           />
 

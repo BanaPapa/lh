@@ -100,6 +100,8 @@ interface MapViewport {
 // 검색 직후 첫 화면에 즉시 요청할 사업지 주변 반경(m). 인접 필지를 고르기에
 // 충분하다. 이후는 지도 idle 마다 뷰포트와 겹치는 타일을 반경 3km 까지 채운다.
 const CADASTRAL_RADIUS_M = 350;
+// 지적도가 없는 자리를 눌렀을 때 그 주변으로 새로 받는 반경(m).
+const CADASTRAL_CLICK_RADIUS_M = 300;
 const METERS_PER_DEGREE_LAT = 111_320;
 
 // 지적도 타일 동시 요청 상한. 나머지는 큐에 두고 하나 끝날 때마다 채운다.
@@ -585,6 +587,11 @@ interface MapPanelProps {
   designationTarget?: string | null;
   onCancelDesignation?: () => void;
   /**
+   * 지적도가 아직 안 깔린 자리를 눌러 그 주변 타일을 새로 불러왔을 때. 심사 결과가
+   * 있는 상태라면 App 이 결과를 내리고 필지를 다시 고를 수 있게 되돌린다.
+   */
+  onCadastralRevive?: () => void;
+  /**
    * 지도를 사업지 기준으로 재-fit 하라는 요청 카운터. 두 경우에 증가한다.
    * (1) 같은 검색어로 검색 버튼을 다시 눌러 스크롤로 벗어난 지도를 되돌릴 때(버그2),
    * (2) 검색 직후 자동 필지 로드가 성공해 그 필지에 맞춰 처음 화면을 잡아야 할 때.
@@ -614,6 +621,7 @@ export function MapPanel({
   onSelectCandidate,
   designationTarget = null,
   onCancelDesignation,
+  onCadastralRevive,
   viewportRequest = 0,
 }: MapPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -666,6 +674,19 @@ export function MapPanel({
   // 자동으로 켜지 않는다(zoningDismissedRef).
   const [zoningLayerOn, setZoningLayerOn] = useState(false);
   const zoningDismissedRef = useRef(false);
+  // 지적도 타일 자동 갱신(idle 마다 뷰포트 타일 조회). 심사가 끝나면 끈다 —
+  // 심사 시점 뷰포트까지만 남기고, 이후 이동해도 새로 받지 않는다. 사용자가
+  // 스위치로 다시 켤 수 있고, 타일 없는 자리를 누르면 그 주변만 따로 받는다.
+  const [cadastralAutoOn, setCadastralAutoOn] = useState(true);
+  const cadastralAutoRef = useRef(true);
+  useEffect(() => {
+    cadastralAutoRef.current = cadastralAutoOn;
+  }, [cadastralAutoOn]);
+  const cadastralParcelsRef = useRef<CadastralParcel[]>([]);
+  const onCadastralReviveRef = useRef(onCadastralRevive);
+  useEffect(() => {
+    onCadastralReviveRef.current = onCadastralRevive;
+  }, [onCadastralRevive]);
   // 브라우저 키는 런타임(localStorage → env 폴백)에서 읽는다. 값이 바뀌면
   // 아래 지도 초기화 이펙트가 다시 돌아 새 키로 SDK 를 다시 로드한다.
   const kakaoJavascriptKey = useRuntimeKey("VITE_KAKAO_JAVASCRIPT_KEY");
@@ -1008,6 +1029,11 @@ export function MapPanel({
     }
 
     cadastralViewportRef.current = box;
+    // 자동 갱신이 꺼져 있으면(심사 뒤) 이미 받은 타일만 다시 그리고 새로 받지 않는다.
+    if (!cadastralAutoRef.current) {
+      recomputeVisibleParcels();
+      return;
+    }
     // 뷰포트와 겹치고 3km 안인 타일만 요청 대상.
     const pending = tilesForViewport(box).filter((tile) =>
       tileWithinRadius(center, tile, CADASTRAL_MAX_RADIUS_M),
@@ -1015,6 +1041,36 @@ export function MapPanel({
     enqueueTiles(pending, cadastralGenRef.current);
     recomputeVisibleParcels();
   }, [mapReady, site, enqueueTiles, recomputeVisibleParcels]);
+
+  /** 누른 자리 주변 300m 타일만 따로 받는다(자동 갱신과 무관). */
+  const loadCadastralAround = useCallback(
+    (point: { lat: number; lng: number }) => {
+      const center = cadastralCenterRef.current;
+      if (!center) return;
+      const deltaLat = CADASTRAL_CLICK_RADIUS_M / METERS_PER_DEGREE_LAT;
+      const deltaLng =
+        CADASTRAL_CLICK_RADIUS_M /
+        (METERS_PER_DEGREE_LAT *
+          Math.max(Math.cos((point.lat * Math.PI) / 180), 0.2));
+      const box: LatLngBox = {
+        south: point.lat - deltaLat,
+        north: point.lat + deltaLat,
+        west: point.lng - deltaLng,
+        east: point.lng + deltaLng,
+      };
+      const pending = tilesForViewport(box).filter(
+        (tile) =>
+          tileWithinRadius(point, tile, CADASTRAL_CLICK_RADIUS_M) &&
+          tileWithinRadius(center, tile, CADASTRAL_MAX_RADIUS_M),
+      );
+      enqueueTiles(pending, cadastralGenRef.current);
+    },
+    [enqueueTiles],
+  );
+  const loadCadastralAroundRef = useRef(loadCadastralAround);
+  useEffect(() => {
+    loadCadastralAroundRef.current = loadCadastralAround;
+  }, [loadCadastralAround]);
 
   // idle 리스너(지도 생성 시 1회 등록)가 항상 최신 콜백을 부르도록 ref 를 갱신한다.
   useEffect(() => {
@@ -1040,6 +1096,7 @@ export function MapPanel({
     cadastralCenterRef.current = null;
     setCadastralParcels([]);
     setCadastralNote("");
+    setCadastralAutoOn(true);
     if (!site) return;
     cadastralCenterRef.current = site.coordinates;
 
@@ -1061,6 +1118,15 @@ export function MapPanel({
     );
     enqueueTiles(pending, gen);
   }, [site, enqueueTiles]);
+
+  // 심사 결과가 오면 지적도 자동 갱신을 끈다(심사 시점 뷰포트까지만 남긴다).
+  useEffect(() => {
+    if (screeningResult) setCadastralAutoOn(false);
+  }, [screeningResult]);
+
+  useEffect(() => {
+    cadastralParcelsRef.current = cadastralParcels;
+  }, [cadastralParcels]);
 
   // 지적도 경계는 마커·밴드와 수명이 달라 별도 레이어로 관리한다.
   useEffect(() => {
@@ -1199,14 +1265,22 @@ export function MapPanel({
         runtimeRef.current = createdRuntime;
         mapRef.current = createdMap;
 
-        // 지도 빈 곳을 누르면 그 자리의 필지를 사업지에 더한다.
+        // 지도 빈 곳을 누르면: 그 자리에 지적도가 깔려 있으면 필지 토글, 없으면
+        // 주변 300m 타일을 새로 받는다(심사 뒤라면 App 이 결과를 내려 다시 고르게 한다).
         mapClickListenerRef.current = addMapListener(
           createdRuntime,
           createdMap,
           "click",
           (event) => {
             const point = clickCoordinates(event);
-            if (point) toggleParcelRef.current?.(point.lat, point.lng);
+            if (!point) return;
+            const covered = parcelContaining(point, cadastralParcelsRef.current);
+            if (covered) {
+              toggleParcelRef.current?.(point.lat, point.lng);
+              return;
+            }
+            loadCadastralAroundRef.current(point);
+            onCadastralReviveRef.current?.();
           },
         );
 
@@ -1996,6 +2070,23 @@ export function MapPanel({
 
         {hazardMode && (
           <div className="map-zoning-control">
+            <button
+              type="button"
+              className={`map-zoning-toggle${cadastralAutoOn ? " is-on" : ""}`}
+              role="switch"
+              aria-checked={cadastralAutoOn}
+              title="지도를 옮길 때마다 지적도(필지 경계)를 새로 불러올지"
+              onClick={() => {
+                const next = !cadastralAutoOn;
+                setCadastralAutoOn(next);
+                cadastralAutoRef.current = next;
+                if (next) cadastralRefreshRef.current();
+              }}
+            >
+              <Layers size={16} aria-hidden="true" />
+              <span>지적도</span>
+              <em>{cadastralAutoOn ? "ON" : "OFF"}</em>
+            </button>
             <button
               type="button"
               className={`map-zoning-toggle${zoningLayerOn ? " is-on" : ""}`}

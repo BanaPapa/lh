@@ -604,6 +604,10 @@
   top: 158px;
   right: 18px;
   z-index: 14;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .map-zoning-toggle {
