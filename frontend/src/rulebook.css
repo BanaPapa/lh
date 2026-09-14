@@ -164,15 +164,33 @@
   text-transform: uppercase;
 }
 
-/* 문단 사이 행간을 넓혀 항목 구분이 보이게 한다. */
+/* 문장마다 한 줄(.rulebook-para 안 p), 문단(.rulebook-para) 사이는 더 넓게. */
 .rulebook-section p {
   margin: 0;
   font-size: 20.5px;
-  line-height: 1.8;
+  line-height: 1.7;
 }
 
-.rulebook-section p + p {
-  margin-top: 16px;
+.rulebook-para + .rulebook-para {
+  margin-top: 22px;
+}
+
+.rulebook-para p + p {
+  margin-top: 6px;
+}
+
+.rulebook-list {
+  margin: 8px 0 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 20.5px;
+  line-height: 1.7;
+}
+
+.rulebook-list li {
+  padding-left: 4px;
 }
 
 .rulebook-mode {

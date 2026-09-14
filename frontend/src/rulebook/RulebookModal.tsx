@@ -5,6 +5,7 @@ import {
   APPLY_MODE_LABEL,
   RULEBOOK_GROUPS,
   type RulebookItem,
+  type RulebookParagraph,
 } from "./rulebookContent";
 import "../rulebook.css";
 
@@ -21,6 +22,48 @@ const TAB_LABELS: Record<string, string> = {
   stage2: "2차 생활편의성",
   manual: "자동 판정 아닌 항목",
 };
+
+/** 문장 끝(마침표 + 공백)에서 잘라 문장마다 한 줄로 만든다. 괄호 안 마침표는 건드리지 않는다. */
+function splitSentences(text: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth = Math.max(0, depth - 1);
+    current += ch;
+    if (ch === "." && depth === 0 && (text[i + 1] === " " || i === text.length - 1)) {
+      out.push(current.trim());
+      current = "";
+      i += 1; // 뒤따르는 공백을 건너뛴다
+    }
+  }
+  if (current.trim()) out.push(current.trim());
+  return out;
+}
+
+function Paragraph({ value }: { value: RulebookParagraph }) {
+  if (typeof value === "string") {
+    return (
+      <div className="rulebook-para">
+        {splitSentences(value).map((sentence, index) => (
+          <p key={index}>{sentence}</p>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="rulebook-para">
+      {value.lead && <p>{value.lead}</p>}
+      <ul className="rulebook-list">
+        {value.items.map((entry, index) => (
+          <li key={index}>{entry}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function findItem(id: string): RulebookItem {
   for (const group of RULEBOOK_GROUPS) {
@@ -135,7 +178,7 @@ export function RulebookModal({ open, onClose }: RulebookModalProps) {
             <section className="rulebook-section">
               <h4>LH 기준</h4>
               {item.lhCriteria.map((paragraph, index) => (
-                <p key={index}>{paragraph}</p>
+                <Paragraph key={index} value={paragraph} />
               ))}
             </section>
 
@@ -147,7 +190,7 @@ export function RulebookModal({ open, onClose }: RulebookModalProps) {
                 </span>
               </h4>
               {item.apply.paragraphs.map((paragraph, index) => (
-                <p key={index}>{paragraph}</p>
+                <Paragraph key={index} value={paragraph} />
               ))}
             </section>
 
