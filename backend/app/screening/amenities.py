@@ -25,6 +25,7 @@ from app.screening.front_door import (
     STATION_DOOR_TOKENS,
     FrontDoorRef,
     FrontDoorStore,
+    _university_tokens,
     auto_front_door,
     collect_door_candidates,
     normalize_key,
@@ -92,6 +93,14 @@ STATION_EXIT_CATEGORY = "지하철출구"
 STATION_EXIT_MAX_NUMBER = 16
 STATION_EXIT_MISS_STREAK = 3
 STATION_EXIT_SEARCH_RADIUS_M = 1500
+
+# 대학·종합병원 문 후보 — 카카오 「입출구」 분류 POI(「건국대학교 상허문」·「건국대학교병원
+# 입구」·「세종대학교 정문」). 네이버 지역검색은 질의당 5건(무작위)이라 정문이 빠지는 일이
+# 잦았다(2026-09-16 건국대학교병원: 정문 미확인 → 좌표 폴백). 시설명에 아래 접미를 붙여
+# 묻고 분류가 입출구인 결과만 받는다.
+GATE_CATEGORY = "입출구"
+GATE_QUERY_SUFFIXES: tuple[str, ...] = ("정문", "문", "입구")
+GATE_SEARCH_RADIUS_M = 3000
 
 
 def station_base(name: str) -> str:
@@ -651,51 +660,91 @@ class AmenityCollector:
         종합병원 수만큼만 는다) 대학과 동일한 3단 측정 경로를 타게 한다.
         """
 
-        if self.naver is None or not self.naver.enabled:
+        use_naver = self.naver is not None and self.naver.enabled
+        use_kakao = self.kakao.enabled
+        if not (use_naver or use_kakao):
             return
-        # (base_name, exclude_tokens) 목록. 대학은 정문 공유 단위(university_base)로,
-        # 종합병원은 시설명 그대로 묻는다. 종합병원 정문 후보는 '병원' 토큰을
-        # 배제하지 않는다(HOSPITAL_EXCLUDE_TOKENS).
-        targets: list[tuple[str, tuple[str, ...]]] = []
+        # (base_name, exclude_tokens, 시설 좌표) 목록. 대학은 정문 공유 단위
+        # (university_base)로, 종합병원은 시설명 그대로 묻는다. 종합병원 정문 후보는
+        # '병원' 토큰을 배제하지 않는다(HOSPITAL_EXCLUDE_TOKENS).
+        targets: list[tuple[str, tuple[str, ...], Coordinates]] = []
         seen: set[str] = set()
 
-        def _add(base: str, exclude_tokens: tuple[str, ...]) -> None:
+        def _add(base: str, exclude_tokens: tuple[str, ...], at: Coordinates) -> None:
             key = normalize_key(base)
             if key and key not in self._front_door_candidates and key not in seen:
                 seen.add(key)
-                targets.append((base, exclude_tokens))
+                targets.append((base, exclude_tokens, at))
 
         for feed in ("school", "university"):
             result = results.get(feed)
             if isinstance(result, FeedResult):
                 for place in result.places:
                     if _is_university(place):
-                        _add(university_base(place.name), _AUTO_EXCLUDE_TOKENS)
+                        _add(
+                            university_base(place.name),
+                            _AUTO_EXCLUDE_TOKENS,
+                            place.coordinates,
+                        )
         hospital_result = results.get("hospital")
         if isinstance(hospital_result, FeedResult):
             for place in hospital_result.places:
                 if _is_general_hospital(place):
-                    _add(place.name, HOSPITAL_EXCLUDE_TOKENS)
+                    _add(place.name, HOSPITAL_EXCLUDE_TOKENS, place.coordinates)
         if not targets:
             return
 
-        async def one(base: str, exclude_tokens: tuple[str, ...]) -> None:
-            try:
-                places = await self.naver.local(f"{base} 정문")
-            except Exception:
-                return  # 문을 못 얻으면 종전 폴백(정류장 근사·좌표)으로 간다
-            candidates = collect_door_candidates(
-                base,
-                places,
-                door_tokens=FACILITY_DOOR_TOKENS,
-                exclude_tokens=exclude_tokens,
-            )
-            if candidates:
-                self._front_door_candidates[normalize_key(base)] = tuple(candidates)
+        async def one(
+            base: str, exclude_tokens: tuple[str, ...], at: Coordinates
+        ) -> None:
+            doors: list[tuple[str, Coordinates]] = []
+            if use_kakao:
+                doors.extend(await self._kakao_gates(base, at))
+            if use_naver:
+                try:
+                    places = await self.naver.local(f"{base} 정문")
+                except Exception:
+                    places = []  # 문을 못 얻으면 카카오 후보·좌표 폴백으로 간다
+                doors.extend(
+                    collect_door_candidates(
+                        base,
+                        places,
+                        door_tokens=FACILITY_DOOR_TOKENS,
+                        exclude_tokens=exclude_tokens,
+                    )
+                )
+            merged = _dedupe_doors(doors)
+            if merged:
+                self._front_door_candidates[normalize_key(base)] = tuple(merged)
 
         await asyncio.gather(
-            *(one(base, excl) for base, excl in targets), return_exceptions=True
+            *(one(base, excl, at) for base, excl, at in targets),
+            return_exceptions=True,
         )
+
+    async def _kakao_gates(
+        self, base: str, at: Coordinates
+    ) -> list[tuple[str, Coordinates]]:
+        """카카오 「입출구」 POI 중 이 시설의 문(정문·후문·○○문·입구)을 모은다."""
+
+        tokens = _university_tokens(base) or ("".join(base.split()),)
+        doors: list[tuple[str, Coordinates]] = []
+        for suffix in GATE_QUERY_SUFFIXES:
+            try:
+                documents = await self.kakao.search_keyword(
+                    f"{base} {suffix}", at.lat, at.lng, GATE_SEARCH_RADIUS_M, max_pages=1
+                )
+            except Exception:
+                break  # 조회 장애 — 지금까지 모은 것으로 간다
+            for document in documents:
+                place = _kakao_place(document)
+                if place is None or GATE_CATEGORY not in place.category_name:
+                    continue
+                squashed = "".join(place.name.split())
+                if not any(token in squashed for token in tokens):
+                    continue
+                doors.append((place.name.strip(), place.coordinates))
+        return doors
 
     async def _prefetch_station_entrances(
         self,

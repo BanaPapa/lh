@@ -687,6 +687,7 @@ function App() {
             onSelectHazardFinding={handleSelectHazardFinding}
             screeningResult={screeningResult}
             expandedScreeningGroupKey={expandedScreeningGroupKey}
+            onToggleScreeningGroup={handleToggleScreeningGroup}
             selectedScreeningHitName={selectedScreeningHitName}
             onSelectScreeningHit={setSelectedScreeningHitName}
             onSelectCandidate={handleSelectCandidate}

@@ -1,14 +1,27 @@
 import {
   AlertCircle,
-  GripVertical,
+  ArrowLeftRight,
+  BedDouble,
   Bus,
   BusFront,
+  Factory,
+  Flame,
+  Fuel,
+  GraduationCap,
+  GripVertical,
+  Hospital,
+  Landmark,
+  School,
+  ShoppingCart,
+  Theater,
+  Train,
+  TrainFront,
+  Trees,
+  TriangleAlert,
+  Wine,
   CheckCheck,
   ChevronDown,
   EyeOff,
-  GraduationCap,
-  Hospital,
-  Landmark,
   Layers,
   LibraryBig,
   LoaderCircle,
@@ -17,11 +30,8 @@ import {
   PencilRuler,
   Plus,
   RotateCcw,
-  ShoppingCart,
   SlidersHorizontal,
   Store,
-  TrainFront,
-  Trees,
   Utensils,
   X,
   type LucideIcon,
@@ -553,6 +563,53 @@ function addOverlayClick(
   addMapListener(runtime, overlay, "click", listener);
 }
 
+/** 왼쪽 레일의 시설군·판정항목 아이콘. 키를 모르면 일반 표식. */
+function railIcon(key: string) {
+  const size = 16;
+  switch (key) {
+    case "subway":
+      return <TrainFront size={size} aria-hidden="true" />;
+    case "railway":
+      return <Train size={size} aria-hidden="true" />;
+    case "bus_stop":
+      return <Bus size={size} aria-hidden="true" />;
+    case "terminal":
+      return <BusFront size={size} aria-hidden="true" />;
+    case "transfer":
+      return <ArrowLeftRight size={size} aria-hidden="true" />;
+    case "retail":
+      return <ShoppingCart size={size} aria-hidden="true" />;
+    case "hospital":
+      return <Hospital size={size} aria-hidden="true" />;
+    case "park":
+      return <Trees size={size} aria-hidden="true" />;
+    case "culture":
+      return <Theater size={size} aria-hidden="true" />;
+    case "public":
+      return <Landmark size={size} aria-hidden="true" />;
+    case "school_elementary":
+    case "school_middle":
+    case "school_high":
+      return <School size={size} aria-hidden="true" />;
+    case "university":
+      return <GraduationCap size={size} aria-hidden="true" />;
+    case "RB14-FACTORY":
+      return <Factory size={size} aria-hidden="true" />;
+    case "RB14-HAZMAT":
+      return <TriangleAlert size={size} aria-hidden="true" />;
+    case "RB14-FUEL25":
+      return <Fuel size={size} aria-hidden="true" />;
+    case "RB14-AMUSEMENT":
+      return <Wine size={size} aria-hidden="true" />;
+    case "RB14-LODGING":
+      return <BedDouble size={size} aria-hidden="true" />;
+    case "RB14-CREMATION-MILITARY":
+      return <Flame size={size} aria-hidden="true" />;
+    default:
+      return <AlertCircle size={size} aria-hidden="true" />;
+  }
+}
+
 /** 영역으로 그린 시설의 링과 그 이름표 노드. 지도 mousemove 가 호버를 판정한다. */
 interface HoverArea {
   ring: Array<{ lat: number; lng: number }>;
@@ -598,6 +655,8 @@ interface MapPanelProps {
   screeningResult?: ScreeningResult | null;
   /** 펼친 시설군 키. 그 군의 hit 전부를 지도에 보여준다(기본은 항목별 최근접 1곳). */
   expandedScreeningGroupKey?: string | null;
+  /** 왼쪽 시설군 레일에서 시설군을 누르면 그 군 전체를 지도에 펼친다(다시 누르면 접는다). */
+  onToggleScreeningGroup?: (groupKey: string) => void;
   /** 지도에서 강조 중인 2차 시설명. 후보 문 핀을 펼칠 기준이 된다. */
   selectedScreeningHitName?: string | null;
   onSelectScreeningHit?: (name: string | null) => void;
@@ -636,6 +695,7 @@ export function MapPanel({
   onSelectHazardFacility,
   screeningResult = null,
   expandedScreeningGroupKey = null,
+  onToggleScreeningGroup,
   selectedScreeningHitName = null,
   onSelectScreeningHit,
   onSelectCandidate,
@@ -802,6 +862,38 @@ export function MapPanel({
   }, [screeningHitRefs, selectedScreeningHitName]);
 
   const fineZoomScale = getFineZoomScale(mapLevel);
+
+  // 왼쪽 시설군 레일 — 심사표를 열지 않고도 시설군마다 지도에 펼쳐 볼 수 있게.
+  const railGroups = useMemo(() => {
+    const groups: Array<{ key: string; label: string; count: number; nearest: number | null }> = [];
+    const seen = new Set<string>();
+    (screeningResult?.stage_two?.criteria ?? []).forEach((criterion) => {
+      criterion.groups.forEach((group) => {
+        if (seen.has(group.key) || group.hits.length === 0) return;
+        seen.add(group.key);
+        groups.push({
+          key: group.key,
+          label: group.label,
+          count: group.hits.length,
+          nearest: group.hits[0]?.distance_m ?? null,
+        });
+      });
+    });
+    return groups;
+  }, [screeningResult]);
+  const railFindings = useMemo(
+    () =>
+      (hazardReview?.findings ?? [])
+        .map((finding) => ({
+          id: finding.finding_id,
+          ruleId: finding.rule_id,
+          label: finding.label,
+          count: finding.facilities.length + finding.nearby_facilities.length,
+          status: finding.status,
+        }))
+        .filter((entry) => entry.count > 0),
+    [hazardReview],
+  );
 
   // 석유대체연료 「확인 요청」(주거지역·용도지역 미확인) 시설이 결과에 있는지.
   // 있으면 용도지역 오버레이를 자동으로 켜 담당자가 지적편집도와 대조하게 한다.
@@ -2186,6 +2278,59 @@ export function MapPanel({
             <Minus size={18} />
           </button>
         </div>
+
+        {hazardMode && (railFindings.length > 0 || railGroups.length > 0) && (
+          <nav className="map-facility-rail" aria-label="판정·배점 시설군">
+            {railFindings.length > 0 && (
+              <div className="map-rail-section">
+                <h4>1차 유해시설</h4>
+                {railFindings.map((entry) => {
+                  const active = entry.id === selectedHazardFindingId;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className={`map-rail-item is-hazard${active ? " is-active" : ""}${
+                        entry.status === "exclusion_match" ? " is-exclusion" : ""
+                      }`}
+                      aria-pressed={active}
+                      title={`${entry.label} · ${entry.count}곳`}
+                      onClick={() => onSelectHazardFinding?.(active ? null : entry.id)}
+                    >
+                      {railIcon(entry.ruleId)}
+                      <span>{entry.label}</span>
+                      <b>{entry.count}</b>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {railGroups.length > 0 && (
+              <div className="map-rail-section">
+                <h4>2차 편의시설</h4>
+                {railGroups.map((group) => {
+                  const active = group.key === expandedScreeningGroupKey;
+                  return (
+                    <button
+                      key={group.key}
+                      type="button"
+                      className={`map-rail-item is-amenity${active ? " is-active" : ""}`}
+                      aria-pressed={active}
+                      title={`${group.label} · ${group.count}곳${
+                        group.nearest !== null ? ` · 최근접 ${Math.round(group.nearest)}m` : ""
+                      }`}
+                      onClick={() => onToggleScreeningGroup?.(group.key)}
+                    >
+                      {railIcon(group.key)}
+                      <span>{group.label}</span>
+                      <b>{group.count}</b>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </nav>
+        )}
 
         {hazardMode && (
           <div

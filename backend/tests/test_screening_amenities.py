@@ -848,3 +848,56 @@ async def test_measured_parcel_ring_is_carried_on_the_facility() -> None:
     facility = result["school_elementary"].facilities[0]
     assert facility.measurement_tier == "site_boundary"
     assert len(facility.facility_ring) == 5
+
+
+# ---------------------------------------------------------------------------
+# 대학·종합병원 문 — 카카오 「입출구」 POI 로 정문 후보를 확보한다(네이버 5건 한계 보충)
+# ---------------------------------------------------------------------------
+
+
+def gate_place(name: str, offset_m: float) -> dict[str, Any]:
+    return place(name, offset_m, "교통,수송 > 입출구")
+
+
+@pytest.mark.asyncio
+async def test_hospital_gate_from_kakao_becomes_front_door_point() -> None:
+    kakao = FakeKakao(
+        categories={"HP8": [place("건국대학교병원", 500, "의료,건강 > 병원 > 종합병원")]},
+        keywords={
+            "건국대학교병원 정문": [
+                place("신한 건국대학교병원 ATM 입구", 480, "금융 > ATM"),
+                gate_place("건국대학교병원 입구", 420),
+            ],
+        },
+    )
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]))
+
+    result = await collector.collect([], CENTER)
+
+    facility = result["hospital"].facilities[0]
+    assert facility.measurement_tier == "front_door_point"
+    assert facility.distance_m == pytest.approx(420, abs=3)
+    assert [c.label for c in facility.front_door_candidates] == ["건국대학교병원 입구"]
+
+
+@pytest.mark.asyncio
+async def test_university_gates_from_kakao_use_nearest_named_gate() -> None:
+    kakao = FakeKakao(
+        categories={"SC4": [place("건국대학교", 900, "교육,학문 > 학교 > 대학교")]},
+        keywords={
+            "건국대학교 문": [
+                gate_place("건국대학교 상허문", 600),
+                gate_place("건국대학교 일감문", 750),
+                gate_place("세종대학교 정문", 300),  # 다른 학교 문은 버린다
+            ],
+        },
+    )
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]))
+
+    result = await collector.collect([], CENTER)
+
+    facility = result["university"].facilities[0]
+    assert facility.measurement_tier == "front_door_point"
+    assert facility.distance_m == pytest.approx(600, abs=3)
+    labels = {c.label for c in facility.front_door_candidates}
+    assert labels == {"건국대학교 상허문", "건국대학교 일감문"}
