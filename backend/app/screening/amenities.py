@@ -123,9 +123,10 @@ TRANSFER_MISSING_NOTE = (
 )
 TRANSFER_STANDARD_SOURCE = "국토교통부 전국대중교통환승센터 표준데이터"
 TRANSFER_STANDARD_NOTE = (
-    "국토교통부 전국대중교통환승센터 표준데이터(운영 중)로 산정했습니다. "
-    "제공 기관이 14곳이라 등재되지 않은 지역의 환승시설은 잡히지 않을 수 있습니다."
+    "국토교통부 전국대중교통환승센터 표준데이터(운영 중)로 산정하고, 제공 기관(14곳)에 "
+    "등재되지 않은 지역은 지도 검색(「환승센터」·「환승정류장」)으로 보충했습니다."
 )
+TRANSFER_SUPPLEMENT_SOURCE = f"{TRANSFER_STANDARD_SOURCE} + 카카오 장소검색(보충)"
 TRANSFER_SUBSTITUTED_NOTE = (
     "전국대중교통환승센터 표준데이터(15034541)는 활용신청 승인 전이라 지도 검색"
     "(「환승센터」·「환승정류장」)으로 근사했습니다."
@@ -1166,32 +1167,51 @@ class AmenityCollector:
         return FeedResult(_places(documents, _kakao_place), KAKAO_PLACE_SOURCE)
 
     async def _transfer_centers(self, center: Coordinates, radius_m: int) -> FeedResult:
-        """환승센터 표준데이터 → 실패·미승인이면 지도 검색(「환승」 이름만) 근사."""
+        """환승센터 표준데이터(지정 원천) + 지도 검색 보충.
 
+        표준데이터는 제공 기관이 14곳뿐이라(2026-09-16 실측 40건, 서울 미등재) 그것만
+        쓰면 서울 잠실 같은 곳의 환승센터가 빠진다. 표준데이터를 먼저 담고, 같은 자리
+        (40m)에 없는 지도 검색 결과를 보충한다. 표준데이터가 응답하면 「연결」이고,
+        미승인·장애면 지도 근사(대체)로 남는다.
+        """
+
+        standard: list[RawPlace] = []
+        standard_ok = False
         if self.transfer_client is not None and self.transfer_client.enabled:
             try:
                 centers = await self.transfer_client.centers_around(center, radius_m)
-                places = tuple(
+                standard = [
                     RawPlace(c.name, c.address, "교통,수송 > 환승센터", c.coordinates)
                     for c in centers
-                )
-                return FeedResult(places, TRANSFER_STANDARD_SOURCE)
+                ]
+                standard_ok = True
             except Exception:
-                pass  # 활용신청 전 403 등 — 지도 근사로 넘어간다
-        if not self.kakao.enabled:
+                standard_ok = False  # 활용신청 전 403 등 — 지도 근사만 쓴다
+        if not standard_ok and not self.kakao.enabled:
             raise SourceMissing(TRANSFER_MISSING_NOTE)
-        found: list[RawPlace] = []
-        for keyword in TRANSFER_KEYWORDS:
-            documents = await self.kakao.search_keyword(
-                keyword, center.lat, center.lng, radius_m
-            )
-            for place in _places(documents, _kakao_place):
-                if "환승" not in place.name:
-                    continue
-                if _category_leaf(place) not in TRANSFER_CATEGORY_LEAVES:
-                    continue
-                found.append(place)
-        return FeedResult(tuple(_dedupe(found)), KAKAO_PLACE_SOURCE)
+        supplement: list[RawPlace] = []
+        if self.kakao.enabled:
+            for keyword in TRANSFER_KEYWORDS:
+                documents = await self.kakao.search_keyword(
+                    keyword, center.lat, center.lng, radius_m
+                )
+                for place in _places(documents, _kakao_place):
+                    if "환승" not in place.name:
+                        continue
+                    if _category_leaf(place) not in TRANSFER_CATEGORY_LEAVES:
+                        continue
+                    if any(
+                        haversine_meters(place.coordinates, s.coordinates) <= 40
+                        for s in standard
+                    ):
+                        continue
+                    supplement.append(place)
+        merged = tuple(_dedupe(standard + supplement))
+        if not standard_ok:
+            return FeedResult(merged, KAKAO_PLACE_SOURCE)
+        return FeedResult(
+            merged, TRANSFER_SUPPLEMENT_SOURCE if supplement else TRANSFER_STANDARD_SOURCE
+        )
 
     # -- 시설군 조립 -------------------------------------------------------
     def _build_group(
@@ -1292,7 +1312,9 @@ class AmenityCollector:
             state = "connected"
             note = HOSPITAL_NCMC_NOTE
         # 환승시설도 표준데이터로 채웠으면 연결이다.
-        if key == "transfer" and TRANSFER_STANDARD_SOURCE in sources:
+        if key == "transfer" and any(
+            src.startswith(TRANSFER_STANDARD_SOURCE) for src in sources
+        ):
             state = "connected"
             note = TRANSFER_STANDARD_NOTE
         return GroupCollection(

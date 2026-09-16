@@ -37,9 +37,10 @@ def test_row_parsing_and_coordinate_sanity() -> None:
 async def test_client_pages_and_filters_by_radius() -> None:
     near = offset_coordinates(CENTER, 200, 0)
     far = offset_coordinates(CENTER, 5000, 0)
-    body = {"response": {"header": {"resultCode": "00"}, "body": {
-        "items": [row("가까운센터", near.lat, near.lng), row("먼센터", far.lat, far.lng), row("폐쇄센터", near.lat, near.lng, "N")],
-        "totalCount": 3}}}
+    # 실응답 형태: 최상위 header/body, items.item 목록(2026-09-16 실측).
+    body = {"header": {"resultCode": "00"}, "body": {
+        "items": {"item": [row("가까운센터", near.lat, near.lng), row("먼센터", far.lat, far.lng), row("폐쇄센터", near.lat, near.lng, "N")]},
+        "totalCount": 3}}
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json=body))
     client = TransferCenterClient("key", transport=transport)
     found = await client.centers_around(CENTER, 1000)

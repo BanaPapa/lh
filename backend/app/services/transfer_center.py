@@ -134,7 +134,9 @@ class TransferCenterClient:
                 f"환승센터 조회 실패 ({header.get('returnReasonCode')}) "
                 f"{header.get('returnAuthMsg') or header.get('errMsg') or ''}".strip()
             )
-        body = (payload.get("response") or {}).get("body") or {}
+        # 실응답(2026-09-16 승인 후 실측)은 {"header","body"} 최상위이고 body.items.item 이
+        # 목록이다. 포털 문서형({"response":{...}})도 함께 받는다.
+        body = (payload.get("response") or payload).get("body") or {}
         items = body.get("items") or []
         if isinstance(items, dict):
             items = items.get("item") or []
