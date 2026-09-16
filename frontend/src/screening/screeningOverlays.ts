@@ -149,3 +149,15 @@ export function computeDesignationDiff(
   }
   return { groupKey: after.group.key, text: parts.join(" · ") };
 }
+
+/**
+ * 법령 목 순서(가·나·다…·「다-1」)로 종류를 정렬하는 키. 라벨 앞머리를 읽는다.
+ * 목 표기가 없는 라벨(「공장 있음」·「자동차용 천연가스충전소」)은 뒤로 보낸다.
+ */
+export function categoryOrderKey(label: string): number {
+  const match = /^([가-힣])(?:·[가-힣])?(?:-(\d+))?\./.exec(label.trim());
+  if (!match) return 99;
+  const order = "가나다라마바사아자차카타파하".indexOf(match[1]);
+  if (order < 0) return 99;
+  return order * 10 + (match[2] ? Number(match[2]) : 0);
+}

@@ -233,6 +233,9 @@ class HazardCategorySummary(BaseModel):
     # 원천이 안 붙어 있을 때 무엇을 하면 붙는지. 화면의 연결 버튼이 이걸 그대로 쓴다.
     source_connect_kind: str = "none"
     source_connect_hint: str = ""
+    # 이 종류가 담당하는 시설 유형(HazardFacility.facility_type). 화면이 판정 항목의
+    # 시설을 종류별로 세는 데 쓴다.
+    facility_types: list[str] = Field(default_factory=list)
     source_connect_command: str = ""
     note: str = ""
     # 이 판정을 얼마나 믿을 수 있는지. 근거를 함께 내보내 블랙박스가 되지 않게 한다.

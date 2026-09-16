@@ -278,6 +278,8 @@ export interface HazardCategorySummary {
   /** 원천이 안 붙어 있을 때 무엇을 하면 붙는지. 연결 버튼이 그대로 쓴다. */
   source_connect_kind: string;
   source_connect_hint: string;
+  /** 이 종류가 담당하는 시설 유형(HazardFacility.facility_type). */
+  facility_types?: string[];
   source_connect_command: string;
   note: string;
   confidence_score: number;

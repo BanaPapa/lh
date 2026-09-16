@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
+import { categoryOrderKey } from "./screeningOverlays";
 import {
   SCREENING_GROUP_STATE_CONFIG,
   SCREENING_OUTCOME_CONFIG,
@@ -227,7 +228,9 @@ function groupExclusionItems(items: ScreeningExclusionItem[]) {
   });
   const rank: Record<string, number> = { fail: 3, review: 2, pass: 1, na: 0 };
   return order.map((ruleId) => {
-    const rows = byRule.get(ruleId)!;
+    const rows = [...byRule.get(ruleId)!].sort(
+      (a, b) => categoryOrderKey(a.label) - categoryOrderKey(b.label),
+    );
     const worst = rows.reduce(
       (best, row) => ((rank[row.outcome] ?? 0) > (rank[best.outcome] ?? 0) ? row : best),
       rows[0],

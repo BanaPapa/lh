@@ -84,6 +84,7 @@ import type {
   ScreeningResult,
 } from "../screening/types";
 import {
+  categoryOrderKey,
   flattenScreeningHits,
   measurementShortLabel,
   visibleScreeningHits,
@@ -926,12 +927,20 @@ export function MapPanel({
         // 세부 종류(위험물의 나·다·라바… 등). 규칙 안에서 정본 순서 그대로.
         categories: (hazardReview?.categories ?? [])
           .filter((category) => category.rule_id === finding.rule_id)
-          .map((category) => ({
-            key: category.key,
-            label: category.label,
-            count: category.candidate_count,
-            status: category.status,
-          })),
+          .map((category) => {
+            const types = new Set(category.facility_types ?? []);
+            // 지도에 보이는 시설(판정 후보 + 참고 시설) 중 이 종류의 것 — 위 대분류 개수와 같은 셈법.
+            const shown = [...finding.facilities, ...finding.nearby_facilities].filter(
+              (facility) => types.has(facility.facility_type),
+            ).length;
+            return {
+              key: category.key,
+              label: category.label,
+              count: shown,
+              status: category.status,
+            };
+          })
+          .sort((a, b) => categoryOrderKey(a.label) - categoryOrderKey(b.label)),
       })),
     [hazardReview],
   );
