@@ -214,6 +214,38 @@ function useExpandedKeys(resetKey: string | undefined) {
  * 위에서부터 머리말 · 종합 판정 · 1차 매입제외 · 2차 생활편의성 · 고지 순으로,
  * 실제 심사표를 읽는 순서 그대로 늘어놓는다.
  */
+/** 1차 종류 행을 규칙(대분류) 순서대로 묶는다. 대분류 결과는 가장 강한 세부 결과를 따른다. */
+function groupExclusionItems(items: ScreeningExclusionItem[]) {
+  const order: string[] = [];
+  const byRule = new Map<string, ScreeningExclusionItem[]>();
+  items.forEach((item) => {
+    if (!byRule.has(item.rule_id)) {
+      byRule.set(item.rule_id, []);
+      order.push(item.rule_id);
+    }
+    byRule.get(item.rule_id)!.push(item);
+  });
+  const rank: Record<string, number> = { fail: 3, review: 2, pass: 1, na: 0 };
+  return order.map((ruleId) => {
+    const rows = byRule.get(ruleId)!;
+    const worst = rows.reduce(
+      (best, row) => ((rank[row.outcome] ?? 0) > (rank[best.outcome] ?? 0) ? row : best),
+      rows[0],
+    );
+    const allPassthrough = rows.every((row) => row.passthrough);
+    const outcome = SCREENING_OUTCOME_CONFIG[worst.outcome];
+    return {
+      ruleId,
+      label: rows[0].rule_label,
+      threshold: rows[0].threshold_m,
+      items: rows,
+      facilityCount: rows.reduce((sum, row) => sum + row.facilities.length, 0),
+      tone: allPassthrough ? "muted" : outcome.tone,
+      outcomeLabel: allPassthrough ? "미적용" : worst.outcome_label,
+    };
+  });
+}
+
 export function ScreeningSheet({
   result,
   running,
@@ -305,6 +337,7 @@ export function ScreeningSheet({
     const open = rows.openKeys.has(item.key);
     const rowClass = [
       "screening-row",
+      "is-sub",
       `tone-${outcome.tone}`,
       item.passthrough ? "is-passthrough" : "",
       open ? "is-open" : "",
@@ -340,7 +373,6 @@ export function ScreeningSheet({
             ) : (
               <span className="screening-row-label">{item.label}</span>
             )}
-            <small>{item.rule_label}</small>
           </th>
           <td className="is-num">{formatThreshold(item.threshold_m)}</td>
           <td className="is-num">{formatDistance(item.nearest_distance_m)}</td>
@@ -961,7 +993,31 @@ export function ScreeningSheet({
                 <th scope="col">데이터</th>
               </tr>
             </thead>
-            <tbody>{stageOne.items.map(renderExclusionRow)}</tbody>
+            <tbody>
+              {groupExclusionItems(stageOne.items).map((group) => (
+                <Fragment key={group.ruleId}>
+                  <tr className={`screening-rule-head tone-${group.tone}`}>
+                    <th scope="rowgroup" colSpan={7}>
+                      <span className="screening-rule-title">
+                        {group.label}
+                      </span>
+                      <span className="screening-rule-meta">
+                        {group.threshold !== null
+                          ? `기준 ${group.threshold}m`
+                          : "미적용"}
+                        {" · "}
+                        세부 {group.items.length}종
+                        {group.facilityCount > 0 && ` · 시설 ${group.facilityCount}곳`}
+                      </span>
+                      <em className={`screening-badge tone-${group.tone}`}>
+                        {group.outcomeLabel}
+                      </em>
+                    </th>
+                  </tr>
+                  {group.items.map(renderExclusionRow)}
+                </Fragment>
+              ))}
+            </tbody>
           </table>
         </div>
 

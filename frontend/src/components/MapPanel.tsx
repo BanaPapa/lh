@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  ChevronRight,
   ArrowLeftRight,
   BedDouble,
   Bus,
@@ -563,6 +564,16 @@ function addOverlayClick(
   addMapListener(runtime, overlay, "click", listener);
 }
 
+/** 레일 세부 종류의 상태 한 단어. */
+const RAIL_STATUS_SHORT: Record<string, string> = {
+  exclusion_match: "저촉",
+  review_required: "검토",
+  no_conflict_in_snapshot: "통과",
+  dataset_missing: "미확보",
+  geometry_missing: "경계없음",
+  not_applicable: "미적용",
+};
+
 /** 왼쪽 레일에 쓰는 1차 판정 항목의 짧은 이름(원래 라벨은 한 줄에 안 들어간다). */
 const RAIL_RULE_LABELS: Record<string, string> = {
   "RB14-FACTORY": "공장",
@@ -892,6 +903,16 @@ export function MapPanel({
     });
     return groups;
   }, [screeningResult]);
+  // 레일에서 펼친 1차 규칙(세부 종류를 보인다).
+  const [openRailRules, setOpenRailRules] = useState<Set<string>>(new Set());
+  const toggleRailRule = useCallback((ruleId: string) => {
+    setOpenRailRules((current) => {
+      const next = new Set(current);
+      if (next.has(ruleId)) next.delete(ruleId);
+      else next.add(ruleId);
+      return next;
+    });
+  }, []);
   // 1차는 판정 기준(규칙 6종)을 전부 나열한다. 시설이 없으면 0, 이 유형에 미적용이면 표시.
   const railFindings = useMemo(
     () =>
@@ -902,6 +923,15 @@ export function MapPanel({
         count: finding.facilities.length + finding.nearby_facilities.length,
         status: finding.status,
         threshold: finding.threshold_m,
+        // 세부 종류(위험물의 나·다·라바… 등). 규칙 안에서 정본 순서 그대로.
+        categories: (hazardReview?.categories ?? [])
+          .filter((category) => category.rule_id === finding.rule_id)
+          .map((category) => ({
+            key: category.key,
+            label: category.label,
+            count: category.candidate_count,
+            status: category.status,
+          })),
       })),
     [hazardReview],
   );
@@ -2299,26 +2329,47 @@ export function MapPanel({
                   const active = entry.id === selectedHazardFindingId;
                   const notApplicable = entry.status === "not_applicable";
                   const empty = entry.count === 0;
+                  const open = openRailRules.has(entry.ruleId);
                   return (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      className={`map-rail-item is-hazard${active ? " is-active" : ""}${
-                        entry.status === "exclusion_match" ? " is-exclusion" : ""
-                      }${empty || notApplicable ? " is-empty" : ""}`}
-                      aria-pressed={active}
-                      disabled={empty}
-                      title={
-                        notApplicable
-                          ? `${entry.label} · 이 유형에는 미적용`
-                          : `${entry.label} · 기준 ${entry.threshold ?? "—"}m · ${entry.count}곳`
-                      }
-                      onClick={() => onSelectHazardFinding?.(active ? null : entry.id)}
-                    >
-                      {railIcon(entry.ruleId)}
-                      <span>{entry.label}</span>
-                      <b>{notApplicable ? "미적용" : entry.count}</b>
-                    </button>
+                    <div key={entry.id} className="map-rail-group">
+                      <button
+                        type="button"
+                        className={`map-rail-item is-hazard${active ? " is-active" : ""}${
+                          entry.status === "exclusion_match" ? " is-exclusion" : ""
+                        }${empty || notApplicable ? " is-empty" : ""}`}
+                        aria-pressed={active}
+                        aria-expanded={open}
+                        title={
+                          notApplicable
+                            ? `${entry.label} · 이 유형에는 미적용 · 세부 ${entry.categories.length}종`
+                            : `${entry.label} · 기준 ${entry.threshold ?? "—"}m · ${entry.count}곳 · 세부 ${entry.categories.length}종`
+                        }
+                        onClick={() => {
+                          toggleRailRule(entry.ruleId);
+                          if (!empty) onSelectHazardFinding?.(active ? null : entry.id);
+                        }}
+                      >
+                        {railIcon(entry.ruleId)}
+                        <span>{entry.label}</span>
+                        <b>{notApplicable ? "미적용" : entry.count}</b>
+                        <ChevronRight
+                          size={14}
+                          aria-hidden="true"
+                          className={`map-rail-chevron${open ? " is-open" : ""}`}
+                        />
+                      </button>
+                      {open && (
+                        <ul className="map-rail-sublist">
+                          {entry.categories.map((category) => (
+                            <li key={category.key} className={`is-${category.status}`}>
+                              <span>{category.label}</span>
+                              <small>{RAIL_STATUS_SHORT[category.status] ?? category.status}</small>
+                              <b>{category.count}</b>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   );
                 })}
               </div>

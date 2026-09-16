@@ -1444,3 +1444,37 @@
 .screening-group-table .screening-row-note svg {
   vertical-align: -2px;
 }
+
+/* ── 1차 표: 규칙(대분류) 머리행 + 종류(세부) 행 ───────────────────────── */
+.screening-rule-head > th {
+  padding: 12px 10px 8px;
+  background: var(--surface-2);
+  border-top: 2px solid var(--border-2);
+  font-weight: 700;
+}
+
+.screening-rule-head > th {
+  display: table-cell;
+}
+
+.screening-rule-title {
+  font-size: var(--sh-h3);
+  margin-right: 12px;
+}
+
+.screening-rule-meta {
+  color: var(--muted);
+  font-size: var(--sh-small);
+  font-weight: 500;
+  margin-right: 12px;
+}
+
+/* 세부 행은 들여쓰기로 대분류 아래임을 보인다. */
+.screening-row.is-sub > th {
+  padding-left: 26px;
+}
+
+.screening-row.is-sub .screening-row-label,
+.screening-row.is-sub .screening-row-toggle {
+  font-weight: 500;
+}
