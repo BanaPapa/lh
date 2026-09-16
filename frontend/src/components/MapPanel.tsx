@@ -563,6 +563,16 @@ function addOverlayClick(
   addMapListener(runtime, overlay, "click", listener);
 }
 
+/** 왼쪽 레일에 쓰는 1차 판정 항목의 짧은 이름(원래 라벨은 한 줄에 안 들어간다). */
+const RAIL_RULE_LABELS: Record<string, string> = {
+  "RB14-FACTORY": "공장",
+  "RB14-HAZMAT": "위험물 저장·처리시설",
+  "RB14-FUEL25": "주유소·충전소",
+  "RB14-AMUSEMENT": "위락시설",
+  "RB14-LODGING": "일반숙박시설",
+  "RB14-CREMATION-MILITARY": "화장장",
+};
+
 /** 왼쪽 레일의 시설군·판정항목 아이콘. 키를 모르면 일반 표식. */
 function railIcon(key: string) {
   const size = 16;
@@ -868,8 +878,9 @@ export function MapPanel({
     const groups: Array<{ key: string; label: string; count: number; nearest: number | null }> = [];
     const seen = new Set<string>();
     (screeningResult?.stage_two?.criteria ?? []).forEach((criterion) => {
+      // 판정 기준에 속한 시설군은 시설이 0곳이어도 전부 나열한다(0 표시).
       criterion.groups.forEach((group) => {
-        if (seen.has(group.key) || group.hits.length === 0) return;
+        if (seen.has(group.key)) return;
         seen.add(group.key);
         groups.push({
           key: group.key,
@@ -881,17 +892,17 @@ export function MapPanel({
     });
     return groups;
   }, [screeningResult]);
+  // 1차는 판정 기준(규칙 6종)을 전부 나열한다. 시설이 없으면 0, 이 유형에 미적용이면 표시.
   const railFindings = useMemo(
     () =>
-      (hazardReview?.findings ?? [])
-        .map((finding) => ({
-          id: finding.finding_id,
-          ruleId: finding.rule_id,
-          label: finding.label,
-          count: finding.facilities.length + finding.nearby_facilities.length,
-          status: finding.status,
-        }))
-        .filter((entry) => entry.count > 0),
+      (hazardReview?.findings ?? []).map((finding) => ({
+        id: finding.finding_id,
+        ruleId: finding.rule_id,
+        label: RAIL_RULE_LABELS[finding.rule_id] ?? finding.label,
+        count: finding.facilities.length + finding.nearby_facilities.length,
+        status: finding.status,
+        threshold: finding.threshold_m,
+      })),
     [hazardReview],
   );
 
@@ -2286,20 +2297,27 @@ export function MapPanel({
                 <h4>1차 유해시설</h4>
                 {railFindings.map((entry) => {
                   const active = entry.id === selectedHazardFindingId;
+                  const notApplicable = entry.status === "not_applicable";
+                  const empty = entry.count === 0;
                   return (
                     <button
                       key={entry.id}
                       type="button"
                       className={`map-rail-item is-hazard${active ? " is-active" : ""}${
                         entry.status === "exclusion_match" ? " is-exclusion" : ""
-                      }`}
+                      }${empty || notApplicable ? " is-empty" : ""}`}
                       aria-pressed={active}
-                      title={`${entry.label} · ${entry.count}곳`}
+                      disabled={empty}
+                      title={
+                        notApplicable
+                          ? `${entry.label} · 이 유형에는 미적용`
+                          : `${entry.label} · 기준 ${entry.threshold ?? "—"}m · ${entry.count}곳`
+                      }
                       onClick={() => onSelectHazardFinding?.(active ? null : entry.id)}
                     >
                       {railIcon(entry.ruleId)}
                       <span>{entry.label}</span>
-                      <b>{entry.count}</b>
+                      <b>{notApplicable ? "미적용" : entry.count}</b>
                     </button>
                   );
                 })}
@@ -2310,12 +2328,16 @@ export function MapPanel({
                 <h4>2차 편의시설</h4>
                 {railGroups.map((group) => {
                   const active = group.key === expandedScreeningGroupKey;
+                  const empty = group.count === 0;
                   return (
                     <button
                       key={group.key}
                       type="button"
-                      className={`map-rail-item is-amenity${active ? " is-active" : ""}`}
+                      className={`map-rail-item is-amenity${active ? " is-active" : ""}${
+                        empty ? " is-empty" : ""
+                      }`}
                       aria-pressed={active}
+                      disabled={empty}
                       title={`${group.label} · ${group.count}곳${
                         group.nearest !== null ? ` · 최근접 ${Math.round(group.nearest)}m` : ""
                       }`}

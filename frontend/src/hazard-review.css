@@ -866,3 +866,23 @@
     display: none;
   }
 }
+
+/* 시설이 없는(0) 또는 미적용 항목은 흐리게 두되 목록에서 빼지 않는다. */
+.map-rail-item.is-empty {
+  color: var(--muted);
+  cursor: default;
+}
+
+.map-rail-item.is-empty svg {
+  color: var(--muted-2);
+}
+
+.map-rail-item.is-empty > b {
+  color: var(--muted-2);
+  background: transparent;
+  border: 1px dashed var(--border);
+}
+
+.map-rail-item:disabled:hover {
+  background: transparent;
+}
