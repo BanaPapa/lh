@@ -129,6 +129,11 @@ async def _probe_ncmc(hazard: Any, screening: Any) -> str:
     return f"서울 종합병원 {len(rows)}건"
 
 
+async def _probe_seoul_bus(hazard: Any, screening: Any) -> str:
+    rows = await _amenities(screening).seoul_bus.all_stops()
+    return f"서울 정류소 {len(rows):,}건"
+
+
 async def _probe_transfer_center(hazard: Any, screening: Any) -> str:
     rows = await _amenities(screening).transfer_client.all_centers()
     return f"환승센터 {len(rows):,}건"
@@ -163,6 +168,12 @@ CONNECTION_SPECS: tuple[ConnectionSpec, ...] = (
         "2차 배점의 버스정류장 조회",
         "TAGO_SERVICE_KEY", lambda h, s: getattr(_amenities(s), "tago", None), _probe_tago,
         "공공데이터포털", "https://www.data.go.kr/",
+    ),
+    ConnectionSpec(
+        "seoul_bus", "서울 열린데이터광장 버스정류소",
+        "2차 버스정류장 — 서울 사업지(국토부 TAGO 가 서울을 제공하지 않음)",
+        "SEOUL_OPEN_DATA_KEY", lambda h, s: getattr(_amenities(s), "seoul_bus", None), _probe_seoul_bus,
+        "서울 열린데이터광장", "https://data.seoul.go.kr/together/mypage/actKeyPage.do",
     ),
     ConnectionSpec(
         "naver_search", "네이버 지역검색",

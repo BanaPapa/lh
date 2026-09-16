@@ -44,6 +44,7 @@ from app.services.geo import (
 )
 from app.services.kakao import KakaoClient
 from app.services.naver_search import NaverSearchClient
+from app.services.seoul_bus import SeoulBusStopClient
 from app.services.parcel_sanity import parcel_rejection_reason
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
@@ -161,6 +162,7 @@ RETAIL_CONNECTED_NOTE = (
 
 KAKAO_PLACE_SOURCE = "카카오 장소검색"
 TAGO_SOURCE = "국토교통부 TAGO 정류소 근접조회"
+SEOUL_BUS_SOURCE = "서울 열린데이터광장 버스정류소 위치정보"
 LOCALDATA_SOURCE = "행정안전부 지방행정인허가 대규모점포"
 NCMC_HOSPITAL_SOURCE = "국립중앙의료원 전국 병·의원 찾기(종합병원)"
 
@@ -514,8 +516,11 @@ class AmenityCollector:
         naver: NaverSearchClient | None = None,
         vworld: VWorldClient | None = None,
         transfer_client: TransferCenterClient | None = None,
+        seoul_bus: SeoulBusStopClient | None = None,
     ) -> None:
         self.kakao = kakao
+        # 서울 버스정류소(TAGO 가 서울을 제공하지 않아 따로 붙인다). 키가 없으면 미사용.
+        self.seoul_bus = seoul_bus
         # 환승시설 지정 원천(환승센터 표준데이터). 활용신청 전(403)에는 지도 근사.
         self.transfer_client = transfer_client
         # 시설 경계(필지) 조회. 없거나 키가 없으면 로컬 지적도로, 그것도 없으면
@@ -1155,9 +1160,25 @@ class AmenityCollector:
         if self.tago is not None and self.tago.enabled:
             try:
                 rows = await self.tago.nearby_stops(center.lat, center.lng)
-                return FeedResult(_places(rows, _tago_place), TAGO_SOURCE)
+                if rows:
+                    return FeedResult(_places(rows, _tago_place), TAGO_SOURCE)
+                # TAGO 는 서울을 제공하지 않는다(2026-09-16 실측 0건). 빈 결과는 장애가
+                # 아니라 미제공 지역일 수 있으니 서울시 원천 → 지도 순으로 넘어간다.
             except Exception:
                 # 공공 API 장애를 정류장 0개로 둔갑시키지 않는다. 지도로 넘어간다.
+                pass
+        if self.seoul_bus is not None and self.seoul_bus.enabled:
+            try:
+                stops = await self.seoul_bus.stops_around(center, radius_m)
+                if stops:
+                    return FeedResult(
+                        tuple(
+                            RawPlace(s.name, "", f"교통,수송 > 버스정류장 > {s.stop_type}", s.coordinates)
+                            for s in stops
+                        ),
+                        SEOUL_BUS_SOURCE,
+                    )
+            except Exception:
                 pass
         if not self.kakao.enabled:
             raise RuntimeError("TAGO·카카오 원천이 모두 설정되지 않았습니다.")

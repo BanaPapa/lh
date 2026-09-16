@@ -117,6 +117,7 @@ class KeysUpdateRequest(BaseModel):
     vworld_api_key: str | None = None
     opinet_api_key: str | None = None
     safemap_api_key: str | None = None
+    seoul_open_data_key: str | None = None
     demo_mode: bool | None = None
 
 

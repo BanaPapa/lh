@@ -50,6 +50,7 @@ export interface KeysUpdatePayload {
   vworld_api_key?: string | null;
   opinet_api_key?: string | null;
   safemap_api_key?: string | null;
+  seoul_open_data_key?: string | null;
   demo_mode?: boolean;
 }
 

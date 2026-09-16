@@ -43,6 +43,7 @@ from app.services.facility_store import FacilityStore
 from app.services.kakao import KakaoClient
 from app.services.naver_search import NaverSearchClient
 from app.services.ncmc_hospital import NcmcHospitalClient
+from app.services.seoul_bus import SeoulBusStopClient
 from app.services.tago import TagoClient
 from app.services.transfer_center import TransferCenterClient
 
@@ -109,6 +110,8 @@ def get_screening_service() -> ScreeningService:
             vworld=get_vworld_client(),
             # 환승시설 지정 원천(환승센터 표준데이터 15034541). 활용신청 전엔 지도 근사.
             transfer_client=TransferCenterClient(config.public_data_key),
+            # 서울 버스정류소(TAGO 미제공 지역). 서울 열린데이터광장 키.
+            seoul_bus=SeoulBusStopClient(config.seoul_open_data_key),
         ),
         demo_mode=config.demo_mode,
     )

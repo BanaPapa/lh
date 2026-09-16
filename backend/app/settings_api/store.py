@@ -91,6 +91,13 @@ SERVER_KEY_SPECS: list[KeySpec] = [
         issuer_name="생활안전지도",
         issuer_url="https://www.safemap.go.kr/",
     ),
+    KeySpec(
+        "SEOUL_OPEN_DATA_KEY",
+        "서울 열린데이터광장 인증키",
+        "서울 사업지의 버스정류소 조회에 씁니다(국토부 TAGO 는 서울 미제공).",
+        issuer_name="서울 열린데이터광장",
+        issuer_url="https://data.seoul.go.kr/together/mypage/actKeyPage.do",
+    ),
 ]
 
 DEMO_MODE_KEY = "DEMO_MODE"
