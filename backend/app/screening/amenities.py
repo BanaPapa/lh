@@ -47,6 +47,7 @@ from app.services.naver_search import NaverSearchClient
 from app.services.parcel_sanity import parcel_rejection_reason
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
+from app.services.transfer_center import TransferCenterClient
 from app.services.vworld import ParcelFeature, VWorldClient
 
 
@@ -116,10 +117,30 @@ _STATION_LIKE_DESIGNATABLE = ("railway", "subway", "terminal", "transfer")
 
 KAKAO_DISABLED_NOTE = "카카오 REST API 키가 설정되지 않았습니다."
 
-# 원천이 아예 없는 시설군의 고지. 조회 실패가 아니라 '원천 부재'다.
+# 환승시설 원천 고지. 표준데이터(15034541) 활용신청 전에는 지도 검색으로 근사한다.
 TRANSFER_MISSING_NOTE = (
     "환승시설(간선급행버스체계법 제2조제3호다목) 위치 원천을 확보하지 못했습니다."
 )
+TRANSFER_STANDARD_SOURCE = "국토교통부 전국대중교통환승센터 표준데이터"
+TRANSFER_STANDARD_NOTE = (
+    "국토교통부 전국대중교통환승센터 표준데이터(운영 중)로 산정했습니다. "
+    "제공 기관이 14곳이라 등재되지 않은 지역의 환승시설은 잡히지 않을 수 있습니다."
+)
+TRANSFER_SUBSTITUTED_NOTE = (
+    "전국대중교통환승센터 표준데이터(15034541)는 활용신청 승인 전이라 지도 검색"
+    "(「환승센터」·「환승정류장」)으로 근사했습니다."
+)
+TRANSFER_KEYWORDS: tuple[str, ...] = ("환승센터", "환승정류장")
+# 지도 근사에서 환승시설로 인정하는 분류(잎). 「환승센터약국」·「환승센터 전기차충전소」·
+# 「○○환승센터 2-3출입구」처럼 이름에 환승이 들어간 다른 시설을 거른다. 환승주차장은
+# 간선급행버스체계법 환승시설에 들어가므로 주차장 분류는 남긴다.
+TRANSFER_CATEGORY_LEAVES: frozenset[str] = frozenset(
+    {"교통시설", "주차장", "버스정류장", "버스터미널", "환승센터"}
+)
+
+
+class SourceMissing(RuntimeError):
+    """조회 장애가 아니라 쓸 원천이 아예 없을 때. 시설군 note 에 문구 그대로 싣는다."""
 
 # 상업시설은 심사표가 조회처를 못박은 항목이라 근사하지 않는다. 대규모점포
 # 원장이 적재돼 있으면 그것으로 산정하고, 미적재면 '없음'이 아니라 '미적재'로
@@ -400,7 +421,9 @@ GROUP_SPECS: dict[str, GroupSpec] = {
         "substituted",
         "대중교통수단 터미널 정보 대신 지도 검색으로 근사했습니다.",
     ),
-    "transfer": GroupSpec((), "missing", TRANSFER_MISSING_NOTE, kakao_backed=False),
+    "transfer": GroupSpec(
+        ("transfer",), "substituted", TRANSFER_SUBSTITUTED_NOTE, kakao_backed=False
+    ),
     # 심사표는 대규모점포 조회·전통시장통통 등재분만 인정한다. 카카오 '대형마트'
     # 분류에는 동네 마트(삼촌네마트·D마트)가, '백화점' 이름에는 가구점이 섞여
     # 들어와 근사가 성립하지 않는다(실측 확인). 대규모점포 원장(localdata)이
@@ -489,8 +512,11 @@ class AmenityCollector:
         cadastral_store: CadastralLocalStore | None = None,
         naver: NaverSearchClient | None = None,
         vworld: VWorldClient | None = None,
+        transfer_client: TransferCenterClient | None = None,
     ) -> None:
         self.kakao = kakao
+        # 환승시설 지정 원천(환승센터 표준데이터). 활용신청 전(403)에는 지도 근사.
+        self.transfer_client = transfer_client
         # 시설 경계(필지) 조회. 없거나 키가 없으면 로컬 지적도로, 그것도 없으면
         # 좌표로 폴백하고 그 사실을 시설마다 적는다.
         self.vworld = vworld
@@ -962,7 +988,10 @@ class AmenityCollector:
     ) -> dict[str, Any]:
         """feed 이름 → 코루틴. 전부 한 번에 gather 한다."""
 
-        feeds: dict[str, Any] = {"bus_stop": self._bus_stops(center, radius_m)}
+        feeds: dict[str, Any] = {
+            "bus_stop": self._bus_stops(center, radius_m),
+            "transfer": self._transfer_centers(center, radius_m),
+        }
         if not self.kakao.enabled:
             # 키가 없으면 호출 자체를 만들지 않는다. 상태는 missing 으로 내려간다.
             return feeds
@@ -1136,6 +1165,34 @@ class AmenityCollector:
         )
         return FeedResult(_places(documents, _kakao_place), KAKAO_PLACE_SOURCE)
 
+    async def _transfer_centers(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """환승센터 표준데이터 → 실패·미승인이면 지도 검색(「환승」 이름만) 근사."""
+
+        if self.transfer_client is not None and self.transfer_client.enabled:
+            try:
+                centers = await self.transfer_client.centers_around(center, radius_m)
+                places = tuple(
+                    RawPlace(c.name, c.address, "교통,수송 > 환승센터", c.coordinates)
+                    for c in centers
+                )
+                return FeedResult(places, TRANSFER_STANDARD_SOURCE)
+            except Exception:
+                pass  # 활용신청 전 403 등 — 지도 근사로 넘어간다
+        if not self.kakao.enabled:
+            raise SourceMissing(TRANSFER_MISSING_NOTE)
+        found: list[RawPlace] = []
+        for keyword in TRANSFER_KEYWORDS:
+            documents = await self.kakao.search_keyword(
+                keyword, center.lat, center.lng, radius_m
+            )
+            for place in _places(documents, _kakao_place):
+                if "환승" not in place.name:
+                    continue
+                if _category_leaf(place) not in TRANSFER_CATEGORY_LEAVES:
+                    continue
+                found.append(place)
+        return FeedResult(tuple(_dedupe(found)), KAKAO_PLACE_SOURCE)
+
     # -- 시설군 조립 -------------------------------------------------------
     def _build_group(
         self,
@@ -1161,7 +1218,9 @@ class AmenityCollector:
                 return GroupCollection(
                     key,
                     "missing",
-                    f"원천 조회에 실패했습니다: {outcome}",
+                    str(outcome)
+                    if isinstance(outcome, SourceMissing)
+                    else f"원천 조회에 실패했습니다: {outcome}",
                     "",
                     (),
                     (),
@@ -1232,6 +1291,10 @@ class AmenityCollector:
         if key == "hospital" and NCMC_HOSPITAL_SOURCE in sources:
             state = "connected"
             note = HOSPITAL_NCMC_NOTE
+        # 환승시설도 표준데이터로 채웠으면 연결이다.
+        if key == "transfer" and TRANSFER_STANDARD_SOURCE in sources:
+            state = "connected"
+            note = TRANSFER_STANDARD_NOTE
         return GroupCollection(
             key=key,
             state=state,

@@ -44,6 +44,7 @@ from app.services.kakao import KakaoClient
 from app.services.naver_search import NaverSearchClient
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
+from app.services.transfer_center import TransferCenterClient
 
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,8 @@ def get_screening_service() -> ScreeningService:
             # 초·중·고·공원·상업·문화·공공·버스정류장은 시설 필지경계에서 잰다
             # (MEASUREMENT.md §3). 1차 판정과 같은 VWorld 클라이언트를 쓴다.
             vworld=get_vworld_client(),
+            # 환승시설 지정 원천(환승센터 표준데이터 15034541). 활용신청 전엔 지도 근사.
+            transfer_client=TransferCenterClient(config.public_data_key),
         ),
         demo_mode=config.demo_mode,
     )

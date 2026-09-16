@@ -129,6 +129,11 @@ async def _probe_ncmc(hazard: Any, screening: Any) -> str:
     return f"서울 종합병원 {len(rows)}건"
 
 
+async def _probe_transfer_center(hazard: Any, screening: Any) -> str:
+    rows = await _amenities(screening).transfer_client.all_centers()
+    return f"환승센터 {len(rows):,}건"
+
+
 async def _probe_factory_registry(hazard: Any, screening: Any) -> str:
     rows = await hazard.factory_registry.factories_in_sigungu("11680")  # 서울 강남구
     return f"강남구 등록공장 {len(rows):,}건"
@@ -201,6 +206,13 @@ CONNECTION_SPECS: tuple[ConnectionSpec, ...] = (
         "PUBLIC_DATA_SERVICE_KEY",
         lambda h, s: getattr(_amenities(s), "hospital_client", None), _probe_ncmc,
         "공공데이터포털", "https://www.data.go.kr/",
+    ),
+    ConnectionSpec(
+        "transfer_center", "국토부 환승센터 표준데이터(15034541)",
+        "2차 환승시설 지정 원천 — 활용신청 승인 전에는 403(지도 검색으로 근사)",
+        "PUBLIC_DATA_SERVICE_KEY",
+        lambda h, s: getattr(_amenities(s), "transfer_client", None), _probe_transfer_center,
+        "공공데이터포털", "https://www.data.go.kr/data/15034541/standard.do",
     ),
     ConnectionSpec(
         "factory_registry", "산단공 공장등록 필지정보(15087615)",
