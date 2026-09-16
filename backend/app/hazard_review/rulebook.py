@@ -471,7 +471,8 @@ CATEGORIES: tuple[Category, ...] = (
     # --- 25m 예외 3종 — RB14-FUEL25 (25m · 주택 전 유형) ------------------------
     Category(
         key="gas_station",
-        label="가. 주유소 (기계식 세차설비 포함)",
+        # 가목은 「주유소 및 석유판매소」 한 목이지만 원장이 달라 두 종류로 나눈다(가-1·가-2).
+        label="가-1. 주유소 (기계식 세차설비 포함)",
         rule_id="RB14-FUEL25",
         source_label="행안부 석유판매업(업태 주유소) · 생활안전지도 IF_0033 · 오피넷 보조",
         data_state="applied",
@@ -485,7 +486,7 @@ CATEGORIES: tuple[Category, ...] = (
     ),
     Category(
         key="oil_retailer",
-        label="가. 석유 판매소 (일반·용제·부생연료유) · 석유대체연료판매업",
+        label="가-2. 석유 판매소 (일반·용제·부생연료유) · 석유대체연료판매업",
         rule_id="RB14-FUEL25",
         source_label="행안부 석유판매업 · 석유및석유대체연료판매업",
         data_state="applied",
