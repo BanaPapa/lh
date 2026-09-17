@@ -121,14 +121,14 @@ class SafemapLayerClient:
                 "returnType": "json",
             },
         )
-        if response.status_code != 200:
-            raise SafemapAPIError(
-                f"{self.layer.label} 응답 오류 ({response.status_code})", response.status_code
-            )
+        # 미승인 레이어는 HTTP 500 에 resultCode 30 을 실어 보낸다(2026-09-17 실측).
+        # 상태코드로 먼저 자르지 말고 본문을 읽어 사유를 구분한다.
         try:
             payload = response.json()
         except ValueError as exc:
-            raise SafemapAPIError(f"{self.layer.label} 응답을 해석하지 못했습니다.") from exc
+            raise SafemapAPIError(
+                f"{self.layer.label} 응답 오류 ({response.status_code})", response.status_code
+            ) from exc
         header = payload.get("header") or {}
         code = str(header.get("resultCode") or "00")
         if code not in ("00", "0"):
