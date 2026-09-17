@@ -612,3 +612,64 @@ def test_cli_and_app_build_service_with_identical_wiring():
     assert callable(loader)
 
     hazard_router.get_hazard_service.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# 생활안전지도 레이어(2026-09-17 승인) — 참고 핀·주석 전용, 판정은 바꾸지 않는다
+# ---------------------------------------------------------------------------
+class FakeLayerFeed:
+    def __init__(self, rows, enabled: bool = True) -> None:
+        from app.services.safemap_facilities import SafemapFacility
+
+        self.enabled = enabled
+        self.rows = [
+            SafemapFacility("IF_TEST", f"{name}-{n}", name, "주소", kind,
+                            offset_coordinates(SITE_CENTER, n, e))
+            for name, n, e, kind in rows
+        ]
+
+    async def facilities_around(self, center, radius_m):
+        return list(self.rows)
+
+
+class TestSafemapReferenceLayers:
+    def test_chemical_layer_becomes_reference_pin_without_changing_manual_status(self) -> None:
+        feed = FakeLayerFeed([("연호전자", 0, 20, "화학제품 제조업")])
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), chemical_feed=feed,
+        )
+        toxic = category_for(result, "toxic_substance")
+        # LH [요청 2] 승인 상태 그대로 — 판정 미적용.
+        assert toxic.status == "dataset_missing"
+        assert toxic.manual_check_required
+        assert toxic.candidate_count == 1
+        pin = toxic.facilities[0]
+        assert pin.facility_type == "chemical_handling" and pin.metadata["reference"]
+        assert "참고 핀 1건" in toxic.note
+
+    def test_waste_layer_is_reference_pin_for_other_similar(self) -> None:
+        feed = FakeLayerFeed([("○○환경 소각시설", 0, 20, "소각")])
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), waste_feed=feed,
+        )
+        other = category_for(result, "hazmat_other_similar")
+        assert other.status == "dataset_missing"
+        assert [f.facility_type for f in other.facilities] == ["waste_treatment"]
+
+    def test_emission_layer_annotates_registered_factory(self) -> None:
+        bundle = LocalSourcesBundle(
+            factory_registry_loaded=True,
+            factory_pnus=frozenset({FACILITY_PNU}),
+            factory_facilities=(factory_record(FACILITY_PNU, 0, 20),),
+        )
+        feed = FakeLayerFeed([("등록공장", 0, 20, "대기"), ("등록공장", 0, 25, "수질")])
+        result = run_review(
+            build_request(), local_sources=bundle, emission_feed=feed,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        factory = category_for(result, "factory_registered")
+        assert factory.status == "review_required"
+        note = factory.facilities[0].classification_note
+        assert "대기배출 신고 있음(생활안전지도" in note and "수질배출 신고 있음" in note

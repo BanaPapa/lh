@@ -120,6 +120,17 @@ async def _probe_cng(hazard: Any, screening: Any) -> str:
     return f"전국 {len(rows):,}건"
 
 
+async def _probe_lpg_file(hazard: Any, screening: Any) -> str:
+    rows = await hazard.lpg_file.all_stations()
+    return f"전국 {len(rows):,}건"
+
+
+async def _probe_cng_gyeongnam(hazard: Any, screening: Any) -> str:
+    rows = await hazard.cng_gyeongnam.all_stations()
+    failed = len(hazard.cng_gyeongnam.geocode_failures)
+    return f"경남 {len(rows)}건" + (f" · 지오코딩 실패 {failed}건" if failed else "")
+
+
 async def _probe_crematorium(hazard: Any, screening: Any) -> str:
     rows = await hazard.crematorium.all_crematoriums()
     return f"전국 {len(rows):,}건"
@@ -219,9 +230,22 @@ CONNECTION_SPECS: tuple[ConnectionSpec, ...] = (
     ),
     ConnectionSpec(
         "cng", "가스안전공사 CNG 충전소(ODcloud 15001508)",
-        "1차 자동차용 천연가스 충전소 후보 — 활용신청 승인 전에는 401",
+        "1차 자동차용 천연가스 충전소 후보(전국 190곳 · 위경도)",
         "PUBLIC_DATA_SERVICE_KEY", lambda h, s: h.cng, _probe_cng,
         "공공데이터포털", "https://www.data.go.kr/data/15001508/fileData.do",
+    ),
+    ConnectionSpec(
+        "lpg_file", "가스안전공사 LPG 충전소 현황 파일(ODcloud 15001643)",
+        "1차 LPG 충전소 보조 — 조회 API 와 같은 명부의 최신 파일(관리구분·위경도), 40m 중복 제거",
+        "PUBLIC_DATA_SERVICE_KEY", lambda h, s: getattr(h, "lpg_file", None), _probe_lpg_file,
+        "공공데이터포털", "https://www.data.go.kr/data/15001643/fileData.do",
+    ),
+    ConnectionSpec(
+        "cng_gyeongnam", "경상남도 천연가스 충전소(ODcloud 15055157)",
+        "1차 CNG 충전소 지역 보조 — 경남 12곳, 주소를 카카오로 지오코딩",
+        "PUBLIC_DATA_SERVICE_KEY", lambda h, s: getattr(h, "cng_gyeongnam", None),
+        _probe_cng_gyeongnam,
+        "공공데이터포털", "https://www.data.go.kr/data/15055157/fileData.do",
     ),
     ConnectionSpec(
         "crematorium", "보건복지부 화장시설",
@@ -253,7 +277,7 @@ CONNECTION_SPECS: tuple[ConnectionSpec, ...] = (
         ConnectionSpec(
             f"safemap_{layer.layer_id.lower()}",
             f"생활안전지도 {layer.label}({layer.agency}, {layer.layer_id})",
-            f"{layer.purpose} — 레이어별 데이터 사용신청 필요",
+            f"{layer.purpose} (레이어별 데이터 사용신청 · 2026-09-17 승인)",
             "SAFEMAP_API_KEY", _safemap_layer_client(layer.layer_id), _safemap_layer_probe(layer.layer_id),
             "생활안전지도 오픈API", "https://www.safemap.go.kr/opna/data/dataList.do",
         )

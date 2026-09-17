@@ -342,7 +342,9 @@ CATEGORIES: tuple[Category, ...] = (
         key="lpg_station",
         label="나. 자동차용 LPG 충전소",
         rule_id="RB14-FUEL25",
-        source_label="한국가스안전공사 LPG 충전소 현황(API) · 생활안전지도 IF_0033",
+        source_label=(
+            "한국가스안전공사 LPG 충전소 현황(API · 파일 15001643) · 생활안전지도 IF_0033"
+        ),
         data_state="applied",
         note=(
             "자동차용 LPG 충전소는 주유소와 같은 25m 를 적용한다 "
@@ -411,10 +413,15 @@ CATEGORIES: tuple[Category, ...] = (
         key="toxic_substance",
         label="마. 유독물 보관·저장·판매시설",
         rule_id="RB14-HAZMAT",
-        source_label="전북 위치자료 미확보 (환경부 협조 요청 대상)",
+        source_label=(
+            "유독물 시설 위치자료 미확보 (환경부 협조 요청 대상) · "
+            "생활안전지도 화학물취급시설(IF_0049) 참고 핀"
+        ),
         data_state="manual",
         note=f"{MANUAL_CHECK_NOTE} · LH 회신문 §7 미확보 6개 목 (H-02-마)",
         doc_ref="H-02-마",
+        # 참고 핀 전용 시설 유형. 판정(data_state=manual)은 그대로다.
+        facility_types=("chemical_handling",),
     ),
     Category(
         key="paint_retailer",
@@ -460,13 +467,17 @@ CATEGORIES: tuple[Category, ...] = (
         key="hazmat_other_similar",
         label="차. 그 밖에 가~자목과 비슷한 것",
         rule_id="RB14-HAZMAT",
-        source_label="대상 미정의 — 유사 시설 발견 시 협의",
+        source_label=(
+            "대상 미정의 — 유사 시설 발견 시 협의 · 생활안전지도 폐기물처리시설(IF_0051) 참고 핀"
+        ),
         data_state="negotiate",
         note=(
             "개별 협의 항목. 후보 판별 절차가 정해지지 않아 자동 판정하지 않는다 "
             "(H-02-차 §7-1). 특정고압가스 462건은 라·바목 종류에서 검토로 다룬다"
         ),
         doc_ref="H-02-차",
+        # 참고 핀 전용 시설 유형(폐기물처리시설). 판정(negotiate)은 그대로다.
+        facility_types=("waste_treatment",),
     ),
     # --- 25m 예외 3종 — RB14-FUEL25 (25m · 주택 전 유형) ------------------------
     Category(
@@ -504,7 +515,7 @@ CATEGORIES: tuple[Category, ...] = (
         rule_id="RB14-FUEL25",
         source_label=(
             "가스안전공사 전국 도시가스충전소 현황(ODcloud 15001508 · 위경도 보유) "
-            "+ 로컬 CSV 8건 보조"
+            "· 경남 천연가스 충전소(15055157 · 지오코딩) 보조"
         ),
         data_state="applied",
         note=(

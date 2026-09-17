@@ -43,6 +43,7 @@ from app.services.facility_store import FacilityStore
 from app.services.kakao import KakaoClient
 from app.services.naver_search import NaverSearchClient
 from app.services.ncmc_hospital import NcmcHospitalClient
+from app.services.safemap_facilities import SafemapFacilityFeed
 from app.services.seoul_bus import SeoulBusStopClient
 from app.services.tago import TagoClient
 from app.services.transfer_center import TransferCenterClient
@@ -112,6 +113,13 @@ def get_screening_service() -> ScreeningService:
             transfer_client=TransferCenterClient(config.public_data_key),
             # 서울 버스정류소(TAGO 미제공 지역). 서울 열린데이터광장 키.
             seoul_bus=SeoulBusStopClient(config.seoul_open_data_key),
+            # 생활안전지도 시설 레이어(2026-09-17 승인). 초·중·고·관공서는 지정 원천,
+            # 대학교는 후보 보강, 종합병원은 국립중앙의료원 시도 조회의 전국본 폴백.
+            safemap_schools=SafemapFacilityFeed(config.safemap_api_key, "IF_0035"),
+            safemap_universities=SafemapFacilityFeed(config.safemap_api_key, "IF_0034"),
+            safemap_offices=SafemapFacilityFeed(config.safemap_api_key, "IF_0031"),
+            safemap_hospitals=SafemapFacilityFeed(config.safemap_api_key, "IF_0022"),
+            safemap_fire=SafemapFacilityFeed(config.safemap_api_key, "IF_0038"),
         ),
         demo_mode=config.demo_mode,
     )

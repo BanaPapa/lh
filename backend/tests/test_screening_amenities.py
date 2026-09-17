@@ -901,3 +901,106 @@ async def test_university_gates_from_kakao_use_nearest_named_gate() -> None:
     assert facility.distance_m == pytest.approx(600, abs=3)
     labels = {c.label for c in facility.front_door_candidates}
     assert labels == {"건국대학교 상허문", "건국대학교 일감문"}
+
+
+# ---------------------------------------------------------------------------
+# 생활안전지도 시설 레이어(2026-09-17 승인) — 초·중·고·관공서 지정 원천, 종합병원 폴백
+# ---------------------------------------------------------------------------
+
+
+class FakeLayerFeed:
+    """SafemapFacilityFeed 대역. rows 는 (이름, 오프셋 m, kind)."""
+
+    def __init__(self, rows, enabled: bool = True, fail: bool = False) -> None:
+        from app.services.safemap_facilities import SafemapFacility
+
+        self.enabled = enabled
+        self.fail = fail
+        self.rows = [
+            SafemapFacility("IF_TEST", name, name, f"{name} 주소", kind, offset_coordinates(CENTER, off, 0))
+            for name, off, kind in rows
+        ]
+
+    async def facilities_around(self, center, radius_m):
+        if self.fail:
+            raise RuntimeError("레이어 장애")
+        return [r for r in self.rows if haversine_meters(center, r.coordinates) <= radius_m]
+
+
+@pytest.mark.asyncio
+async def test_schools_come_from_layer_and_are_connected() -> None:
+    kakao = FakeKakao(categories={"SC4": [place("지도초등학교", 300, "교육,학문 > 학교 > 초등학교")]})
+    schools = FakeLayerFeed([("교육부초등학교", 400, "초등학교"), ("교육부중학교", 600, "중학교")])
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), safemap_schools=schools)
+
+    result = await collector.collect([], CENTER)
+
+    assert result["school_elementary"].state == "connected"
+    assert "IF_0035" in result["school_elementary"].note
+    assert [f.name for f in result["school_elementary"].facilities] == ["교육부초등학교"]
+    assert [f.name for f in result["school_middle"].facilities] == ["교육부중학교"]
+    assert "SC4" not in kakao.calls
+
+
+@pytest.mark.asyncio
+async def test_school_layer_failure_falls_back_to_kakao_as_substituted() -> None:
+    kakao = FakeKakao(categories={"SC4": [place("지도초등학교", 300, "교육,학문 > 학교 > 초등학교")]})
+    collector = AmenityCollector(
+        kakao=kakao, tago=FakeTago([]), safemap_schools=FakeLayerFeed([], fail=True)
+    )
+
+    result = await collector.collect([], CENTER)
+
+    group = result["school_elementary"]
+    assert group.state == "substituted"
+    assert [f.name for f in group.facilities] == ["지도초등학교"]
+
+
+@pytest.mark.asyncio
+async def test_public_uses_office_layer_plus_fire_stations() -> None:
+    kakao = FakeKakao(
+        categories={"PO3": [place("지도주민센터", 300, "공공기관 > 주민센터")]},
+        keywords={"도서관": [place("시립도서관", 700, "문화,예술 > 도서관 > 국공립도서관")]},
+    )
+    offices = FakeLayerFeed([("전주시청", 500, "관공서"), ("전주시립도서관", 900, "관공서")])
+    fire = FakeLayerFeed([("완산소방서", 800, "소방서"), ("효자119지역대", 850, "소방기타"), ("전주시청", 500, "소방기관")])
+    collector = AmenityCollector(
+        kakao=kakao, tago=FakeTago([]), safemap_offices=offices, safemap_fire=fire
+    )
+
+    result = await collector.collect([], CENTER)
+
+    group = result["public"]
+    assert group.state == "connected"
+    names = {f.name for f in group.facilities}
+    # 관공서 레이어 + 소방서(지역대 제외, 시청과 겹치는 소방기관 행은 40m 중복 제거) + 도서관 검색.
+    assert names == {"전주시청", "전주시립도서관", "완산소방서", "시립도서관"}
+    assert "PO3" not in kakao.calls
+
+
+@pytest.mark.asyncio
+async def test_hospital_layer_fills_in_when_ncmc_is_absent() -> None:
+    kakao = FakeKakao(categories={"HP8": [place("지도병원", 300, "의료,건강 > 병원 > 종합병원")]})
+    hospitals = FakeLayerFeed([("전주병원", 600, "종합병원")])
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), safemap_hospitals=hospitals)
+
+    result = await collector.collect([], CENTER)
+
+    assert result["hospital"].state == "connected"
+    assert "IF_0022" in result["hospital"].note
+    assert [f.name for f in result["hospital"].facilities] == ["전주병원"]
+
+
+@pytest.mark.asyncio
+async def test_university_layer_supplements_without_duplicating_kakao() -> None:
+    kakao = FakeKakao(keywords={"대학교": [place("전주대학교", 900, "교육,학문 > 학교 > 대학교")]})
+    universities = FakeLayerFeed([("전주대학교", 950, "대학교"), ("전북대학교", 1500, "대학교")])
+    collector = AmenityCollector(
+        kakao=kakao, tago=FakeTago([]), safemap_universities=universities
+    )
+
+    result = await collector.collect([], CENTER)
+
+    names = [f.name for f in result["university"].facilities]
+    assert names == ["전주대학교", "전북대학교"]
+    assert "IF_0034" in result["university"].actual_source

@@ -25,6 +25,9 @@ from app.services.building_register import BuildingRegisterClient
 from app.services.cadastral_local import CadastralLocalStore
 from app.services.cadastral_vworld import VWorldCadastralStore
 from app.services.cng import CngStationClient
+from app.services.cng_gyeongnam import CngGyeongnamClient
+from app.services.lpg_station_file import LpgStationFileClient
+from app.services.safemap_facilities import SafemapFacilityFeed
 from app.services.crematorium import CrematoriumClient
 from app.services.facility_store import FacilityStore
 from app.services.kakao import KakaoClient
@@ -213,6 +216,16 @@ def build_hazard_service(
         factory_registry=FactoryRegistryClient(
             config.public_data_key, geocoder=geocode_address
         ),
+        # 가스안전공사 LPG 충전소 파일(15001643) — kgs 조회 API 의 보조(중복 40m 제거).
+        lpg_file=LpgStationFileClient(config.public_data_key),
+        # 경남 천연가스 충전소(15055157) — 전국 CNG 의 지역 보조(주소 지오코딩).
+        cng_gyeongnam=CngGyeongnamClient(config.public_data_key, geocode=geocode_address),
+        # 생활안전지도 화학물취급시설(IF_0049) — 마목 유독물 참고 핀(판정 아님).
+        chemical_feed=SafemapFacilityFeed(config.safemap_api_key, "IF_0049"),
+        # 생활안전지도 환경배출시설(IF_0040) — 등록공장 대기·수질 배출 주석(판정 아님).
+        emission_feed=SafemapFacilityFeed(config.safemap_api_key, "IF_0040"),
+        # 생활안전지도 폐기물처리시설(IF_0051) — 차목 협의 대상 참고 핀(판정 아님).
+        waste_feed=SafemapFacilityFeed(config.safemap_api_key, "IF_0051"),
     )
 
     loader = build_local_sources_loader(

@@ -46,6 +46,11 @@ from app.services.kakao import KakaoClient
 from app.services.naver_search import NaverSearchClient
 from app.services.seoul_bus import SeoulBusStopClient
 from app.services.parcel_sanity import parcel_rejection_reason
+from app.services.safemap_facilities import (
+    FIRE_PUBLIC_KINDS,
+    SafemapFacility,
+    SafemapFacilityFeed,
+)
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
 from app.services.transfer_center import TransferCenterClient
@@ -165,6 +170,12 @@ TAGO_SOURCE = "국토교통부 TAGO 정류소 근접조회"
 SEOUL_BUS_SOURCE = "서울 열린데이터광장 버스정류소 위치정보"
 LOCALDATA_SOURCE = "행정안전부 지방행정인허가 대규모점포"
 NCMC_HOSPITAL_SOURCE = "국립중앙의료원 전국 병·의원 찾기(종합병원)"
+# 생활안전지도 시설 레이어(2026-09-17 데이터 사용신청 승인). 레이어별 지정 원천.
+SAFEMAP_SCHOOL_SOURCE = "교육부 학교알리미 초·중·고 위치(생활안전지도 IF_0035)"
+SAFEMAP_UNIVERSITY_SOURCE = "교육부 대학교 위치(생활안전지도 IF_0034)"
+SAFEMAP_OFFICE_SOURCE = "행정안전부 민원행정기관 전자지도(생활안전지도 IF_0031)"
+SAFEMAP_FIRE_SOURCE = "소방청 소방서·119안전센터(생활안전지도 IF_0038)"
+SAFEMAP_HOSPITAL_SOURCE = "국립중앙의료원 종합병원(생활안전지도 IF_0022)"
 
 # 정문 미지정 대학 캠퍼스에 붙이는 지정 대기 고지(국장님 §3-3). 좌표 폴백을
 # 쓰되 그 사실을 감추지 않는다.
@@ -184,6 +195,27 @@ HOSPITAL_FRONT_DOOR_PENDING_NOTICE = (
 HOSPITAL_NCMC_NOTE = (
     "국립중앙의료원 전국 병·의원 원장에서 종류=종합병원만 산정했습니다. "
     "상급종합병원 인정 여부는 LH 미확정이라 함께 계산하되 구분해 둡니다."
+)
+HOSPITAL_LAYER_NOTE = (
+    "국립중앙의료원 종합병원 원장의 전국본(생활안전지도 IF_0022)으로 산정했습니다. "
+    "종류=종합병원 381곳 · 일 단위 갱신."
+)
+SCHOOL_LAYER_NOTE = (
+    "교육부 학교알리미 초·중·고 위치(생활안전지도 IF_0035)로 산정했습니다. "
+    "분교장·특수학교는 이름의 학교급으로 가릅니다."
+)
+SCHOOL_KAKAO_NOTE = (
+    "교육부 학교 위치(생활안전지도 IF_0035) 대신 지도 학교 분류에서 이름 토큰으로 "
+    "근사했습니다."
+)
+PUBLIC_LAYER_NOTE = (
+    "관공서·행정복지센터·우체국·도서관 등은 행정안전부 민원행정기관 전자지도"
+    "(생활안전지도 IF_0031)로 세고, 소방서·119안전센터(IF_0038)와 도서관 지도 검색으로 "
+    "보충했습니다."
+)
+PUBLIC_KAKAO_NOTE = (
+    "행안부 민원행정기관 전자지도(생활안전지도 IF_0031) 대신 지도 공공기관 분류로 "
+    "근사했습니다."
 )
 
 # 시설군 판별은 이름이 아니라 카카오 category_name 의 마지막 조각으로 한다.
@@ -454,12 +486,24 @@ GROUP_SPECS: dict[str, GroupSpec] = {
         keep=_is_park,
     ),
     "culture": GroupSpec(("culture",), "connected", ""),
-    "public": GroupSpec(("public", "library"), "connected", "", keep=_is_public),
-    "school_elementary": GroupSpec(
-        ("school",), "connected", "", keep=_school_filter("초등학교")
+    # 공공·초중고는 생활안전지도 레이어(지정 원천)가 답하면 connected 로 올린다
+    # (_build_group). 레이어가 없거나 실패해 지도 분류로 채웠으면 근사(substituted)다.
+    "public": GroupSpec(
+        ("public", "library"), "substituted", PUBLIC_KAKAO_NOTE, kakao_backed=False,
+        keep=_is_public,
     ),
-    "school_middle": GroupSpec(("school",), "connected", "", keep=_school_filter("중학교")),
-    "school_high": GroupSpec(("school",), "connected", "", keep=_school_filter("고등학교")),
+    "school_elementary": GroupSpec(
+        ("school",), "substituted", SCHOOL_KAKAO_NOTE, kakao_backed=False,
+        keep=_school_filter("초등학교"),
+    ),
+    "school_middle": GroupSpec(
+        ("school",), "substituted", SCHOOL_KAKAO_NOTE, kakao_backed=False,
+        keep=_school_filter("중학교"),
+    ),
+    "school_high": GroupSpec(
+        ("school",), "substituted", SCHOOL_KAKAO_NOTE, kakao_backed=False,
+        keep=_school_filter("고등학교"),
+    ),
     "university": GroupSpec(
         ("school", "university"),
         "substituted",
@@ -483,6 +527,21 @@ def _kakao_place(document: dict[str, Any]) -> RawPlace | None:
         ).strip(),
         category_name=str(document.get("category_name") or ""),
         coordinates=Coordinates(lat=lat, lng=lng),
+    )
+
+
+def _feed_enabled(feed: SafemapFacilityFeed | None) -> bool:
+    return feed is not None and feed.enabled
+
+
+def _layer_places(
+    rows: Sequence[SafemapFacility],
+    category_of: Callable[[SafemapFacility], str],
+) -> tuple[RawPlace, ...]:
+    return tuple(
+        RawPlace(row.name, row.address, category_of(row), row.coordinates)
+        for row in rows
+        if row.name
     )
 
 
@@ -517,8 +576,22 @@ class AmenityCollector:
         vworld: VWorldClient | None = None,
         transfer_client: TransferCenterClient | None = None,
         seoul_bus: SeoulBusStopClient | None = None,
+        safemap_schools: SafemapFacilityFeed | None = None,
+        safemap_universities: SafemapFacilityFeed | None = None,
+        safemap_offices: SafemapFacilityFeed | None = None,
+        safemap_hospitals: SafemapFacilityFeed | None = None,
+        safemap_fire: SafemapFacilityFeed | None = None,
     ) -> None:
         self.kakao = kakao
+        # 소방서·119안전센터(IF_0038). 관공서 레이어의 보강(같은 자리 40m 는 뺀다).
+        self.safemap_fire = safemap_fire
+        # 생활안전지도 시설 레이어(2026-09-17 승인). 초·중·고(IF_0035)·관공서(IF_0031)는
+        # 지정 원천으로 지도 분류를 대체하고, 대학교(IF_0034)는 후보 보강, 종합병원
+        # (IF_0022)은 국립중앙의료원 시도 조회의 전국본 폴백이다. 키가 없으면 미사용.
+        self.safemap_schools = safemap_schools
+        self.safemap_universities = safemap_universities
+        self.safemap_offices = safemap_offices
+        self.safemap_hospitals = safemap_hospitals
         # 서울 버스정류소(TAGO 가 서울을 제공하지 않아 따로 붙인다). 키가 없으면 미사용.
         self.seoul_bus = seoul_bus
         # 환승시설 지정 원천(환승센터 표준데이터). 활용신청 전(403)에는 지도 근사.
@@ -998,6 +1071,11 @@ class AmenityCollector:
             "bus_stop": self._bus_stops(center, radius_m),
             "transfer": self._transfer_centers(center, radius_m),
         }
+        # 지정 원천 레이어가 있는 시설군은 카카오 키와 무관하게 조회한다(실패 시 지도 폴백).
+        if _feed_enabled(self.safemap_schools):
+            feeds["school"] = self._layer_schools(center, radius_m)
+        if _feed_enabled(self.safemap_offices):
+            feeds["public"] = self._layer_offices(center, radius_m)
         if not self.kakao.enabled:
             # 키가 없으면 호출 자체를 만들지 않는다. 상태는 missing 으로 내려간다.
             return feeds
@@ -1020,18 +1098,137 @@ class AmenityCollector:
             "library": "도서관",
             "university": "대학교",
         }
-        # 의료시설은 국립중앙의료원 원장이 있으면 카카오 HP8 근사 대신 그걸 쓴다.
-        # HP8 코루틴을 만들었다가 덮으면 await 되지 않아 경고가 나므로 미리 뺀다.
-        use_ncmc = self.hospital_client is not None and self.hospital_client.enabled
+        # 의료시설은 국립중앙의료원 원장(시도 조회)이나 그 전국본 레이어가 있으면
+        # 카카오 HP8 근사 대신 그걸 쓴다. 코루틴을 만들었다가 덮으면 await 되지 않아
+        # 경고가 나므로 지정 원천이 있는 시설군은 미리 뺀다.
+        use_designated_hospital = (
+            self.hospital_client is not None and self.hospital_client.enabled
+        ) or _feed_enabled(self.safemap_hospitals)
         for name, code in category.items():
-            if name == "hospital" and use_ncmc:
+            if name == "hospital" and use_designated_hospital:
+                continue
+            if name in feeds:
                 continue
             feeds[name] = self._kakao_category(code, center, radius_m)
         for name, query in keyword.items():
+            if name == "university" and _feed_enabled(self.safemap_universities):
+                feeds[name] = self._universities(query, center, radius_m)
+                continue
             feeds[name] = self._kakao_keyword(query, center, radius_m)
-        if use_ncmc:
-            feeds["hospital"] = self._ncmc_hospitals(center, radius_m)
+        if use_designated_hospital:
+            feeds["hospital"] = self._designated_hospitals(center, radius_m)
         return feeds
+
+    # -- 생활안전지도 시설 레이어 ----------------------------------------------
+    async def _layer_schools(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """초·중·고(IF_0035). 실패하면 지도 학교 분류(SC4)로 폴백하고 근사로 남긴다."""
+
+        assert self.safemap_schools is not None
+        try:
+            rows = await self.safemap_schools.facilities_around(center, radius_m)
+            return FeedResult(
+                _layer_places(rows, lambda r: f"교육,학문 > 학교 > {r.kind}"),
+                SAFEMAP_SCHOOL_SOURCE,
+            )
+        except Exception:
+            if not self.kakao.enabled:
+                raise
+            return await self._kakao_category("SC4", center, radius_m)
+
+    async def _layer_offices(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """관공서(IF_0031). 도서관 행은 도서관 분류로 두어 _is_public 이 남기게 한다."""
+
+        assert self.safemap_offices is not None
+        try:
+            rows = await self.safemap_offices.facilities_around(center, radius_m)
+        except Exception:
+            if not self.kakao.enabled:
+                raise
+            return await self._kakao_category("PO3", center, radius_m)
+        places = list(
+            _layer_places(
+                rows,
+                lambda r: ("문화,예술 > 도서관" if "도서관" in r.name else "공공기관 > 관공서"),
+            )
+        )
+        sources = [SAFEMAP_OFFICE_SOURCE]
+        # 소방서·119안전센터 보강. 실패해도 관공서 결과는 그대로 쓴다(보강 원천).
+        if _feed_enabled(self.safemap_fire):
+            assert self.safemap_fire is not None
+            try:
+                fire_rows = await self.safemap_fire.facilities_around(center, radius_m)
+            except Exception:
+                fire_rows = []
+            added = 0
+            for row in fire_rows:
+                if row.kind not in FIRE_PUBLIC_KINDS:
+                    continue
+                if any(haversine_meters(row.coordinates, p.coordinates) <= 40 for p in places):
+                    continue
+                places.append(
+                    RawPlace(row.name, row.address, f"공공기관 > {row.kind}", row.coordinates)
+                )
+                added += 1
+            if added:
+                sources.append(SAFEMAP_FIRE_SOURCE)
+        return FeedResult(tuple(places), " + ".join(sources))
+
+    async def _universities(
+        self, query: str, center: Coordinates, radius_m: int
+    ) -> FeedResult:
+        """카카오 「대학교」 키워드 + 교육부 대학교 위치(IF_0034) 보강.
+
+        레이어는 본교 주소점 하나만 주므로 카카오 후보를 대체하지 않고, 같은 대학
+        (정규화 base 동일)이 1km 안에 이미 있으면 버리고 빠진 대학만 보탠다.
+        """
+
+        assert self.safemap_universities is not None
+        kakao_result = await self._kakao_keyword(query, center, radius_m)
+        try:
+            rows = await self.safemap_universities.facilities_around(center, radius_m)
+        except Exception:
+            return kakao_result
+        known = [
+            (normalize_key(university_base(p.name)), p.coordinates)
+            for p in kakao_result.places
+        ]
+        extra: list[RawPlace] = []
+        for row in rows:
+            key = normalize_key(university_base(row.name))
+            if any(
+                key == seen_key and haversine_meters(row.coordinates, seen_point) <= 1000
+                for seen_key, seen_point in known
+            ):
+                continue
+            extra.append(
+                RawPlace(row.name, row.address, "교육,학문 > 학교 > 대학교", row.coordinates)
+            )
+        if not extra:
+            return kakao_result
+        return FeedResult(
+            kakao_result.places + tuple(extra),
+            f"{kakao_result.source_label} + {SAFEMAP_UNIVERSITY_SOURCE}",
+        )
+
+    async def _designated_hospitals(
+        self, center: Coordinates, radius_m: int
+    ) -> FeedResult:
+        """종합병원 지정 원천: 국립중앙의료원 시도 조회 → 실패 시 전국본 레이어(IF_0022)."""
+
+        ncmc_ready = self.hospital_client is not None and self.hospital_client.enabled
+        layer_ready = _feed_enabled(self.safemap_hospitals)
+        if ncmc_ready:
+            try:
+                return await self._ncmc_hospitals(center, radius_m)
+            except Exception:
+                if not layer_ready:
+                    raise
+        assert self.safemap_hospitals is not None
+        rows = await self.safemap_hospitals.facilities_around(center, radius_m)
+        return FeedResult(
+            _layer_places(rows, lambda r: f"의료,건강 > 병원 > {r.kind}"),
+            SAFEMAP_HOSPITAL_SOURCE,
+        )
 
     async def _kakao_category(
         self,
@@ -1332,6 +1529,16 @@ class AmenityCollector:
         if key == "hospital" and NCMC_HOSPITAL_SOURCE in sources:
             state = "connected"
             note = HOSPITAL_NCMC_NOTE
+        elif key == "hospital" and SAFEMAP_HOSPITAL_SOURCE in sources:
+            state = "connected"
+            note = HOSPITAL_LAYER_NOTE
+        # 초·중·고·공공도 생활안전지도 지정 원천이 답했으면 연결이다.
+        if key.startswith("school_") and SAFEMAP_SCHOOL_SOURCE in sources:
+            state = "connected"
+            note = SCHOOL_LAYER_NOTE
+        if key == "public" and any(src.startswith(SAFEMAP_OFFICE_SOURCE) for src in sources):
+            state = "connected"
+            note = PUBLIC_LAYER_NOTE
         # 환승시설도 표준데이터로 채웠으면 연결이다.
         if key == "transfer" and any(
             src.startswith(TRANSFER_STANDARD_SOURCE) for src in sources

@@ -14,6 +14,8 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.services.cng import CNG_STATION_URL
+from app.services.cng_gyeongnam import CNG_GYEONGNAM_URL
+from app.services.lpg_station_file import LPG_FILE_URL
 from app.services.crematorium import CREMATORIUM_URL
 from app.services.kgs import KGS_LPG_URL
 from app.services.localdata import DATASET_BY_KEY, LOCALDATA_BASE, LocalDataSet
@@ -45,6 +47,8 @@ API_SOURCE_REGISTRY: dict[str, tuple[str, str]] = {
     "safemap": ("생활안전지도 주유·가스 IF_0033", SAFEMAP_IF0033_URL),
     "kgs": ("가스안전공사 LPG 충전소", KGS_LPG_URL),
     "cng": ("가스안전공사 CNG 충전소", CNG_STATION_URL),
+    "lpg_file": ("가스안전공사 LPG 충전소 현황(파일)", LPG_FILE_URL),
+    "cng_gyeongnam": ("경상남도 천연가스 충전소", CNG_GYEONGNAM_URL),
     "crematorium": ("공공데이터포털 화장시설", CREMATORIUM_URL),
 }
 

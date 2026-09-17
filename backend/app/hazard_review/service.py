@@ -69,6 +69,9 @@ from app.services.geo import (
 from app.services.facility_store import FacilityStore
 from app.services.kakao import KakaoClient
 from app.services.cng import CngStationClient
+from app.services.cng_gyeongnam import CngGyeongnamClient
+from app.services.lpg_station_file import LpgStationFileClient
+from app.services.safemap_facilities import SafemapFacilityFeed
 from app.services.factory_registry import FactoryRegistryClient
 from app.services.kgs import KgsLpgClient, PublicDataAPIError
 from app.services.parcel_sanity import parcel_rejection_reason
@@ -161,6 +164,10 @@ SOURCE_FAILURE_LABELS: dict[str, str] = {
     "kgs": "한국가스안전공사 LPG 현황",
     "factory_registry": "한국산업단지공단 공장등록 필지정보",
     "cng": "한국가스안전공사 도시가스(CNG) 충전소 현황",
+    "lpg_file": "한국가스안전공사 전국 LPG 충전소 현황(파일 15001643)",
+    "cng_gyeongnam": "경상남도 천연가스 충전소 설치 현황(15055157)",
+    "safemap_chemical": "생활안전지도 화학물취급시설(IF_0049)",
+    "safemap_waste": "생활안전지도 폐기물처리시설(IF_0051)",
     "safemap": "생활안전지도 전국 주유시설 현황",
     "crematorium": "보건복지부 전국 화장시설 현황",
     "noise_emission": "전국 소음진동배출시설 표준데이터",
@@ -187,6 +194,21 @@ BUILDING_REGISTER_NOTE = (
 # 가를 수 없는 시설. 확인 전에는 매입제외로 확정하지 않고 review_required 로만 남긴다.
 SAFEMAP_UNCLASSIFIED_NOTE = (
     "생활안전지도 원천에 시설 구분 정보 없음 — 주유소·LPG충전소 여부 확인 필요."
+)
+
+# 마목 유독물(H-02-마)은 LH [요청 2] 승인으로 「판정 미적용 — 별도 수기 확인」이다.
+# 환경부 화학물취급시설(생활안전지도 IF_0049)은 유독물 보관·저장·판매시설 그 자체가
+# 아니라 화학물질관리법 취급시설 등록 사업장이므로, 판정 근거로 쓰지 않고 수기 확인을
+# 돕는 참고 핀으로만 지도·심사표에 표시한다. 상태는 그대로 dataset_missing 이다.
+CHEMICAL_REFERENCE_NOTE = (
+    "환경부 화학물질 취급시설(생활안전지도 IF_0049) 등록 사업장입니다. 유독물 "
+    "보관·저장·판매시설 해당 여부는 수기 확인이 필요하며 판정 근거로 쓰지 않습니다."
+)
+# 차목(그 밖의 유사시설)은 개별 협의 항목(H-02-차 §7-1). 환경부 폐기물처리시설
+# (IF_0051)은 협의 대상을 드러내는 참고 핀일 뿐 판정하지 않는다.
+WASTE_REFERENCE_NOTE = (
+    "환경부 폐기물처리시설(생활안전지도 IF_0051) 위치입니다. 차목 「그 밖에 비슷한 것」 "
+    "해당 여부는 LH 와 개별 협의 대상이며 판정 근거로 쓰지 않습니다."
 )
 
 # 감사(§F)가 "확인 필요"로 둔 미검증 엔드포인트. 장애가 아니라 미검증임을 밝힌다.
@@ -406,6 +428,11 @@ class HazardReviewService:
         pnu_resolver: "PnuResolver | None" = None,
         cng: CngStationClient | None = None,
         factory_registry: FactoryRegistryClient | None = None,
+        lpg_file: LpgStationFileClient | None = None,
+        cng_gyeongnam: CngGyeongnamClient | None = None,
+        chemical_feed: SafemapFacilityFeed | None = None,
+        emission_feed: SafemapFacilityFeed | None = None,
+        waste_feed: SafemapFacilityFeed | None = None,
     ) -> None:
         # kakao 는 필지 확보 흐름에서만 쓰고, 유해요소 판정 후보는 공개원천만 쓴다.
         self.kakao = kakao
@@ -442,6 +469,17 @@ class HazardReviewService:
         # 사업지 시군구의 등록공장을 API 로 받아 「공장 있음」 검토 표시를 낸다.
         # 좌표가 없어 카카오 지오코딩을 거치며, 시설 필지는 좌표로 다시 붙인다.
         self.factory_registry = factory_registry
+        # 가스안전공사 LPG 충전소 파일(ODcloud 15001643). kgs_lpg 의 보조 원천 —
+        # 같은 자리(40m)는 중복으로 버리고 빠진 곳만 보탠다.
+        self.lpg_file = lpg_file
+        # 경남 천연가스 충전소(ODcloud 15055157, 주소 지오코딩). 전국 CNG 의 지역 보조.
+        self.cng_gyeongnam = cng_gyeongnam
+        # 생활안전지도 화학물취급시설(IF_0049). 마목 유독물의 참고 핀 전용(판정 아님).
+        self.chemical_feed = chemical_feed
+        # 생활안전지도 환경배출시설(IF_0040, 대기·수질). 등록공장 주석 전용(판정 아님).
+        self.emission_feed = emission_feed
+        # 생활안전지도 폐기물처리시설(IF_0051). 차목 협의 대상 참고 핀 전용(판정 아님).
+        self.waste_feed = waste_feed
 
     @property
     def local_sources(self) -> LocalSourcesBundle:
@@ -1180,8 +1218,29 @@ class HazardReviewService:
         want_gas = rule.rule_id == "RB14-FUEL25"
         want_lpg = rule.rule_id == "RB14-FUEL25"
         want_crematorium = rule.rule_id == "RB14-CREMATION-MILITARY"
-        if not (want_gas or want_lpg or want_crematorium):
+        # 마목 유독물 참고 핀(HAZMAT 50m). 판정 근거가 아니라 수기 확인 보조다.
+        want_chemical = rule.rule_id == "RB14-HAZMAT"
+        if not (want_gas or want_lpg or want_crematorium or want_chemical):
             return facilities
+
+        if want_chemical and self._chemical_ready():
+            facilities.extend(
+                await self._layer_reference_facilities(
+                    self.chemical_feed, "safemap_chemical", "chemical_handling",
+                    "화학물취급시설(참고)", "생활안전지도 유해화학시설-화학물취급시설(IF_0049)",
+                    CHEMICAL_REFERENCE_NOTE, "업종",
+                    request, search_limit_m, search_radius_m, now, failed_sources,
+                )
+            )
+        if want_chemical and self._waste_ready():
+            facilities.extend(
+                await self._layer_reference_facilities(
+                    self.waste_feed, "safemap_waste", "waste_treatment",
+                    "폐기물처리시설(참고)", "생활안전지도 유해화학시설-폐기물처리시설(IF_0051)",
+                    WASTE_REFERENCE_NOTE, "구분",
+                    request, search_limit_m, search_radius_m, now, failed_sources,
+                )
+            )
 
         if (want_gas or want_lpg) and self._opinet_ready():
             try:
@@ -1283,6 +1342,54 @@ class HazardReviewService:
                     )
                 )
 
+        # LPG 충전소 파일(가스안전공사 ODcloud 15001643, 2026-09-17 승인). kgs 조회
+        # API 와 같은 명부라 대부분 겹친다 — 같은 자리(40m)는 버리고 빠진 곳만 보탠다.
+        if want_lpg and self._lpg_file_ready():
+            try:
+                file_stations = await self.lpg_file.stations_around(
+                    request.site.coordinates, search_radius_m
+                )
+            except PublicDataAPIError:
+                failed_sources.add("lpg_file")
+                file_stations = []
+            for station in file_stations:
+                distance = self._measure_distance(request, station.coordinates, None)
+                if distance > search_limit_m:
+                    continue
+                if any(
+                    existing.facility_type == "lpg_station"
+                    and haversine_meters(station.coordinates, existing.coordinates)
+                    <= OFFICIAL_DEDUPE_M
+                    for existing in facilities
+                ):
+                    continue
+                facilities.append(
+                    HazardFacility(
+                        facility_id=f"lpg-file:{station.station_id}",
+                        facility_type="lpg_station",
+                        facility_type_label="LPG 충전소",
+                        name=station.name,
+                        coordinates=station.coordinates,
+                        distance_m=distance,
+                        nearest_boundary_point=self._boundary_anchor(
+                            request, station.coordinates
+                        ),
+                        address=station.address,
+                        business_status="정상영업",
+                        provider="lpg_file",
+                        source_label="한국가스안전공사 전국 LPG 충전소 현황(파일 15001643)",
+                        source_record_id=station.station_id,
+                        source_as_of=now,
+                        geometry_quality="C",
+                        geometry_note="현황 파일 점 좌표 · 시설경계 미확인",
+                        classification_note=(
+                            f"가스안전공사 LPG 충전소 현황 파일에 등록된 충전소입니다. "
+                            f"관리구분 {station.usage or '미상'}."
+                        ),
+                        metadata={"usage": station.usage, "region": station.region},
+                    )
+                )
+
         # CNG 충전소(가스안전공사 ODcloud 15001508). 2026-09-14 조사로 전국 자료에
         # 위경도가 있음이 확인돼 로컬 CSV 보조에서 API 판정으로 올린다. 로컬 CSV 는
         # _local_source_facilities 가 뒤에 붙이되 같은 자리 행은 중복으로 버린다.
@@ -1328,6 +1435,54 @@ class HazardReviewService:
                         classification_note=(
                             "가스안전공사 도시가스(CNG) 충전소 현황에 등록된 "
                             "충전소입니다."
+                        ),
+                        metadata={"region": station.region, "branch": station.branch},
+                    )
+                )
+
+        # 경남 천연가스 충전소(ODcloud 15055157, 2026-09-17 승인). 전국 현황의 지역
+        # 보조 — 주소 지오코딩 좌표라 품질 D, 같은 자리(40m)는 전국 현황을 우선한다.
+        if want_gas and self._cng_gyeongnam_ready():
+            try:
+                gn_stations = await self.cng_gyeongnam.stations_around(
+                    request.site.coordinates, search_radius_m
+                )
+            except PublicDataAPIError:
+                failed_sources.add("cng_gyeongnam")
+                gn_stations = []
+            for station in gn_stations:
+                distance = self._measure_distance(request, station.coordinates, None)
+                if distance > search_limit_m:
+                    continue
+                if any(
+                    existing.facility_type == "cng_station"
+                    and haversine_meters(station.coordinates, existing.coordinates)
+                    <= OFFICIAL_DEDUPE_M
+                    for existing in facilities
+                ):
+                    continue
+                facilities.append(
+                    HazardFacility(
+                        facility_id=f"cng-gn:{station.station_id}",
+                        facility_type="cng_station",
+                        facility_type_label="CNG 충전소",
+                        name=station.name,
+                        coordinates=station.coordinates,
+                        distance_m=distance,
+                        nearest_boundary_point=self._boundary_anchor(
+                            request, station.coordinates
+                        ),
+                        address=station.address,
+                        business_status="정상영업",
+                        provider="cng_gyeongnam",
+                        source_label="경상남도 천연가스 충전소 설치 현황(15055157)",
+                        source_record_id=station.station_id,
+                        source_as_of=now,
+                        geometry_quality="D",
+                        geometry_note="주소 지오코딩 점 좌표 · 시설경계 미확인",
+                        classification_note=(
+                            "경상남도 천연가스 충전소 설치 현황에 등록된 충전소입니다. "
+                            f"공급사 {station.branch or '미상'}."
                         ),
                         metadata={"region": station.region, "branch": station.branch},
                     )
@@ -1727,6 +1882,64 @@ class HazardReviewService:
                 return local.ring, local.pnu
         return [], ""
 
+    async def _layer_reference_facilities(
+        self,
+        feed: SafemapFacilityFeed | None,
+        provider: str,
+        facility_type: str,
+        type_label: str,
+        source_label: str,
+        reference_note: str,
+        kind_label: str,
+        request: HazardReviewRequest,
+        search_limit_m: float,
+        search_radius_m: float,
+        now: datetime,
+        failed_sources: set[str],
+    ) -> list[HazardFacility]:
+        """생활안전지도 레이어를 「참고 핀」으로 붙인다(판정 아님).
+
+        마목(유독물)은 LH [요청 2] 승인으로 「판정 미적용 — 별도 수기 확인」, 차목은
+        개별 협의 항목이다. 화학물취급시설(IF_0049)·폐기물처리시설(IF_0051)은 그
+        시설 자체가 아니라 관련 등록 사업장이므로 판정에 쓰지 않고, 담당자가 확인·협의할
+        대상을 지도·심사표에 보여 주는 용도로만 붙인다(metadata.reference=True ·
+        종류 상태는 그대로 dataset_missing).
+        """
+
+        assert feed is not None
+        try:
+            rows = await feed.facilities_around(request.site.coordinates, search_radius_m)
+        except Exception:  # noqa: BLE001 — 참고 핀 원천 실패는 판정에 영향 없음
+            failed_sources.add(provider)
+            return []
+        pins: list[HazardFacility] = []
+        for row in rows:
+            distance = self._measure_distance(request, row.coordinates, None)
+            if distance > search_limit_m:
+                continue
+            pins.append(
+                HazardFacility(
+                    facility_id=f"{provider}:{row.record_id}",
+                    facility_type=facility_type,
+                    facility_type_label=type_label,
+                    name=row.name,
+                    coordinates=row.coordinates,
+                    distance_m=distance,
+                    nearest_boundary_point=self._boundary_anchor(request, row.coordinates),
+                    address=row.address,
+                    business_status="등록",
+                    provider=provider,
+                    source_label=source_label,
+                    source_record_id=row.record_id,
+                    source_as_of=now,
+                    geometry_quality="C",
+                    geometry_note="생활안전지도 점 좌표 · 시설경계 미확인",
+                    classification_note=f"{reference_note} {kind_label} {row.kind or '미상'}.",
+                    metadata={"reference": True, "kind": row.kind},
+                )
+            )
+        return pins
+
     async def _annotate_registered_factories(
         self,
         request: HazardReviewRequest,
@@ -1771,6 +1984,17 @@ class HazardReviewService:
             except NoiseEmissionAPIError:
                 noise_rows = []
 
+        # 환경배출시설(생활안전지도 IF_0040, 환경부 대기·수질) — 판정 원천 아님, 주석 전용.
+        # 로컬 대기배출 원장이 없는 PC 에서 같은 「대기배출 신고 있음」 주석을 API 로 낸다.
+        emission_rows: list = []
+        if self._emission_ready():
+            try:
+                emission_rows = await self.emission_feed.facilities_around(
+                    request.site.coordinates, search_radius_m
+                )
+            except Exception:  # noqa: BLE001 — 주석 원천 실패는 판정에 영향 없음
+                emission_rows = []
+
         for factory in registered:
             notes: list[str] = []
             air_hit = next(
@@ -1794,6 +2018,18 @@ class HazardReviewService:
             ):
                 notes.append("소음배출 신고 있음")
                 factory.metadata["noise_emission_reported"] = True
+            emission_kinds = {
+                (row.kind or "").strip()
+                for row in emission_rows
+                if haversine_meters(factory.coordinates, row.coordinates)
+                <= OFFICIAL_DEDUPE_M
+            }
+            if "대기" in emission_kinds and air_hit is None:
+                notes.append("대기배출 신고 있음(생활안전지도 환경배출시설)")
+                factory.metadata["air_emission_reported"] = True
+            if "수질" in emission_kinds:
+                notes.append("수질배출 신고 있음(생활안전지도 환경배출시설)")
+                factory.metadata["water_emission_reported"] = True
             if notes:
                 factory.metadata["emission_notes"] = notes
                 factory.classification_note = (
@@ -1947,6 +2183,23 @@ class HazardReviewService:
     def _cng_ready(self) -> bool:
         return bool(self.cng and self.cng.enabled and not self.demo_mode)
 
+    def _lpg_file_ready(self) -> bool:
+        return bool(self.lpg_file and self.lpg_file.enabled and not self.demo_mode)
+
+    def _cng_gyeongnam_ready(self) -> bool:
+        return bool(
+            self.cng_gyeongnam and self.cng_gyeongnam.enabled and not self.demo_mode
+        )
+
+    def _chemical_ready(self) -> bool:
+        return bool(self.chemical_feed and self.chemical_feed.enabled and not self.demo_mode)
+
+    def _waste_ready(self) -> bool:
+        return bool(self.waste_feed and self.waste_feed.enabled and not self.demo_mode)
+
+    def _emission_ready(self) -> bool:
+        return bool(self.emission_feed and self.emission_feed.enabled and not self.demo_mode)
+
     def _safemap_ready(self) -> bool:
         return bool(self.safemap and self.safemap.enabled and not self.demo_mode)
 
@@ -2051,6 +2304,7 @@ class HazardReviewService:
         if category.key == "lpg_station":
             return (
                 self._lpg_ready()
+                or self._lpg_file_ready()
                 or self._opinet_ready()
                 or self._safemap_ready()
             )
@@ -2065,7 +2319,11 @@ class HazardReviewService:
         # CNG 충전소: 가스안전공사 API(ODcloud 15001508)가 우선, 좌표 보유 CSV(로컬
         # 원천)는 보조. 둘 중 하나라도 붙어 있으면 판정한다.
         if category.key == "cng_station":
-            return self._cng_ready() or bool(self.local_sources.cng_facilities)
+            return (
+                self._cng_ready()
+                or self._cng_gyeongnam_ready()
+                or bool(self.local_sources.cng_facilities)
+            )
         if category.datasets:
             return any(key in ready for key in category.datasets)
         # 후보 매칭 데이터셋도 없고(공장 라목) required 도 이미 통과했다면, 소음 원천이
@@ -2114,6 +2372,8 @@ class HazardReviewService:
         if category.key == "lpg_station":
             if self._lpg_ready():
                 sources.add("kgs")
+            if self._lpg_file_ready():
+                sources.add("lpg_file")
             if self._opinet_ready():
                 sources.add("opinet")
             if self._safemap_ready():
@@ -2126,6 +2386,8 @@ class HazardReviewService:
         if category.key == "cng_station":
             if self._cng_ready():
                 sources.add("cng")
+            if self._cng_gyeongnam_ready():
+                sources.add("cng_gyeongnam")
             return sources
         # 공장 있음(등록공장): 후보는 로컬 원천(factoryON 표준본 공장)이라 localdata
         # 실패와 무관하다. 활성 원천으로 집계하지 않는다(대기·소음은 주석 전용).
@@ -2204,6 +2466,8 @@ class HazardReviewService:
         elif category.key == "lpg_station":
             if self._lpg_ready() and "kgs" not in failed_sources:
                 sources.append(api_source("kgs"))  # type: ignore[arg-type]
+            if self._lpg_file_ready() and "lpg_file" not in failed_sources:
+                sources.append(api_source("lpg_file"))  # type: ignore[arg-type]
             if self._opinet_ready() and "opinet" not in failed_sources:
                 sources.append(api_source("opinet"))  # type: ignore[arg-type]
             if self._safemap_ready() and "safemap" not in failed_sources:
@@ -2217,6 +2481,8 @@ class HazardReviewService:
         if category.key == "cng_station":
             if self._cng_ready() and "cng" not in failed_sources:
                 sources.append(api_source("cng"))  # type: ignore[arg-type]
+            if self._cng_gyeongnam_ready() and "cng_gyeongnam" not in failed_sources:
+                sources.append(api_source("cng_gyeongnam"))  # type: ignore[arg-type]
 
         # 로컬 납품 파일 원천. active_sources 에는 집계되지 않으므로 여기서 붙인다.
         # 등록공장은 공개 API 가 없어 XLSX 로만, CNG 는 API 보조로 CSV 를 쓴다(§A-1).
@@ -2352,8 +2618,21 @@ class HazardReviewService:
         # 「판정 미적용 — 별도 수기 확인」(LH [요청 2] 승인)으로 표시하며 「이상 없음」
         # 으로 접지 않는다.
         if manual:
+            # 참고 핀(예: 마목의 화학물취급시설)은 상태를 바꾸지 않고 시설 목록에만
+            # 싣는다. 담당자가 수기 확인할 대상을 지도·심사표에서 볼 수 있게 한다.
+            references = [
+                f for f in rule_facilities
+                if f.metadata.get("reference") and self._in_category(f, category)
+            ]
+            note = category.note
+            if references:
+                labels = sorted({f.source_label for f in references})
+                note = (
+                    f"{note} · 참고 핀 {len(references)}건({', '.join(labels)} — "
+                    "판정 근거 아님, 수기 확인·협의 대상 표시)"
+                )
             return self._category_summary(
-                category, threshold, "dataset_missing", category.note, [],
+                category, threshold, "dataset_missing", note, references,
                 connected=False, site_boundary_resolved=site_boundary_resolved,
                 manual_check_required=(
                     category.data_state in MANUAL_CHECK_DATA_STATES
