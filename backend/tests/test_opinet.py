@@ -79,8 +79,9 @@ class TestAuthParameter:
 
         assert seen, "요청이 전송되지 않았습니다"
         for params in seen:
+            # 2026-09-17 실호출: certkey 만 보내면 0건, code 로 보내야 응답한다. 둘 다 보낸다.
             assert params.get("certkey") == "test-key"
-            assert "code" not in params
+            assert params.get("code") == "test-key"
 
     def test_detail_sends_certkey_not_code(self) -> None:
         seen: list[dict[str, str]] = []

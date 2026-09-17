@@ -202,8 +202,9 @@ class OpinetClient:
                 client,
                 OPINET_AROUND_URL,
                 {
-                    # 명세상 인증 파라미터는 `certkey` 다. 과거 `code` 로 보내
-                    # 응답이 조용히 0건이 되던 버그를 고쳤다(2026-08-28 실호출 확인).
+                    # 2026-09-17 실호출: `certkey` 로 보내면 200 에 빈 목록(0건),
+                    # `code` 로 보내면 정상(강남역 1.5km 10건). 명세와 반대라 둘 다 보낸다.
+                    "code": self.api_key,
                     "certkey": self.api_key,
                     "x": f"{x:.0f}",
                     "y": f"{y:.0f}",
