@@ -15,6 +15,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.models import Coordinates
+from app.services.safemap_layers import SAFEMAP_LAYERS, SafemapLayerClient
 
 # 점검용 고정 지점(강남역). 정류장·주유소·필지 모두 이 지점 근처에 결과가 있다.
 PROBE_POINT = Coordinates(lat=37.4979, lng=127.0276)
@@ -144,6 +145,23 @@ async def _probe_factory_registry(hazard: Any, screening: Any) -> str:
     return f"강남구 등록공장 {len(rows):,}건"
 
 
+def _safemap_layer_probe(layer_id: str) -> Probe:
+    async def probe(hazard: Any, screening: Any) -> str:
+        key = getattr(getattr(hazard, "safemap", None), "service_key", "")
+        total, columns = await SafemapLayerClient(key, layer_id).probe()
+        return f"전국 {total:,}건 · 컬럼 {', '.join(columns[:6])}"
+
+    return probe
+
+
+def _safemap_layer_client(layer_id: str):
+    def client(hazard: Any, screening: Any) -> Any:
+        key = getattr(getattr(hazard, "safemap", None), "service_key", "")
+        return SafemapLayerClient(key, layer_id) if key else None
+
+    return client
+
+
 async def _probe_building_register(hazard: Any, screening: Any) -> str:
     result = await hazard.building_register.lookup(PROBE_PNU)
     uses = getattr(result, "uses", None)
@@ -230,6 +248,16 @@ CONNECTION_SPECS: tuple[ConnectionSpec, ...] = (
         "1차 「공장 있음」 검토 표시 — 사업지 시군구 등록공장(도로명주소 → 카카오 지오코딩)",
         "PUBLIC_DATA_SERVICE_KEY", lambda h, s: h.factory_registry, _probe_factory_registry,
         "공공데이터포털", "https://www.data.go.kr/data/15087615/openapi.do",
+    ),
+    *(
+        ConnectionSpec(
+            f"safemap_{layer.layer_id.lower()}",
+            f"생활안전지도 {layer.label}({layer.agency}, {layer.layer_id})",
+            f"{layer.purpose} — 레이어별 데이터 사용신청 필요",
+            "SAFEMAP_API_KEY", _safemap_layer_client(layer.layer_id), _safemap_layer_probe(layer.layer_id),
+            "생활안전지도 오픈API", "https://www.safemap.go.kr/opna/data/dataList.do",
+        )
+        for layer in SAFEMAP_LAYERS
     ),
     ConnectionSpec(
         "building_register", "국토부 건축물대장",
