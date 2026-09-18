@@ -66,7 +66,17 @@ function renderDataSources(sources: ScreeningDataSource[] | undefined) {
       {list.map((source, index) => {
         const key = `${source.detail || source.label}-${index}`;
         const chipClass = `screening-data-chip is-${source.kind}`;
-        if (source.kind === "api" && source.url) {
+        if (
+          (source.kind === "api" || source.kind === "partial" || source.kind === "bypass") &&
+          source.url
+        ) {
+          // 엔드포인트 링크는 브라우저에서 키 없이 열리므로 「서비스키 없음」 응답이 정상이다.
+          // 앱은 서버 키를 붙여 호출한다. 툴팁으로 그 사실을 미리 알린다.
+          const isEndpoint = /apis?\.data\.go\.kr|api\.odcloud\.kr|openapi\./.test(source.url);
+          const title = isEndpoint
+            ? `${source.url}
+(원천 엔드포인트 — 브라우저에서 키 없이 열면 접근 거부가 정상입니다. 앱은 서버 키로 호출합니다)`
+            : source.url;
           return (
             <a
               key={key}
@@ -74,7 +84,7 @@ function renderDataSources(sources: ScreeningDataSource[] | undefined) {
               href={source.url}
               target="_blank"
               rel="noreferrer"
-              title={source.url}
+              title={title}
             >
               <span>{source.label}</span>
               <ExternalLink size={12} aria-hidden="true" />
@@ -95,13 +105,43 @@ const SOURCE_KIND_LABELS: Record<ScreeningDataSource["kind"], string> = {
   api: "API",
   local: "로컬",
   demo: "데모",
+  partial: "API 일부연결",
+  bypass: "API 우회연결",
 };
 
 /** 「원천」 열 — 판정에 쓰인 원천의 종류(API·로컬·데모)만 한 단어로. 상세는 「데이터」열. */
-function renderSourceKinds(sources: ScreeningDataSource[] | undefined) {
-  const kinds = Array.from(new Set((sources ?? []).map((source) => source.kind)));
+function renderSourceKinds(
+  sources: ScreeningDataSource[] | undefined,
+  facilities: HazardFacility[] = [],
+) {
+  let kinds = Array.from(new Set((sources ?? []).map((source) => source.kind)));
+  // 판정 원천(api)이 있으면 「우회·일부 연결」 칩은 겹쳐 그리지 않는다.
+  if (kinds.includes("api")) {
+    kinds = kinds.filter((kind) => kind !== "partial" && kind !== "bypass");
+  }
+  // 우회 연결이 있으면 일부 연결은 그 아래 급이라 따로 그리지 않는다.
+  if (kinds.includes("bypass")) {
+    kinds = kinds.filter((kind) => kind !== "partial");
+  }
   if (kinds.length === 0) {
-    return null;
+    // 판정 원천도 일부 연결 원천도 없는 행 — 「API 미연결」로 연결 상태를 한눈에 드러낸다.
+    const hasReference = facilities.some(
+      (facility) => Boolean(facility.metadata?.reference),
+    );
+    return (
+      <span className="screening-source-kinds">
+        <em
+          className={`screening-source-kind ${hasReference ? "is-partial" : "is-none"}`}
+          title={
+            hasReference
+              ? "판정 원천은 없고 참고 핀(수기 확인 보조) API 만 붙어 있습니다."
+              : "이 항목에 붙은 공개 API 원천이 없습니다."
+          }
+        >
+          {hasReference ? "API 일부연결" : "API 미연결"}
+        </em>
+      </span>
+    );
   }
   return (
     <span className="screening-source-kinds">
@@ -109,6 +149,93 @@ function renderSourceKinds(sources: ScreeningDataSource[] | undefined) {
         <em key={kind} className={`screening-source-kind is-${kind}`}>
           {SOURCE_KIND_LABELS[kind] ?? kind}
         </em>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * 긴 라벨을 의미 단위로 끊어 줄바꿈한다. 「주유소·석유판매 취급소·자동차용 천연가스·LPG
+ * 충전소 (25m 예외)」처럼 가운뎃점으로 이어진 열거는 항목마다 한 줄, 괄호 부기는 따로
+ * 한 줄. 브라우저가 아무 데서나 자르면 「자동차용 / 천연가스·LPG 충전소 (25m / 예외)」로
+ * 지저분해진다. 짧은 라벨은 그대로 한 줄이다.
+ */
+function labelSegments(label: string): string[] {
+  const parenAt = label.indexOf(" (");
+  const head = parenAt >= 0 ? label.slice(0, parenAt) : label;
+  const tail = parenAt >= 0 ? label.slice(parenAt + 1) : "";
+  const segments: string[] = [];
+  if (head.includes("·")) {
+    const parts = head.split("·");
+    parts.forEach((part, index) => {
+      segments.push(index < parts.length - 1 ? `${part.trim()}·` : part.trim());
+    });
+  } else {
+    segments.push(head);
+  }
+  if (tail) segments.push(tail);
+  return segments;
+}
+
+/**
+ * 각 조각은 안에서 줄을 바꾸지 않고(nowrap), 줄바꿈은 조각 사이에서만 일어난다. 그래서
+ * 폭이 넉넉하면 한 줄, 모자라면 「자동차용 천연가스·」 다음에서만 끊긴다.
+ */
+function LabelText({ label }: { label: string }) {
+  const segments = labelSegments(label);
+  if (segments.length === 1) return <span>{label}</span>;
+  return (
+    <span className="screening-label-segments">
+      {segments.map((segment, index) => (
+        <Fragment key={index}>
+          {/* 가운뎃점 조각 사이는 보이지 않는 줄바꿈 허용 문자(ZWSP), 괄호 부기 앞만 실제 공백 */}
+          {index === 0 ? "" : segment.startsWith("(") ? " " : "​"}
+          <span className="screening-label-segment">{segment}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * 세부 항목 표식 — 노션의 접힘 삼각형처럼 ▶ 를 쓴다. 펼칠 수 있는 행은 열리면 ▼ 로
+ * 돌아가고, 펼칠 것이 없는 행은 같은 자리에 흐린 ▶ 만 둔다(열 위치를 흔들지 않는다).
+ */
+function RowTriangle({ open, muted }: { open?: boolean; muted?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 10 10"
+      width={9}
+      height={9}
+      aria-hidden="true"
+      className={`screening-row-tri${open ? " is-open" : ""}${muted ? " is-muted" : ""}`}
+    >
+      <path d="M2.5 1.2 8.4 5 2.5 8.8Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 건축물대장 스캔 핀이 종류를 가른 근거 — 층별개요 용도코드 일치인지, 기타용도 문자열 추정인지. */
+function scanBasisLabel(metadata: Record<string, unknown>): string {
+  const evidence = typeof metadata.evidence === "string" ? metadata.evidence : "";
+  if (metadata.basis === "code") return `용도코드 일치 「${evidence}」`;
+  if (metadata.basis === "text") return `기타용도 추정 「${evidence}」`;
+  return "종류 미분류";
+}
+
+/** 긴 사유 문단을 문장 단위로 나눠 한 줄에 한 문장씩 보인다. */
+function ReasonSentences({ text }: { text: string }) {
+  // 문장 끝(…다. / …요. / …음.)에서만 자른다. 「나. 자동차용 LPG 충전소」처럼
+  // 목 기호 뒤의 마침표나 「2026. 9.」 같은 날짜에서 잘리면 안 된다.
+  const sentences = text
+    .split(/(?<=[가-힣]{2}[다요음됨임])\.\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (sentences.length <= 1) return <>{text}</>;
+  return (
+    <span className="screening-reason-sentences">
+      {sentences.map((sentence, index) => (
+        <span key={index}>{sentence}</span>
       ))}
     </span>
   );
@@ -126,6 +253,7 @@ const DESIGNATABLE_GROUPS = new Set([
 import type {
   HazardApplicationType,
   HazardApplicationTypesResponse,
+  HazardFacility,
   HazardHousingType,
 } from "../hazard-review/types";
 
@@ -277,6 +405,8 @@ export function ScreeningSheet({
 }: ScreeningSheetProps) {
   const rows = useExpandedKeys(result?.screening_id);
   const tiers = useExpandedKeys(result?.screening_id);
+  // 1차 대분류 접기. 기본은 펼침이라 「접힌 키」 집합으로 든다.
+  const folded = useExpandedKeys(result?.screening_id);
   const [stageTab, setStageTab] = useState<ScreeningStageTab>("stage-one");
 
   // 새 심사 결과가 오면 1차부터 다시 읽는다.
@@ -354,14 +484,24 @@ export function ScreeningSheet({
       item.outcome === "pass" &&
       !item.passthrough &&
       item.facilities.length === 0;
+    // 「기준거리 N m 이내 확정 시설 없음」이 근거로 이미 적혔으면 「스냅샷 범위 기준 N m
+    // 안에 해당 시설이 없습니다」는 같은 말이라 숨긴다.
+    const redundantNote = item.note.startsWith("스냅샷 범위 기준");
     const hasNote =
-      Boolean(item.note) && item.note !== item.reason && !passedWithNoFacility;
-    const noteInDataCell = hasNote && (item.data_sources ?? []).length === 0;
+      Boolean(item.note) &&
+      item.note !== item.reason &&
+      !passedWithNoFacility &&
+      !redundantNote;
+    // 비고는 데이터 열(원천 칩 아래)에 둔다. 통과 처리(판정 미적용) 행의 비고는 표 아래
+    // 「판정 미적용 항목」 목록에 그대로 실리므로 표 안에서는 되풀이하지 않는다.
+    const noteInDataCell = hasNote && !item.passthrough;
 
     return (
       <Fragment key={item.key}>
         <tr className={rowClass}>
           <th scope="row">
+            {/* 세부 행: 펼침 화살표 자리를 항상 같은 폭으로 비워 두어(없으면 빈 칸)
+                라벨 시작 위치가 행마다 흔들리지 않게 한다. */}
             {expandable ? (
               <button
                 type="button"
@@ -369,12 +509,15 @@ export function ScreeningSheet({
                 aria-expanded={open}
                 onClick={() => rows.toggle(item.key)}
               >
-                <ChevronRight size={14} className={open ? "is-open" : ""} />
-                <span>{item.label}</span>
+                <RowTriangle open={open} />
+                <LabelText label={item.label} />
                 <b>{item.facilities.length}</b>
               </button>
             ) : (
-              <span className="screening-row-label">{item.label}</span>
+              <span className="screening-row-label screening-row-label-sub">
+                <RowTriangle muted />
+                <LabelText label={item.label} />
+              </span>
             )}
           </th>
           <td className="is-num">{formatThreshold(item.threshold_m)}</td>
@@ -385,13 +528,13 @@ export function ScreeningSheet({
             </em>
           </td>
           <td>
-            <span className="screening-row-reason">{item.reason}</span>
-            {hasNote && !noteInDataCell && (
+            <span className="screening-row-reason"><ReasonSentences text={item.reason} /></span>
+            {hasNote && !noteInDataCell && !item.passthrough && (
               <small className="screening-row-note">{item.note}</small>
             )}
           </td>
           <td className="screening-source-cell">
-            {renderSourceKinds(item.data_sources)}
+            {renderSourceKinds(item.data_sources, item.facilities)}
           </td>
           <td className="screening-data-cell">
             {renderDataSources(item.data_sources)}
@@ -434,13 +577,19 @@ export function ScreeningSheet({
                         {formatDistance(facility.distance_m)}
                       </b>
                       <em>{facility.source_label}</em>
+                      {facility.provider === "building_use_scan" && (
+                        <em className="screening-facility-basis">
+                          {scanBasisLabel(facility.metadata)}
+                        </em>
+                      )}
                       {facility.zoning_name && (
                         <em className="screening-facility-zoning">
                           용도지역 {facility.zoning_name}
                         </em>
                       )}
-                      {(facility.zoning_class === "residential" ||
-                        facility.zoning_class === "unknown") && (
+                      {facility.metadata?.dataset === "petroleum_alt_fuel_retailers" &&
+                        (facility.zoning_class === "residential" ||
+                          facility.zoning_class === "unknown") && (
                         <em className="screening-badge tone-warning">
                           확인 요청
                         </em>
@@ -499,6 +648,12 @@ export function ScreeningSheet({
         </p>
         {hit.front_door_notice && (
           <p className="screening-row-note">⚠ {hit.front_door_notice}</p>
+        )}
+        {hit.count_note && (
+          <p className="screening-row-note">
+            {hit.counted === false ? "✕ 배점 제외 — " : "✓ "}
+            {hit.count_note}
+          </p>
         )}
 
         {designation && (
@@ -649,12 +804,6 @@ export function ScreeningSheet({
 
         {criterion.groups.length > 0 && (
           <div className="screening-table-scroll">
-        {hit.count_note && (
-          <p className="screening-row-note">
-            {hit.counted === false ? "✕ 배점 제외 — " : "✓ "}
-            {hit.count_note}
-          </p>
-        )}
             <table className="screening-table screening-group-table">
               <thead>
                 <tr>
@@ -911,7 +1060,9 @@ export function ScreeningSheet({
           </header>
           <ol>
             {stageOne.reasons.map((reason) => (
-              <li key={reason}>{reason}</li>
+              <li key={reason}>
+                <ReasonSentences text={reason} />
+              </li>
             ))}
           </ol>
         </section>
@@ -929,7 +1080,9 @@ export function ScreeningSheet({
           </header>
           <ol>
             {stageOne.review_reasons.map((reason) => (
-              <li key={reason}>{reason}</li>
+              <li key={reason}>
+                <ReasonSentences text={reason} />
+              </li>
             ))}
           </ol>
         </section>
@@ -986,8 +1139,8 @@ export function ScreeningSheet({
           <p className="screening-checklist-note">{stageOne.checklist_note}</p>
         )}
 
-        <div className="screening-table-scroll">
-          <table className="screening-table">
+        <div className="screening-table-scroll screening-stage-one-scroll">
+          <table className="screening-table screening-stage-one-table">
             <caption className="screening-table-caption">
               종류별 판정 내역
             </caption>
@@ -1005,25 +1158,43 @@ export function ScreeningSheet({
             <tbody>
               {groupExclusionItems(stageOne.items).map((group) => (
                 <Fragment key={group.ruleId}>
-                  <tr className={`screening-rule-head tone-${group.tone}`}>
-                    <th scope="rowgroup" colSpan={7}>
-                      <span className="screening-rule-title">
-                        {group.label}
-                      </span>
+                  {/* 대분류 머리행. 배지를 「결과」 열 자리에 두어 세부 행과 같은 열에 맞춘다. */}
+                  <tr
+                    className={`screening-rule-head tone-${group.tone}${
+                      folded.openKeys.has(group.ruleId) ? " is-folded" : ""
+                    }`}
+                  >
+                    <th scope="rowgroup">
+                      {/* 제목을 누르면 세부 행을 접고 편다(기본 펼침). */}
+                      <button
+                        type="button"
+                        className="screening-rule-fold"
+                        aria-expanded={!folded.openKeys.has(group.ruleId)}
+                        onClick={() => folded.toggle(group.ruleId)}
+                      >
+                        <RowTriangle open={!folded.openKeys.has(group.ruleId)} />
+                        <span className="screening-rule-title">
+                          <LabelText label={group.label} />
+                        </span>
+                      </button>
                       <span className="screening-rule-meta">
-                        {group.threshold !== null
-                          ? `기준 ${group.threshold}m`
-                          : "미적용"}
-                        {" · "}
                         세부 {group.items.length}종
                         {group.facilityCount > 0 && ` · 시설 ${group.facilityCount}곳`}
                       </span>
+                    </th>
+                    <td className="is-num">
+                      {group.threshold !== null ? `${group.threshold}m` : "—"}
+                    </td>
+                    <td className="is-num">—</td>
+                    <td>
                       <em className={`screening-badge tone-${group.tone}`}>
                         {group.outcomeLabel}
                       </em>
-                    </th>
+                    </td>
+                    <td colSpan={3} />
                   </tr>
-                  {group.items.map(renderExclusionRow)}
+                  {!folded.openKeys.has(group.ruleId) &&
+                    group.items.map(renderExclusionRow)}
                 </Fragment>
               ))}
             </tbody>

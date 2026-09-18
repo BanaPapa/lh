@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import type { ScreeningJobStatus } from "./types";
+import type { ScreeningJobStatus, ScreeningProgressStep } from "./types";
 
 /**
  * 심사 진행 모달.
@@ -30,6 +30,33 @@ function unitPrefix(status: ScreeningJobStatus["items"][number]["status"]): stri
   if (status === "completed") return "✓ ";
   if (status === "failed") return "✕ ";
   return "";
+}
+
+function stepValue(step: ScreeningProgressStep): string {
+  if (step.status === "completed") {
+    return step.count !== null ? `${step.count.toLocaleString()}건` : "완료";
+  }
+  if (step.status === "running") return "조회 중";
+  if (step.status === "failed") return "실패";
+  return "대기";
+}
+
+/**
+ * 단계의 하위 작업 목록. 진행 중인 단계는 펼쳐서 어느 규칙을 조회하고 있는지 보이고,
+ * 끝난 단계는 접는다(막대 하나로 충분하다).
+ */
+function StepList({ steps }: { steps: ScreeningProgressStep[] }) {
+  return (
+    <ul className="sp-steps">
+      {steps.map((step) => (
+        <li key={step.id} className={`sp-step is-${step.status}`}>
+          <span className="sp-step-mark" aria-hidden="true" />
+          <span className="sp-step-nm">{step.label}</span>
+          <span className="sp-step-ct">{stepValue(step)}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function ScreeningProgressModal({
@@ -104,6 +131,9 @@ export function ScreeningProgressModal({
                   </div>
                   {item.message && item.status !== "pending" && (
                     <p className="sp-unit-msg">{item.message}</p>
+                  )}
+                  {item.status === "running" && (item.steps?.length ?? 0) > 0 && (
+                    <StepList steps={item.steps ?? []} />
                   )}
                 </li>
               ))}

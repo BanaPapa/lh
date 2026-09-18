@@ -276,6 +276,17 @@ class ScreeningRequest(BaseModel):
     include_stage_two_on_fail: bool = True
 
 
+class ScreeningProgressStep(BaseModel):
+    """단계 안의 하위 작업 한 줄(예: 1차 조회 안의 규칙별 조회). 진행 화면이 펼쳐 보인다."""
+
+    id: str
+    label: str
+    status: ProgressStatus = "pending"
+    progress: int = Field(default=0, ge=0, le=100)
+    count: int | None = None
+    message: str = ""
+
+
 class ScreeningProgressItem(BaseModel):
     id: str
     label: str
@@ -283,6 +294,8 @@ class ScreeningProgressItem(BaseModel):
     progress: int = Field(default=0, ge=0, le=100)
     count: int | None = None
     message: str = ""
+    # 하위 작업. 콜백 id 가 "부모/자식" 꼴이면 라우터가 여기로 모은다.
+    steps: list[ScreeningProgressStep] = Field(default_factory=list)
 
 
 class ScreeningJobStart(BaseModel):

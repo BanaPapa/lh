@@ -34,7 +34,9 @@ export type ScreeningGroupState = "connected" | "substituted" | "missing";
 export type ScreeningSheetKey = "common" | "youth" | "senior";
 
 /** 원천 종류. api=공개 API(링크), local=로컬 납품 파일, demo=데모 데이터. */
-export type ScreeningDataSourceKind = "api" | "local" | "demo";
+/** partial: 판정 원천은 아니지만 참고 핀·우회 스캔으로 「일부 연결」된 공개 API. */
+/** bypass: 있는 API 를 겹쳐 완전 연결과 같은 결과를 내는 우회 원천(「API 우회연결」). */
+export type ScreeningDataSourceKind = "api" | "local" | "demo" | "partial" | "bypass";
 
 /**
  * 항목 판정에 실제로 붙은 원천 하나. `backend` 의 `HazardDataSource` 와 같은 필드다.
@@ -161,12 +163,12 @@ export interface ScreeningFacilityHit {
   nearest_facility_point?: Coordinates | null;
   /** 거리를 잰 시설 필지 경계(site_boundary). 지도는 이 링을 그대로 칠한다. */
   facility_ring?: Coordinates[];
-}
-
   /** 배점에 센 시설인가. 버스정류장 운행주기 미달·미확인은 false(목록에는 남는다). */
   counted?: boolean;
   /** 배점 인정/제외 사유(버스정류장: 15분당 평균 도착 버스 수와 노선 배차). */
   count_note?: string;
+}
+
 /** 시설군 하나의 수집 상태. 지정 원천과 실제 원천을 함께 보인다. */
 export interface ScreeningGroupStatus {
   key: string;
@@ -266,6 +268,15 @@ export interface ScreeningRequest {
   include_stage_two_on_fail: boolean;
 }
 
+export interface ScreeningProgressStep {
+  id: string;
+  label: string;
+  status: ProgressStatus;
+  progress: number;
+  count: number | null;
+  message: string;
+}
+
 export interface ScreeningProgressItem {
   id: string;
   label: string;
@@ -273,6 +284,8 @@ export interface ScreeningProgressItem {
   progress: number;
   count: number | null;
   message: string;
+  /** 단계 안의 하위 작업(1차 조회의 규칙별 조회 등). 진행 중인 단계에서 펼쳐 보인다. */
+  steps?: ScreeningProgressStep[];
 }
 
 export interface ScreeningJobStart {

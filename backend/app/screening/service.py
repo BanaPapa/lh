@@ -83,7 +83,8 @@ DISCLAIMER = (
 )
 
 # 원천이 없어 판정을 못 했는데 고지 문구까지 비어 있으면 사용자는 '통과'만 읽는다.
-DEFAULT_PASSTHROUGH_NOTE = "필요 원천이 아직 연결되지 않았습니다."
+# 통과 처리 행의 기본 비고는 비운다 — 연결 상태는 원천 열의 칩이 말한다.
+DEFAULT_PASSTHROUGH_NOTE = ""
 
 BOUNDARY_MEASUREMENT = "사업지 대지경계 ↔ 시설 기준점 직선거리"
 POINT_MEASUREMENT = "사업지 주소점 ↔ 시설 기준점 직선거리"
@@ -186,6 +187,16 @@ class ScreeningService:
     ) -> HazardReviewResult:
         """유해요소 판정 엔진을 그대로 호출한다. 판정 로직은 여기서 다시 쓰지 않는다."""
 
+        # 유해요소 엔진은 필지·규칙팩 확인 2건 + Rule 6건 + 경계·판정·보고서 3건을
+        # 항목으로 보고한다(실측 11건). 이 완료 수로 「1차 유해시설 조회」 막대를 올리고,
+        # 각 항목은 하위 단계("STAGE1_COLLECT/<항목>")로 그대로 올려 진행 화면이 펼쳐
+        # 보이게 한다. 이전에는 항목 진행률(25→100)을 그대로 막대에 실어, 한 항목이
+        # 오래 걸리면 25% 에서 멈춘 것처럼 보였다.
+        expected_steps = 2 + len(RULES) + 3
+        step_status: dict[str, str] = {}
+        # 막대는 되돌아가지 않는다(항목이 재보고돼도 단조 증가).
+        last_progress = 5
+
         async def forward(
             item_id: str,
             label: str,
@@ -194,12 +205,21 @@ class ScreeningService:
             count: int | None,
             message: str,
         ) -> None:
-            # 유해요소 엔진의 항목별 진행률을 「1차 유해시설 조회」 한 줄로 접어 올린다.
+            step_status[item_id] = status
+            done = sum(1 for value in step_status.values() if value == "completed")
+            running = sum(1 for value in step_status.values() if value == "running")
+            fraction = (done + 0.5 * running) / max(expected_steps, len(step_status), 1)
+            nonlocal last_progress
+            last_progress = max(last_progress, min(95, round(5 + 90 * fraction)))
+            stage_progress = last_progress
+            await report(
+                f"STAGE1_COLLECT/{item_id}", label, status, item_progress, count, message,
+            )
             await report(
                 "STAGE1_COLLECT",
                 "1차 유해시설 조회",
                 "running",
-                max(5, min(95, item_progress)),
+                stage_progress,
                 count,
                 f"{label} — {message}" if message else label,
             )
@@ -286,7 +306,7 @@ def _build_stage_one(review: HazardReviewResult) -> ScreeningStageOne:
         reasons=[item.reason for item in items if item.outcome == "fail"],
         review_reasons=[item.reason for item in items if item.outcome == "review"],
         passthrough_notes=[
-            f"{item.label} — {item.note}" for item in items if item.passthrough
+            f"{item.label} — {item.note}" for item in items if item.passthrough and item.note
         ],
         items=items,
         counts=counts,
@@ -338,7 +358,7 @@ def _decide(category: HazardCategorySummary) -> tuple[str, str, bool, str]:
     if category.judgment_excluded:
         return "advisory", "pass", True, "협의에 따라 판정 제외 — 통과 처리"
     if category.manual_check_required and category.status != "exclusion_match":
-        return "advisory", "pass", True, "별도 수기 확인 대상 — 통과 처리"
+        return "advisory", "pass", True, "판정 미적용 — 통과 처리"
 
     status = category.status
     if status == "exclusion_match":
@@ -571,6 +591,8 @@ def _group_status(
                 nearest_boundary_point=facility.nearest_boundary_point,
                 nearest_facility_point=facility.nearest_facility_point,
                 facility_ring=list(facility.facility_ring),
+                counted=facility.counted,
+                count_note=facility.count_note,
             )
             for facility in collection.facilities
         ],
@@ -591,8 +613,6 @@ def _stage_two_note(collections: dict[str, GroupCollection], reference_only: boo
     parts: list[str] = []
     if reference_only:
         parts.append("1차 매입제외 대상이므로 아래 배점은 참고값입니다.")
-                counted=facility.counted,
-                count_note=facility.count_note,
     if substituted:
         parts.append(f"대체 원천으로 근사한 시설군 — {'·'.join(substituted)}")
     if missing:

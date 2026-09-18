@@ -331,10 +331,11 @@ async def test_dataset_missing_category_passes_with_reason() -> None:
     assert item.passthrough is True
     assert item.effect == "advisory"
     assert item.reason == "판정 미적용 — 통과 처리"
-    # 왜 통과 처리했는지 비어 있으면 사용자는 '통과'만 읽는다.
-    assert item.note != ""
+    # 비고는 비운다 — 연결 상태는 원천 열의 「API 미연결」 칩이 말한다. 비고 없는 행은
+    # 판정 미적용 목록에도 오르지 않는다.
+    assert item.note == ""
     assert result.verdict == "pass"
-    assert result.stage_one.passthrough_notes == [f"위험물 저장·처리시설 — {item.note}"]
+    assert result.stage_one.passthrough_notes == []
 
 
 @pytest.mark.asyncio
@@ -353,10 +354,9 @@ async def test_passthrough_variants_all_pass_with_notes() -> None:
 
     assert [item.outcome for item in result.stage_one.items] == ["pass"] * 4
     assert all(item.passthrough for item in result.stage_one.items)
-    assert all(item.note for item in result.stage_one.items)
     assert by_key["b"].reason == "경계 미확보 — 통과 처리"
     assert by_key["c"].reason == "협의에 따라 판정 제외 — 통과 처리"
-    assert by_key["d"].reason == "별도 수기 확인 대상 — 통과 처리"
+    assert by_key["d"].reason == "판정 미적용 — 통과 처리"
     assert result.verdict == "pass"
     assert result.verdict_summary == "1차 매입제외 항목에서 확정 저촉이 없습니다."
 
@@ -421,13 +421,47 @@ async def test_screen_reports_progress_for_four_stages() -> None:
 
     await service.screen(ScreeningRequest(site=site()), progress)
 
-    completed = [(i, l) for i, l, s in seen if s == "completed"]
+    # 하위 단계("STAGE1_COLLECT/…")는 단계 목록에 끼지 않는다.
+    completed = [(i, l) for i, l, s in seen if s == "completed" and "/" not in i]
     assert completed == [
         ("STAGE1_COLLECT", "1차 유해시설 조회"),
         ("STAGE1_JUDGE", "1차 매입제외 판정"),
         ("STAGE2_COLLECT", "2차 생활편의시설 조회"),
         ("STAGE2_SCORE", "2차 생활편의성 배점"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_stage_one_forwards_hazard_items_as_substeps() -> None:
+    # 유해요소 엔진의 항목 이벤트는 「STAGE1_COLLECT/<항목>」 하위 단계로 그대로 올라가고,
+    # 1차 조회 막대는 항목 진행률이 아니라 완료 항목 수로 오른다(25% 정체 방지).
+    service = build_service([category("a", "dataset_missing")])
+    seen: list[tuple[str, str, str, int]] = []
+
+    async def progress(item_id, label, status, item_progress, count, message):
+        seen.append((item_id, label, status, item_progress))
+
+    original = service.hazard.review
+
+    async def review(payload, forward, cancel_event):
+        await forward("PARCEL", "신청필지 확보", "completed", 100, 1, "")
+        await forward("HAZMAT", "위험물 저장·처리시설", "running", 25, None, "후보를 조회합니다.")
+        await forward("HAZMAT", "위험물 저장·처리시설", "completed", 100, 0, "")
+        return await original(payload, forward, cancel_event)
+
+    service.hazard.review = review  # type: ignore[method-assign]
+    await service.screen(ScreeningRequest(site=site()), progress)
+
+    steps = [(i, s) for i, _l, s, _p in seen if i.startswith("STAGE1_COLLECT/")]
+    assert steps[:3] == [
+        ("STAGE1_COLLECT/PARCEL", "completed"),
+        ("STAGE1_COLLECT/HAZMAT", "running"),
+        ("STAGE1_COLLECT/HAZMAT", "completed"),
+    ]
+    stage_progress = [p for i, _l, s, p in seen if i == "STAGE1_COLLECT" and s == "running"]
+    # 항목이 하나씩 끝날수록 막대가 오른다(단조 증가, 25 고정 아님).
+    assert stage_progress == sorted(stage_progress)
+    assert stage_progress[-1] > stage_progress[0]
 
 
 @pytest.mark.asyncio

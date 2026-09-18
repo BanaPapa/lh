@@ -699,7 +699,7 @@
 .api-keys-modal {
   box-sizing: border-box;
   /* 룰북 모달과 같은 크기: 화면 가로 60% · 세로 70%(좁은 화면은 꽉 채운다). */
-  width: max(80vw, min(900px, 100%));
+  width: max(90vw, min(900px, 100%));
   height: max(70vh, min(640px, calc(100vh - 48px)));
   max-width: 100%;
   max-height: calc(100vh - 48px);
@@ -1484,7 +1484,7 @@
 /* 심사표 모달 — 룰북·API 연결과 같은 틀(80vw × 70vh). 안쪽은 심사표가 스크롤한다. */
 .sheet-modal {
   box-sizing: border-box;
-  width: max(80vw, min(900px, 100%));
+  width: max(90vw, min(900px, 100%));
   height: max(90vh, min(640px, calc(100vh - 48px)));
   max-width: 100%;
   max-height: calc(100vh - 48px);

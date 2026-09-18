@@ -198,6 +198,79 @@
   color: var(--fg-2);
 }
 
+/* 하위 단계 — 진행 중인 단계 아래에 펼친다. 막대보다 작은 글자로 규칙별 상태를 나열. */
+
+.sp-steps {
+  margin: 10px 0 0;
+  padding: 0 0 0 4px;
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 18px;
+}
+
+.sp-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--muted-2);
+}
+
+.sp-step-mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--border-2);
+}
+
+.sp-step-nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-step-ct {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-step.is-running {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.sp-step.is-running .sp-step-mark {
+  background: var(--blue);
+  animation: sp-step-pulse 1s ease-in-out infinite;
+}
+
+.sp-step.is-completed {
+  color: var(--fg-2);
+}
+
+.sp-step.is-completed .sp-step-mark {
+  background: var(--blue);
+}
+
+.sp-step.is-failed {
+  color: var(--red, #d92d3f);
+}
+
+.sp-step.is-failed .sp-step-mark {
+  background: var(--red, #d92d3f);
+}
+
+@keyframes sp-step-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 /* 우측 라이브 카운트 */
 
 .sp-live {

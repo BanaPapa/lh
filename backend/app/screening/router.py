@@ -22,6 +22,7 @@ from app.screening.models import (
     ScreeningJobStart,
     ScreeningJobStatus,
     ScreeningProgressItem,
+    ScreeningProgressStep,
     ScreeningRequest,
     ScreeningResult,
 )
@@ -385,6 +386,23 @@ async def start_screening_job(
     ) -> None:
         job = screening_jobs.get(job_id)
         if not job or job.status == "cancelled":
+            return
+        # "부모/자식" 꼴은 부모 항목의 하위 단계다. 부모 막대는 부모 이벤트가 따로 올린다.
+        if "/" in item_id:
+            parent_id, step_id = item_id.split("/", 1)
+            parent = next((c for c in job.items if c.id == parent_id), None)
+            if parent is None:
+                parent = ScreeningProgressItem(id=parent_id, label=parent_id)
+                job.items.append(parent)
+            step = next((s for s in parent.steps if s.id == step_id), None)
+            if step is None:
+                step = ScreeningProgressStep(id=step_id, label=label)
+                parent.steps.append(step)
+            step.label = label
+            step.status = item_status  # type: ignore[assignment]
+            step.progress = item_progress
+            step.count = count
+            step.message = message
             return
         item = next((candidate for candidate in job.items if candidate.id == item_id), None)
         if not item:

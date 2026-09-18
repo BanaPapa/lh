@@ -44,6 +44,23 @@ import type { GeocodeCandidate, MapProvider } from "./types";
 
 /** 지도 클릭이 폴리곤과 지도 양쪽에서 잡힐 때 중복 토글을 막는 시간(ms). */
 const PARCEL_TOGGLE_GUARD_MS = 400;
+/** 심사 작업 상태를 묻는 간격(ms). */
+const SCREENING_POLL_INTERVAL_MS = 250;
+/** 상태 조회가 잠깐 실패했을 때 다시 묻기 전 쉬는 시간(ms). */
+const SCREENING_POLL_RETRY_MS = 1500;
+/** 상태 조회가 연달아 이만큼 실패하면 심사를 실패로 본다. */
+const SCREENING_POLL_MAX_FAILURES = 5;
+/** 심사 한 건을 기다리는 상한(ms). 첫 심사는 원천 예열·지오코딩으로 수 분이 걸릴 수 있다. */
+const SCREENING_POLL_DEADLINE_MS = 15 * 60 * 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/** 서버가 재시작되어(메모리 작업 목록 초기화) 작업을 못 찾는 404 인지. */
+function isJobLostError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("작업을 찾을 수 없습니다");
+}
 
 /**
  * LH 서류심사 앱.
@@ -446,9 +463,29 @@ function App() {
       });
       if (screeningRunRef.current !== runId) return;
       screeningJobIdRef.current = started.job_id;
+      // 서버가 끝날 때까지 기다린다. 횟수 상한(예전 400회 ≈ 100초)은 첫 심사가
+      // 조금만 길어져도 서버가 멀쩡히 끝낸 결과를 버리고 「다시 시도」를 띄웠다.
+      // 잠깐의 통신 실패 한 번도 심사 전체를 실패로 만들지 않고 몇 번 더 묻는다.
       let completed: ScreeningJobStatus | null = null;
-      for (let attempt = 0; attempt < 400; attempt += 1) {
-        const status = await getScreeningJob(started.job_id);
+      const deadline = Date.now() + SCREENING_POLL_DEADLINE_MS;
+      let consecutiveFailures = 0;
+      while (Date.now() < deadline) {
+        let status: ScreeningJobStatus;
+        try {
+          status = await getScreeningJob(started.job_id);
+          consecutiveFailures = 0;
+        } catch (error) {
+          if (screeningRunRef.current !== runId) return;
+          consecutiveFailures += 1;
+          if (isJobLostError(error)) {
+            throw new Error(
+              "서류심사 서버가 재시작되어 진행 중이던 작업이 사라졌습니다. 심사 실행을 다시 눌러 주세요.",
+            );
+          }
+          if (consecutiveFailures >= SCREENING_POLL_MAX_FAILURES) throw error;
+          await sleep(SCREENING_POLL_RETRY_MS);
+          continue;
+        }
         if (screeningRunRef.current !== runId) return;
         setScreeningProgress(status);
         if (status.status === "completed") {
@@ -461,10 +498,12 @@ function App() {
         if (status.status === "failed") {
           throw new Error(status.error || status.message);
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 250));
+        await sleep(SCREENING_POLL_INTERVAL_MS);
       }
       if (!completed?.result) {
-        throw new Error("서류심사 시간이 초과되었습니다. 다시 시도해 주세요.");
+        throw new Error(
+          "서류심사가 제한 시간 안에 끝나지 않았습니다. 잠시 후 심사 실행을 다시 눌러 주세요.",
+        );
       }
       setScreeningResult(completed.result);
       if (diffFacility) {
