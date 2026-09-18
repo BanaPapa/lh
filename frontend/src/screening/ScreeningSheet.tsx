@@ -649,6 +649,12 @@ export function ScreeningSheet({
 
         {criterion.groups.length > 0 && (
           <div className="screening-table-scroll">
+        {hit.count_note && (
+          <p className="screening-row-note">
+            {hit.counted === false ? "✕ 배점 제외 — " : "✓ "}
+            {hit.count_note}
+          </p>
+        )}
             <table className="screening-table screening-group-table">
               <thead>
                 <tr>

@@ -148,6 +148,10 @@ class ScreeningFacilityHit(BaseModel):
     front_door_notice: str = ""
     # 문·출구 후보 전체(#7·#11). 기본은 가장 가까운 후보가 selected=True.
     front_door_candidates: list[FrontDoorCandidate] = Field(default_factory=list)
+    # 배점에 센 시설인가. 버스정류장 운행주기 미달·미확인은 False(목록에는 남는다).
+    counted: bool = True
+    # 배점 인정/제외 사유(버스정류장: 15분당 평균 도착 버스 수와 노선 배차).
+    count_note: str = ""
     # 시설 마커 좌표(지도 표시용).
     coordinates: Coordinates | None = None
     # 사업지↔시설 최단거리 선분(1차 HazardFacility 와 같은 형태). 프런트가 같은

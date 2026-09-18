@@ -21,6 +21,12 @@ TAGO_ROUTE_STOPS_URL = (
     "https://apis.data.go.kr/1613000/BusRouteInfoInqireService/"
     "getRouteAcctoThrghSttnList"
 )
+# 노선 기본정보 — 배차간격(intervaltime 평일 · intervalsattime 토 · intervalsuntime 일).
+# 버스정류장 운행주기 15분 판정(app.screening.bus_headway)의 원천이다.
+TAGO_ROUTE_INFO_URL = (
+    "https://apis.data.go.kr/1613000/BusRouteInfoInqireService/"
+    "getRouteInfoIem"
+)
 
 
 class TagoAPIError(RuntimeError):
@@ -182,6 +188,28 @@ class TagoClient:
             page += 1
         self._cache_set(cache_key, items)
         return items
+
+    async def route_info(
+        self,
+        city_code: str,
+        route_id: str,
+    ) -> dict[str, Any] | None:
+        """노선 기본정보 한 건(배차간격 포함). 없으면 None."""
+
+        cache_key = f"route-info:{city_code}:{route_id}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached[0] if cached else None
+        payload = await self._request(
+            TAGO_ROUTE_INFO_URL,
+            {
+                "cityCode": city_code,
+                "routeId": route_id,
+            },
+        )
+        rows = self._items(payload)
+        self._cache_set(cache_key, rows[:1])
+        return rows[0] if rows else None
 
     def _cache_get(self, key: str) -> list[dict[str, Any]] | None:
         cached = self._cache.get(key)

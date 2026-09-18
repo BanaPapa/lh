@@ -591,6 +591,8 @@ def _stage_two_note(collections: dict[str, GroupCollection], reference_only: boo
     parts: list[str] = []
     if reference_only:
         parts.append("1차 매입제외 대상이므로 아래 배점은 참고값입니다.")
+                counted=facility.counted,
+                count_note=facility.count_note,
     if substituted:
         parts.append(f"대체 원천으로 근사한 시설군 — {'·'.join(substituted)}")
     if missing:

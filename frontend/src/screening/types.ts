@@ -163,6 +163,10 @@ export interface ScreeningFacilityHit {
   facility_ring?: Coordinates[];
 }
 
+  /** 배점에 센 시설인가. 버스정류장 운행주기 미달·미확인은 false(목록에는 남는다). */
+  counted?: boolean;
+  /** 배점 인정/제외 사유(버스정류장: 15분당 평균 도착 버스 수와 노선 배차). */
+  count_note?: string;
 /** 시설군 하나의 수집 상태. 지정 원천과 실제 원천을 함께 보인다. */
 export interface ScreeningGroupStatus {
   key: string;

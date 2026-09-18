@@ -1004,3 +1004,111 @@ async def test_university_layer_supplements_without_duplicating_kakao() -> None:
     names = [f.name for f in result["university"].facilities]
     assert names == ["전주대학교", "전북대학교"]
     assert "IF_0034" in result["university"].actual_source
+
+
+# ---------------------------------------------------------------------------
+# 버스정류장 운행주기 15분 판정 (LH 심사 담당자 계산법, 2026-09-15)
+# ---------------------------------------------------------------------------
+class HeadwayTago(FakeTago):
+    """정류소 근접조회 + 경유노선 + 노선 배차간격을 모두 답하는 대역."""
+
+    def __init__(
+        self,
+        rows: list[dict[str, Any]],
+        stop_routes: dict[str, list[dict[str, Any]]],
+        route_infos: dict[str, dict[str, Any]],
+    ) -> None:
+        super().__init__(rows)
+        self.stop_routes = stop_routes
+        self.route_infos = route_infos
+
+    async def routes_through_stop(self, city_code, stop_id):
+        return list(self.stop_routes.get(stop_id, []))
+
+    async def route_info(self, city_code, route_id):
+        return self.route_infos.get(route_id)
+
+
+def stop_row(name: str, node_id: str, offset_m: float) -> dict[str, Any]:
+    point = offset_coordinates(CENTER, offset_m, 0)
+    return {
+        "gpslati": point.lat,
+        "gpslong": point.lng,
+        "nodenm": name,
+        "nodeid": node_id,
+        "citycode": "35010",
+    }
+
+
+@pytest.mark.asyncio
+async def test_bus_stops_count_only_fifteen_minute_headway_stops() -> None:
+    tago = HeadwayTago(
+        rows=[
+            stop_row("공수내다리", "N1", 100),   # 10분·30분 노선 → 15분당 2대 → 인정
+            stop_row("외딴정류장", "N2", 200),   # 120분 노선 하나 → 0.125대 → 미달
+            stop_row("미확인정류장", "N3", 300), # 배차 미확인 → 확인 필요
+        ],
+        stop_routes={
+            "N1": [{"routeid": "R1", "routeno": "1"}, {"routeid": "R2", "routeno": "2"}],
+            "N2": [{"routeid": "R9", "routeno": "9"}],
+            "N3": [{"routeid": "R0", "routeno": "0"}],
+        },
+        route_infos={
+            "R1": {"intervaltime": "10"},
+            "R2": {"intervaltime": "30"},
+            "R9": {"intervaltime": "120"},
+            "R0": {"intervaltime": ""},
+        },
+    )
+    collector = AmenityCollector(kakao=FakeKakao(), tago=tago)
+
+    result = await collector.collect([], CENTER)
+    group = result["bus_stop"]
+
+    # 배점 거리는 인정 정류장 하나뿐이다.
+    assert len(group.distances_m) == 1
+    assert group.state == "connected"
+    assert "15분" in group.note and "배차간격" in group.actual_source
+    # 목록에는 셋 다 남고, 인정 정류장이 먼저 온다.
+    names = [f.name for f in group.facilities]
+    assert names == ["공수내다리", "외딴정류장", "미확인정류장"]
+    counted = {f.name: f.counted for f in group.facilities}
+    assert counted == {"공수내다리": True, "외딴정류장": False, "미확인정류장": False}
+    notes = {f.name: f.count_note for f in group.facilities}
+    assert "인정" in notes["공수내다리"] and "2.00대" in notes["공수내다리"]
+    assert "미달" in notes["외딴정류장"]
+    assert "확인 필요" in notes["미확인정류장"]
+
+
+@pytest.mark.asyncio
+async def test_bus_stops_merge_both_directions_by_name() -> None:
+    # 같은 이름의 양방향 정류장(LH 시트 「공수내다리(30497, 3050047)」)은 한 정류장이다.
+    tago = HeadwayTago(
+        rows=[stop_row("공수내다리", "A", 100), stop_row("공수내다리", "B", 120)],
+        stop_routes={
+            "A": [{"routeid": "R1", "routeno": "1"}],
+            "B": [{"routeid": "R1", "routeno": "1"}, {"routeid": "R2", "routeno": "2"}],
+        },
+        route_infos={"R1": {"intervaltime": "40"}, "R2": {"intervaltime": "20"}},
+    )
+    collector = AmenityCollector(kakao=FakeKakao(), tago=tago)
+
+    group = (await collector.collect([], CENTER))["bus_stop"]
+
+    assert [f.name for f in group.facilities] == ["공수내다리"]
+    # A 만 보면 0.375대(미달)지만 B 방향까지 합쳐 1.125대 → 인정.
+    assert group.facilities[0].counted is True
+    assert len(group.distances_m) == 1
+
+
+@pytest.mark.asyncio
+async def test_bus_stops_without_route_info_keep_counting_all_with_notice() -> None:
+    # 노선 정보를 못 주는 TAGO(기존 대역)면 예전처럼 전체를 세고 그 사실을 고지한다.
+    rows = [{"gpslati": CENTER.lat, "gpslong": CENTER.lng, "nodenm": "판교역"}]
+    collector = AmenityCollector(kakao=FakeKakao(), tago=FakeTago(rows))
+
+    group = (await collector.collect([], CENTER))["bus_stop"]
+
+    assert len(group.distances_m) == 1
+    assert group.state == "substituted"
+    assert "전체 정류장" in group.note

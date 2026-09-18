@@ -31,6 +31,7 @@ from app.screening.front_door import (
     normalize_key,
     university_base,
 )
+from app.screening.bus_headway import BusHeadwayResolver, StopHeadway
 from app.screening.scorebook import FACILITY_GROUPS
 from app.services.cadastral_local import CadastralLocalStore
 from app.services.facility_store import FacilityStore
@@ -167,6 +168,18 @@ RETAIL_CONNECTED_NOTE = (
 
 KAKAO_PLACE_SOURCE = "카카오 장소검색"
 TAGO_SOURCE = "국토교통부 TAGO 정류소 근접조회"
+TAGO_HEADWAY_SOURCE = "국토교통부 TAGO 정류소 근접조회 + 경유노선·노선 배차간격"
+
+# 버스정류장 운행주기 고지. LH 심사 담당자 계산법(2026-09-15 백승환 대리 자료):
+# 노선별 60/배차간격 합산 ÷4 = 15분당 평균 도착 버스 수 ≥ 1 → 인정.
+BUS_STOP_HEADWAY_NOTE = (
+    "운행주기 15분 이내 정류장만 셌습니다 — 경유 노선별 60/배차간격(분)을 합산해 "
+    "4로 나눈 「15분당 평균 도착 버스 수」가 1 이상인 정류장(LH 심사 담당자 "
+    "계산법, 2026-09-15). 미달·배차 미확인 정류장은 목록에 남기되 배점에서 뺐습니다."
+)
+BUS_STOP_NO_HEADWAY_NOTE = (
+    "운행주기 15분 이내 요건을 확인할 수 있는 원천이 없어 전체 정류장을 셌습니다."
+)
 SEOUL_BUS_SOURCE = "서울 열린데이터광장 버스정류소 위치정보"
 LOCALDATA_SOURCE = "행정안전부 지방행정인허가 대규모점포"
 NCMC_HOSPITAL_SOURCE = "국립중앙의료원 전국 병·의원 찾기(종합병원)"
@@ -190,11 +203,11 @@ HOSPITAL_FRONT_DOOR_PENDING_NOTICE = (
     "(LH 확정 2026-09-11: 대형 필지 시설은 정문 기본)"
 )
 
-# 국립중앙의료원 원장으로 종합병원을 산정할 때의 고지. 상급종합병원 인정 여부는
-# LH 미확정이라 함께 계산하되 구분한다.
+# 국립중앙의료원 원장으로 종합병원을 산정할 때의 고지. 상급종합병원은 종합병원에
+# 포함해 인정한다(2026-09-18 확정) — is_tertiary 는 표기 구분용이다.
 HOSPITAL_NCMC_NOTE = (
-    "국립중앙의료원 전국 병·의원 원장에서 종류=종합병원만 산정했습니다. "
-    "상급종합병원 인정 여부는 LH 미확정이라 함께 계산하되 구분해 둡니다."
+    "국립중앙의료원 전국 병·의원 원장에서 종류=종합병원·상급종합병원을 산정했습니다 "
+    "(상급종합병원은 종합병원에 포함해 인정 — 2026-09-18 확정)."
 )
 HOSPITAL_LAYER_NOTE = (
     "국립중앙의료원 종합병원 원장의 전국본(생활안전지도 IF_0022)으로 산정했습니다. "
@@ -258,9 +271,10 @@ SCHOOL_TOKENS: tuple[str, ...] = ("초등학교", "중학교", "고등학교")
 # 안 된다.
 #
 # 이 목록에 「전문대학」이 들어오면서 기능대학(한국폴리텍)도 함께 잡힌다.
-# 기능대학을 대학교로 볼지는 LH 확인 요청 7번(2026-09-11 회의)으로 미결이다.
-# 「제외」로 회신되면 이름 예외를 여기 한 줄로 붙인다 — 지금처럼 분류 문자열
-# 매칭의 부작용으로 조용히 빠지는 상태로 두지 않는다.
+# 기능대학(한국폴리텍)·전문대·사이버대는 대학교로 본다 — LH 확인 요청 7번
+# (2026-09-11 회의) 「폴리텍 등 기능대학·전문대·사이버대 포함」, 2026-09-18 확정
+# 적용. 「전문대학」 분류가 이를 담는다. 빠지는 학교가 보이면 이름 예외를 여기 한
+# 줄로 붙인다 — 분류 문자열 매칭의 부작용으로 조용히 빠지는 상태로 두지 않는다.
 UNIVERSITY_KINDS: tuple[str, ...] = ("대학교", "대학원", "전문대학")
 
 
@@ -271,6 +285,8 @@ class RawPlace(NamedTuple):
     address: str
     category_name: str
     coordinates: Coordinates
+    # 버스정류장(TAGO)만 채운다: "{cityCode}:{nodeId}". 운행주기 판정의 열쇠다.
+    stop_ref: str = ""
 
 
 class FeedResult(NamedTuple):
@@ -278,6 +294,10 @@ class FeedResult(NamedTuple):
 
     places: tuple[RawPlace, ...]
     source_label: str
+    # 버스정류장 피드만 채운다: 정류장명(공백 제거) → 운행주기 판정. 같은 이름의
+    # 양방향 정류장은 하나로 합쳐(LH 시트도 「공수내다리(30497, 3050047)」처럼 한
+    # 정류장으로 셌다) 15분당 도착 수가 큰 쪽을 대표로 둔다.
+    headways: dict[str, StopHeadway] | None = None
 
 
 class MeasuredDoor(NamedTuple):
@@ -317,6 +337,11 @@ class CollectedFacility(NamedTuple):
     nearest_facility_point: Coordinates | None = None
     # 거리를 잰 시설 필지의 경계(site_boundary 일 때). 지도가 이 링을 그대로 칠한다.
     facility_ring: tuple[Coordinates, ...] = ()
+    # 배점에 세는 시설인가. 버스정류장 운행주기 미달·미확인은 False 로 두고
+    # 목록에는 남긴다(자료 부재를 조용히 감추지 않는다).
+    counted: bool = True
+    # 배점 인정/제외 사유 한 줄(버스정류장: 15분당 도착 수와 노선 배차).
+    count_note: str = ""
 
 
 class GroupCollection(NamedTuple):
@@ -445,10 +470,13 @@ GROUP_SPECS: dict[str, GroupSpec] = {
         "가장 가까운 출입구를 기준점으로 쓰고, 찾지 못한 역은 역 대표점으로 잽니다.",
         keep=_is_railway,
     ),
+    # 버스정류장은 TAGO 경유노선·배차간격으로 「운행주기 15분 이내」를 판정해
+    # 인정 정류장만 센다(_apply_bus_headway). 배차를 확인할 수 없는 원천(서울시
+    # 정류소·지도 검색)으로 채웠으면 아래 고지 그대로 근사(substituted)다.
     "bus_stop": GroupSpec(
         ("bus_stop",),
         "substituted",
-        "운행주기 15분 이내 요건을 확인할 수 있는 원천이 없어 전체 정류장을 셌습니다.",
+        BUS_STOP_NO_HEADWAY_NOTE,
         kakao_backed=False,
     ),
     "terminal": GroupSpec(
@@ -552,12 +580,19 @@ def _tago_place(row: dict[str, Any]) -> RawPlace | None:
         coordinates = Coordinates(lat=float(lat), lng=float(lng))
     except (TypeError, ValueError):
         return None
+    city_code = str(row.get("citycode") or row.get("cityCode") or "").strip()
+    node_id = str(row.get("nodeid") or row.get("nodeId") or "").strip()
     return RawPlace(
         name=str(row.get("nodenm") or row.get("nodeNm") or "").strip(),
         address="",
         category_name="버스정류장",
         coordinates=coordinates,
+        stop_ref=f"{city_code}:{node_id}" if city_code and node_id else "",
     )
+
+
+def _stop_name_key(name: str) -> str:
+    return name.replace(" ", "")
 
 
 class AmenityCollector:
@@ -600,6 +635,13 @@ class AmenityCollector:
         # 좌표로 폴백하고 그 사실을 시설마다 적는다.
         self.vworld = vworld
         self.tago = tago
+        # 버스정류장 운행주기(15분) 판정기. TAGO 가 노선 정보를 주면 정류장마다
+        # 15분당 도착 버스 수를 계산해 인정 정류장만 배점에 센다.
+        self.headway_resolver: BusHeadwayResolver | None = (
+            BusHeadwayResolver(tago)
+            if tago is not None and hasattr(tago, "route_info")
+            else None
+        )
         self.cache_ttl_seconds = cache_ttl_seconds
         # 지정 원천을 인허가 캐시에서 직접 채우는 시설군(대규모점포 등)에 쓴다.
         # 없으면 해당 시설군은 missing_note 로 남긴다.
@@ -1347,6 +1389,46 @@ class AmenityCollector:
                 merged.setdefault(key, row)
         return list(merged.values())
 
+    async def _stop_headways(
+        self, places: Sequence[RawPlace]
+    ) -> dict[str, StopHeadway] | None:
+        """TAGO 정류장마다 운행주기를 판정해 정류장명 키로 돌려준다.
+
+        판정기가 없거나 조회가 통째로 실패하면 None — 그때는 전체 정류장을 세고
+        그 사실을 고지한다(BUS_STOP_NO_HEADWAY_NOTE).
+        """
+
+        if self.headway_resolver is None:
+            return None
+        refs = [
+            tuple(place.stop_ref.split(":", 1))
+            for place in places
+            if place.stop_ref and ":" in place.stop_ref
+        ]
+        if not refs:
+            return None
+        try:
+            by_ref = await self.headway_resolver.resolve_many(refs)  # type: ignore[arg-type]
+        except Exception:
+            return None
+        merged: dict[str, StopHeadway] = {}
+        for place in places:
+            headway = by_ref.get(place.stop_ref)
+            if headway is None:
+                continue
+            key = _stop_name_key(place.name)
+            current = merged.get(key)
+            # 같은 이름(양방향) 정류장은 하나로 보고 더 유리한 판정을 대표로 둔다.
+            if current is None or (
+                headway.determined
+                and (
+                    not current.determined
+                    or headway.arrivals_per_15min > current.arrivals_per_15min
+                )
+            ):
+                merged[key] = headway
+        return merged
+
     async def _bus_stops(self, center: Coordinates, radius_m: int) -> FeedResult:
         """TAGO 정류소 근접조회. 실패하면 지도 검색으로 대체한다.
 
@@ -1358,7 +1440,11 @@ class AmenityCollector:
             try:
                 rows = await self.tago.nearby_stops(center.lat, center.lng)
                 if rows:
-                    return FeedResult(_places(rows, _tago_place), TAGO_SOURCE)
+                    places = _places(rows, _tago_place)
+                    headways = await self._stop_headways(places)
+                    if headways is None:
+                        return FeedResult(places, TAGO_SOURCE)
+                    return FeedResult(places, TAGO_HEADWAY_SOURCE, headways)
                 # TAGO 는 서울을 제공하지 않는다(2026-09-16 실측 0건). 빈 결과는 장애가
                 # 아니라 미제공 지역일 수 있으니 서울시 원천 → 지도 순으로 넘어간다.
             except Exception:
@@ -1545,12 +1631,22 @@ class AmenityCollector:
         ):
             state = "connected"
             note = TRANSFER_STANDARD_NOTE
+        # 버스정류장은 운행주기 15분 판정으로 인정 정류장만 배점에 센다.
+        if key == "bus_stop":
+            outcome = results.get("bus_stop")
+            headways = outcome.headways if isinstance(outcome, FeedResult) else None
+            if headways is not None:
+                facilities = _apply_bus_headway(facilities, headways)
+                state = "connected"
+                note = BUS_STOP_HEADWAY_NOTE
         return GroupCollection(
             key=key,
             state=state,
             note=note,
             actual_source=" + ".join(sources),
-            distances_m=tuple(facility.distance_m for facility in facilities),
+            distances_m=tuple(
+                facility.distance_m for facility in facilities if facility.counted
+            ),
             facilities=tuple(facilities[:MAX_HITS_PER_GROUP]),
             front_door_notice=group_notice,
         )
@@ -1884,6 +1980,34 @@ def _places(
 ) -> tuple[RawPlace, ...]:
     parsed = (parse(row) for row in rows if isinstance(row, dict))
     return tuple(place for place in parsed if place is not None and place.name)
+
+
+def _apply_bus_headway(
+    facilities: Sequence[CollectedFacility],
+    headways: dict[str, StopHeadway],
+) -> list[CollectedFacility]:
+    """정류장마다 운행주기 판정을 붙이고, 인정 정류장이 앞에 오도록 정렬한다.
+
+    인정(15분당 1대 이상)만 counted=True. 미달·배차 미확인은 counted=False 로
+    남겨 화면에는 보이되 배점에서 빠진다. 판정 정보가 없는 정류장(이름 불일치 등)
+    은 확인 필요로 두고 세지 않는다 — 자료 부재를 시설 존재로 접지 않는다.
+    """
+
+    tagged: list[CollectedFacility] = []
+    for facility in facilities:
+        headway = headways.get(_stop_name_key(facility.name))
+        if headway is None:
+            tagged.append(
+                facility._replace(
+                    counted=False,
+                    count_note="운행주기 판정 정보 없음 — 확인 필요(배점 제외)",
+                )
+            )
+            continue
+        tagged.append(
+            facility._replace(counted=headway.qualifies, count_note=headway.label)
+        )
+    return sorted(tagged, key=lambda f: (not f.counted, f.distance_m))
 
 
 def _stop_points(outcome: "FeedResult | BaseException | None") -> list[tuple[str, Coordinates]]:
