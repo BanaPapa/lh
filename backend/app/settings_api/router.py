@@ -118,6 +118,7 @@ class KeysUpdateRequest(BaseModel):
     opinet_api_key: str | None = None
     safemap_api_key: str | None = None
     seoul_open_data_key: str | None = None
+    gg_open_api_key: str | None = None
     demo_mode: bool | None = None
 
 

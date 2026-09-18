@@ -15,6 +15,13 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.models import Coordinates
+from app.services.gg_chemical import GG_CHEMICAL_DATASET_PAGE_URL
+from app.services.casino_registry import CASINO_REGISTRY_URL
+from app.services.city_gas_registry import CITY_GAS_REGISTRY_URL
+from app.services.logistics_warehouse import WAREHOUSE_DATASET_PAGE_URL
+from app.services.lpg_municipal import LPG_MUNICIPAL_DATASETS
+from app.services.lpg_retailer_file import LPG_RETAILER_DATASET_PAGE_URL
+from app.services.lpg_seoul import SEOUL_LPG_PAGE_URL
 from app.services.safemap_layers import SAFEMAP_LAYERS, SafemapLayerClient
 
 # 점검용 고정 지점(강남역). 정류장·주유소·필지 모두 이 지점 근처에 결과가 있다.
@@ -129,6 +136,107 @@ async def _probe_cng_gyeongnam(hazard: Any, screening: Any) -> str:
     rows = await hazard.cng_gyeongnam.all_stations()
     failed = len(hazard.cng_gyeongnam.geocode_failures)
     return f"경남 {len(rows)}건" + (f" · 지오코딩 실패 {failed}건" if failed else "")
+
+
+async def _probe_gg_chemical(hazard: Any, screening: Any) -> str:
+    rows = await hazard.gg_chemical.all_facilities()
+    return f"경기 {len(rows):,}건"
+
+
+async def _probe_logistics_warehouse(hazard: Any, screening: Any) -> str:
+    client = hazard.logistics_warehouse
+    if not client.is_warm:
+        # 전량 예열(상세 286건 · 초당 1건)은 기동 시 백그라운드로 돈다. 여기서는
+        # 목록 1건으로 키·엔드포인트만 확인하고 예열 중임을 알린다.
+        total = await client.probe_total()
+        return f"원천 응답 정상(등록 창고 {total:,}건) · 환경부 창고 예열 중(약 6분, 백그라운드)"
+    rows = await client.all_facilities()
+    failed = len(client.geocode_failures)
+    origin = ""
+    if client.loaded_from == "store" and client.synced_at is not None:
+        stamp = client.synced_at.astimezone().strftime("%m-%d %H:%M")
+        origin = f" · 저장분 재사용({stamp} 수집)"
+    return (
+        f"환경부 창고 {len(rows)}건"
+        + (f" · 지오코딩 실패 {failed}건" if failed else "")
+        + origin
+    )
+
+
+async def _probe_casino(hazard: Any, screening: Any) -> str:
+    rows = await hazard.casino_registry.all_casinos()
+    failed = len(hazard.casino_registry.geocode_failures)
+    return f"카지노 {len(rows)}곳" + (f" · 지오코딩 실패 {failed}곳" if failed else "")
+
+
+async def _probe_city_gas(hazard: Any, screening: Any) -> str:
+    rows = await hazard.city_gas_registry.all_plants()
+    failed = hazard.city_gas_registry.geocode_failures
+    building = sum(1 for p in rows if p.status == "건설중")
+    names = ", ".join(f.name for f in failed)
+    return f"제조시설 {len(rows)}곳(건설중 {building})" + (
+        f" · 지오코딩 실패 {len(failed)}곳: {names}" if failed else ""
+    )
+
+
+async def _probe_lpg_retailer_file(hazard: Any, screening: Any) -> str:
+    client = hazard.lpg_retailer_file
+    if not client.is_warm:
+        total = await client.probe_total()
+        return f"원천 응답 정상(판매소 {total:,}건) · 지오코딩 예열 중(백그라운드)"
+    rows = await client.all_retailers()
+    failed = len(client.geocode_failures)
+    origin = ""
+    if client.loaded_from == "store" and client.synced_at is not None:
+        stamp = client.synced_at.astimezone().strftime("%m-%d %H:%M")
+        origin = f" · 저장분 재사용({stamp} 수집)"
+    return f"판매소 {len(rows):,}건" + (f" · 지오코딩 실패 {failed}건" if failed else "") + origin
+
+
+async def _probe_lpg_municipal(hazard: Any, screening: Any) -> str:
+    """레지스트리 51종을 1건씩 찔러 승인·미승인을 센다(데이터셋별 활용신청 안내용)."""
+
+    client = hazard.lpg_municipal
+    approved: list[str] = []
+    pending: list[str] = []
+    stale: list[str] = []
+    for dataset in LPG_MUNICIPAL_DATASETS:
+        try:
+            await client.probe(dataset)
+            approved.append(dataset.dataset_id)
+        except Exception as exc:  # noqa: BLE001 — 개별 실패는 집계로만
+            code = getattr(exc, "status_code", None)
+            (stale if code == 404 else pending).append(dataset.dataset_id)
+    summary = f"승인 {len(approved)} / 활용신청 필요 {len(pending)} / 버전 재확인 {len(stale)} (총 {len(LPG_MUNICIPAL_DATASETS)})"
+    if pending:
+        summary += " · 미승인: " + ", ".join(pending[:8]) + (" …" if len(pending) > 8 else "")
+    return summary
+
+
+async def _probe_lpg_seoul(hazard: Any, screening: Any) -> str:
+    client = hazard.lpg_seoul
+    total = await client.probe_total()
+    rows = await client.all_facilities()
+    kinds = {}
+    for row in rows:
+        kinds[row.kind] = kinds.get(row.kind, 0) + 1
+    detail = " · ".join(f"{k} {v}" for k, v in sorted(kinds.items()))
+    return f"서울 {total}건(좌표 {len(rows)}건: {detail})"
+
+
+async def _probe_building_scan(hazard: Any, screening: Any) -> str:
+    """점검 지점 반경 50m 를 실제로 스캔해 방식이 동작하는지 보인다."""
+
+    result = await hazard.building_scan.scan(PROBE_POINT, 50)
+    kinds = {}
+    for b in result.buildings:
+        kinds[b.kind] = kinds.get(b.kind, 0) + 1
+    detail = ", ".join(f"{k} {v}" for k, v in sorted(kinds.items())) or "해당 건물 없음"
+    return (
+        f"건물 {result.parcels_seen} · 대장 조회 {result.lookups} · "
+        f"위험물저장및처리시설 {len(result.buildings)}동({detail})"
+        + (f" · 조회 실패 {len(result.failed_pnus)}" if result.failed_pnus else "")
+    )
 
 
 async def _probe_crematorium(hazard: Any, screening: Any) -> str:
@@ -248,6 +356,59 @@ CONNECTION_SPECS: tuple[ConnectionSpec, ...] = (
         "공공데이터포털", "https://www.data.go.kr/data/15055157/fileData.do",
     ),
     ConnectionSpec(
+        "gg_chemical", "경기데이터드림 유해화학물질 취급사업장(ChmstryMttrBizplc)",
+        "1차 마목 유독물 참고 핀(경기 한정 · 업종구분 · WGS84) — 판정 아님",
+        "GG_OPEN_API_KEY", lambda h, s: getattr(h, "gg_chemical", None), _probe_gg_chemical,
+        "경기데이터드림", GG_CHEMICAL_DATASET_PAGE_URL,
+    ),
+    ConnectionSpec(
+        "logistics_warehouse", "국토교통부 물류창고업 등록정보(3048029)",
+        "1차 마목 유독물 참고 핀 — 환경부 등록 보관·저장 창고(전국 286곳), 주소를 카카오로 지오코딩",
+        "PUBLIC_DATA_SERVICE_KEY", lambda h, s: getattr(h, "logistics_warehouse", None),
+        _probe_logistics_warehouse,
+        "공공데이터포털", WAREHOUSE_DATASET_PAGE_URL,
+    ),
+    ConnectionSpec(
+        "city_gas_registry", "도시가스 제조시설 명단(LNG 생산기지·터미널·바이오가스 12곳)",
+        "1차 아목 도시가스 제조시설(50m) — 도시가스사업법 가스제조시설 명단을 카카오로 지오코딩",
+        "KAKAO_REST_API_KEY", lambda h, s: getattr(h, "city_gas_registry", None), _probe_city_gas,
+        "민간LNG산업협회·한국가스공사", CITY_GAS_REGISTRY_URL,
+    ),
+    ConnectionSpec(
+        "casino_registry", "카지노영업소 명단(문체부 허가 18곳)",
+        "1차 바목 카지노영업소(25m · 다자녀) — 코드 명단을 카카오로 지오코딩",
+        "KAKAO_REST_API_KEY", lambda h, s: getattr(h, "casino_registry", None), _probe_casino,
+        "한국카지노업관광협회", CASINO_REGISTRY_URL,
+    ),
+    ConnectionSpec(
+        "lpg_retailer_file", "가스안전공사 전국 LPG 판매소 현황(ODcloud 15091481)",
+        "1차 나목 LPG 판매소 원천 — 전국 4,542건(2024-03 일회성), 주소를 카카오로 지오코딩",
+        "PUBLIC_DATA_SERVICE_KEY", lambda h, s: getattr(h, "lpg_retailer_file", None),
+        _probe_lpg_retailer_file,
+        "공공데이터포털", LPG_RETAILER_DATASET_PAGE_URL,
+    ),
+    ConnectionSpec(
+        "lpg_municipal", "시군구 액화석유가스업 인허가 파일(ODcloud 51종)",
+        "1차 나목 LPG 판매소 보강·저장소 참고 핀 — 사업지 시군구 파일만 조회. 데이터셋별 활용신청 필요",
+        "PUBLIC_DATA_SERVICE_KEY", lambda h, s: getattr(h, "lpg_municipal", None),
+        _probe_lpg_municipal,
+        "공공데이터포털", "https://www.data.go.kr/",
+    ),
+    ConnectionSpec(
+        "lpg_seoul", "서울 열린데이터광장 액화석유가스업 현황(SeoulListLPGSales)",
+        "1차 나목 — 서울 사업지의 LPG 판매소 판정·저장소 참고 핀(실시간 인허가, 주소 지오코딩)",
+        "SEOUL_OPEN_DATA_KEY", lambda h, s: getattr(h, "lpg_seoul", None), _probe_lpg_seoul,
+        "서울 열린데이터광장", SEOUL_LPG_PAGE_URL,
+    ),
+    ConnectionSpec(
+        "building_use_scan", "건축물대장 용도 스캔(브이월드 건물통합정보 + 국토부 표제부·층별개요)",
+        "1차 우회 원천(일부 연결) — 반경 안 필지의 표제부 주용도 「위험물저장및처리시설」 건물을 "
+        "기타용도 문자열로 LPG 저장·위험물·도시가스·유독물·미분류로 가르고, 주유소·LPG 충전·판매·"
+        "고압가스는 연결된 원천이 덮으므로 뺀다. 참고 핀 전용(판정 아님). 필지당 표제부 1회 호출",
+        "PUBLIC_DATA_SERVICE_KEY", lambda h, s: getattr(h, "building_scan", None), _probe_building_scan,
+        "국토교통부 건축HUB", "https://www.data.go.kr/data/15134735/openapi.do",
+    ),
+    ConnectionSpec(
         "crematorium", "보건복지부 화장시설",
         "1차 화장장(500m) 후보(전국 목록, 기동 시 예열)",
         "PUBLIC_DATA_SERVICE_KEY", lambda h, s: h.crematorium, _probe_crematorium,
@@ -358,6 +519,13 @@ def _safe_error(exc: BaseException) -> str:
     """예외 문구에서 URL 쿼리(키가 실릴 수 있음)를 지우고 200자로 자른다."""
 
     text = str(exc) or exc.__class__.__name__
+    # 네트워크 단계 실패는 원문(영문 httpx 문구)보다 원인이 읽히게 바꾼다. 키·앱 문제가
+    # 아니라 원천 서버 쪽 장애임을 드러내야 담당자가 엉뚱한 곳을 손대지 않는다.
+    lowered = text.lower()
+    if "all connection attempts failed" in lowered or "connecterror" in lowered:
+        return "원천 서버에 연결할 수 없습니다(응답 없음) — 키 문제가 아니라 제공처 서버 장애·차단 가능성. 잠시 뒤 다시 점검"
+    if "timed out" in lowered or "timeout" in lowered:
+        return "원천 서버 응답 시간 초과 — 제공처 서버 지연 가능성. 잠시 뒤 다시 점검"
     cleaned = []
     for token in text.split():
         cleaned.append(token.split("?", 1)[0] if "serviceKey=" in token or "key=" in token else token)

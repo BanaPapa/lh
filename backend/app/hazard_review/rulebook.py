@@ -257,7 +257,8 @@ NON_JUDGED_DATA_STATES: frozenset[str] = frozenset({"missing", "manual", "negoti
 MANUAL_CHECK_DATA_STATES: frozenset[str] = frozenset({"manual", "negotiate"})
 
 # LH 회신문 §7 미확보 6개 목의 공통 표기. [요청 2] 로 승인된 처리라 문구를 고정한다.
-MANUAL_CHECK_NOTE = "판정 미적용 — 별도 수기 확인 (LH [요청 2] 승인 2026-08-24)"
+# 화면 비고는 비운다 — 연결 상태는 원천 열의 「API 미연결」 칩이, 근거는 doc_ref 문서가 말한다.
+MANUAL_CHECK_NOTE = ""
 
 # 구현/확정/검증 축. data_state(원천 상태)와는 별개 축이다. 섞지 말 것.
 # - ready: 어댑터·파이프라인이 갖춰져 판정에 실제로 참여
@@ -273,9 +274,8 @@ ImplementationState = Literal[
 
 # 군부대·사격장은 공적 DB 부재로 2026-08-14 LH 과업협의(회의록_0814 §4)에서 판정
 # 대상 제외가 확정됐다(TIMELINE §1). 원천 자체가 없어 판정 불가.
-JUDGMENT_EXCLUDED_REASON = (
-    "공적 DB 부재로 판정 대상 제외 (LH 과업협의 2026-08-14 확정 · H-07)"
-)
+# 화면 비고는 「판정 미적용」만 남긴다(근거는 H-07 문서·TIMELINE §1).
+JUDGMENT_EXCLUDED_REASON = "판정 미적용"
 
 
 class Category(NamedTuple):
@@ -359,12 +359,16 @@ CATEGORIES: tuple[Category, ...] = (
         key="lpg_retailer",
         label="나. LPG 판매소",
         rule_id="RB14-HAZMAT",
-        source_label="한국가스안전공사 LPG 판매소 현황(CSV · 좌표 없음)",
+        source_label=(
+            "한국가스안전공사 전국 LPG 판매소 현황(파일 15091481 · 2024-03 · 주소 지오코딩) "
+            "+ 시군구 액화석유가스업 인허가 파일(레지스트리 51종)"
+        ),
         data_state="partial",
         note=(
-            "판매소 313건은 좌표가 없어 전건 지오코딩 대상(실패율 5.4%). LH 는 "
-            "「충전소만 ○」로 표기했고 판매소 포함은 묵시 수용 — 서면 확인 대기 "
-            "(H-02-나 §7-2)"
+            "전국 파일은 2024-03 일회성 명부라 폐업·신규 미반영이고 좌표가 없어 전건 "
+            "지오코딩한다. 시군구 파일은 데이터셋별 활용신청이 필요해 승인된 지역만 "
+            "보강된다. LH 는 「충전소만 ○」로 표기했고 판매소 포함은 묵시 수용 — 서면 "
+            "확인 대기 (H-02-나 §7-2)"
         ),
         doc_ref="H-02-나",
         facility_types=("lpg_retailer",),
@@ -373,10 +377,15 @@ CATEGORIES: tuple[Category, ...] = (
         key="lpg_storage",
         label="나. LPG 저장소",
         rule_id="RB14-HAZMAT",
-        source_label="전북 자료 미확보 (체크리스트 「찾지 못함」)",
+        source_label=(
+            "전국 원천 없음 · 시군구 액화석유가스업 인허가 파일의 「저장」 행을 참고 핀으로 "
+            "표시(승인된 지역만)"
+        ),
         data_state="manual",
-        note=f"{MANUAL_CHECK_NOTE} · LH 회신문 §7 미확보 6개 목 (H-02-나 §6-3)",
+        note="가스안전공사 정기검사 대상 저장소 DB 개방 요청 필요",
         doc_ref="H-02-나",
+        # 참고 핀 전용 시설 유형. 판정(data_state=manual)은 그대로다.
+        facility_types=("lpg_storage",),
     ),
     Category(
         key="hazmat_facility",
@@ -384,8 +393,10 @@ CATEGORIES: tuple[Category, ...] = (
         rule_id="RB14-HAZMAT",
         source_label="전북 위치자료 미공개 (전남은 위치 공개 · 소방서 협조 요청 대상)",
         data_state="manual",
-        note=f"{MANUAL_CHECK_NOTE} · LH 회신문 §7 미확보 6개 목 (H-02-다)",
+        note="",
         doc_ref="H-02-다",
+        # 참고 핀 전용 시설 유형(건축물대장 용도 스캔). 판정(manual)은 그대로다.
+        facility_types=("hazmat_facility",),
     ),
     Category(
         key="high_pressure_gas",
@@ -415,10 +426,11 @@ CATEGORIES: tuple[Category, ...] = (
         rule_id="RB14-HAZMAT",
         source_label=(
             "유독물 시설 위치자료 미확보 (환경부 협조 요청 대상) · "
-            "생활안전지도 화학물취급시설(IF_0049) 참고 핀"
+            "생활안전지도 화학물취급시설(IF_0049) · 경기데이터드림 유해화학물질 "
+            "취급사업장(경기 한정) 참고 핀"
         ),
         data_state="manual",
-        note=f"{MANUAL_CHECK_NOTE} · LH 회신문 §7 미확보 6개 목 (H-02-마)",
+        note="",
         doc_ref="H-02-마",
         # 참고 핀 전용 시설 유형. 판정(data_state=manual)은 그대로다.
         facility_types=("chemical_handling",),
@@ -443,15 +455,20 @@ CATEGORIES: tuple[Category, ...] = (
         key="city_gas_plant",
         label="아. 도시가스 제조시설",
         rule_id="RB14-HAZMAT",
-        source_label="한국가스안전공사 가스제품 제조업소 (고유 18곳 · 좌표 없음)",
+        source_label=(
+            "도시가스 제조시설 명단 12곳(LNG 생산기지 6 · 민간 LNG 터미널 5 · 바이오가스 제조소 1) "
+            "· 주소 지오코딩"
+        ),
         data_state="applied",
         note=(
-            "「가스제품 제조업소」(압력용기·연소기 제조공장)가 「도시가스 제조시설」에 "
-            "맞는지 LH 확인 대기 — 아목 정의에 맞는 원장은 일반도시가스업 12건 "
-            "(라목 배정)일 수 있다 (H-02-아 §7-1). 두 파일 중복 7건·행 중복은 적재 시 "
-            "제거한다 (§6-3)"
+            "도시가스사업법 §2 5호·시행규칙 §2⑤ 「가스제조시설」(하역·저장·기화·송출)에 맞는 "
+            "시설을 코드 명단으로 둔다(H-02-아 §8, 2026-09-18). 종전 「가스제품 제조업소」"
+            "(압력용기·연소기 제조공장)는 법 정의상 아목이 아니어서 쓰지 않는다(§7-1). "
+            "도시가스사 LNG 위성기지·LPG-Air 제조소·나프타부생가스제조사업소는 시도 허가 "
+            "대장 비공개로 미확보 — 건축물대장 층별개요 「도시가스제조시설」 참고 핀으로 보완"
         ),
         doc_ref="H-02-아",
+        # 명단 판정 시설 + 건축물대장 용도 스캔 참고 핀이 같은 유형을 쓴다.
         facility_types=("city_gas_plant",),
     ),
     Category(
@@ -460,8 +477,10 @@ CATEGORIES: tuple[Category, ...] = (
         rule_id="RB14-HAZMAT",
         source_label="경찰청 자료는 연도별 개수 통계뿐 (위치 없음)",
         data_state="manual",
-        note=f"{MANUAL_CHECK_NOTE} · [요청 4] 승인 (H-02-자)",
+        note="",
         doc_ref="H-02-자",
+        # 참고 핀 전용 시설 유형(건축물대장 용도 스캔 · 층별개요 「화약류저장소」). 판정은 그대로다.
+        facility_types=("explosive_storage",),
     ),
     Category(
         key="hazmat_other_similar",
@@ -471,10 +490,7 @@ CATEGORIES: tuple[Category, ...] = (
             "대상 미정의 — 유사 시설 발견 시 협의 · 생활안전지도 폐기물처리시설(IF_0051) 참고 핀"
         ),
         data_state="negotiate",
-        note=(
-            "개별 협의 항목. 후보 판별 절차가 정해지지 않아 자동 판정하지 않는다 "
-            "(H-02-차 §7-1). 특정고압가스 462건은 라·바목 종류에서 검토로 다룬다"
-        ),
+        note="",
         doc_ref="H-02-차",
         # 참고 핀 전용 시설 유형(폐기물처리시설). 판정(negotiate)은 그대로다.
         facility_types=("waste_treatment",),
@@ -635,13 +651,16 @@ CATEGORIES: tuple[Category, ...] = (
         key="casino",
         label="바. 카지노영업소",
         rule_id="RB14-AMUSEMENT",
-        source_label="자료 미확보 (체크리스트 「찾지 못함」)",
-        data_state="manual",
+        source_label="문체부 허가 카지노 18곳 명단(한국카지노업관광협회 회원사) · 주소 지오코딩",
+        data_state="applied",
         note=(
-            f"{MANUAL_CHECK_NOTE} · LH 회신문 §7 미확보 6개 목. 전북 실재 여부 "
-            "확인 시 종결 가능 (H-04-바 §7-1)"
+            "전국 허가 업소가 18곳(외국인전용 17 + 강원랜드)으로 고정돼 명단을 코드에 두고 "
+            "판정한다(H-04-바 §8 「목록 수기 관리」). 공개 API 는 없다(문체부 3075667 은 "
+            "HWP 집계, TourAPI 는 강원랜드만). LH 보고는 [요청 2] 「판정 미적용」이므로 "
+            "적용 전환은 정정 보고 대상 (H-04-바 §7-1)"
         ),
         doc_ref="H-04-바",
+        facility_types=("casino",),
     ),
     # --- H-05 일반숙박시설 — RB14-LODGING (25m · 다자녀 · 오피스텔 포함) ---------
     Category(
@@ -681,7 +700,7 @@ CATEGORIES: tuple[Category, ...] = (
         rule_id="RB14-CREMATION-MILITARY",
         source_label="공적 데이터 부재",
         data_state="missing",
-        note="판정 미적용 — 공적 DB 부재로 08-14 LH 과업협의에서 판정 대상 제외 (H-07)",
+        note="판정 미적용",
         doc_ref="H-07",
         judgment_excluded=True,
     ),
@@ -691,7 +710,7 @@ CATEGORIES: tuple[Category, ...] = (
         rule_id="RB14-CREMATION-MILITARY",
         source_label="공적 데이터 부재",
         data_state="missing",
-        note="판정 미적용 — 공적 DB 부재로 08-14 LH 과업협의에서 판정 대상 제외 (H-07)",
+        note="판정 미적용",
         doc_ref="H-07",
         judgment_excluded=True,
     ),

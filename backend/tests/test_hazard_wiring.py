@@ -648,6 +648,54 @@ class TestSafemapReferenceLayers:
         assert pin.facility_type == "chemical_handling" and pin.metadata["reference"]
         assert "참고 핀 1건" in toxic.note
 
+    def test_gg_chemical_becomes_reference_pin_with_business_type_and_chip(self) -> None:
+        # 경기데이터드림 유해화학물질 취급사업장 — 판매업 핀도 판정은 바꾸지 않는다.
+        feed = FakeLayerFeed([("○○케미칼 판매점", 0, 20, "판매업")])
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), gg_chemical=feed,
+        )
+        toxic = category_for(result, "toxic_substance")
+        assert toxic.status == "dataset_missing"
+        assert toxic.manual_check_required
+        pin = toxic.facilities[0]
+        assert pin.provider == "gg_chemical" and pin.metadata["reference"]
+        assert pin.facility_type == "chemical_handling"
+        assert "업종구분 판매업" in pin.classification_note
+        assert "경기데이터드림" in pin.geometry_note
+        assert "참고 핀 1건" in toxic.note and "경기데이터드림" in toxic.note
+        # 참고 핀 원천은 「API 일부연결」(partial) 칩으로 판정 원천(api)과 구분해 낸다.
+        assert [(s.kind, s.detail) for s in toxic.data_sources] == [("partial", "gg_chemical")]
+
+    def test_gg_chemical_failure_is_recorded_without_changing_status(self) -> None:
+        class FailingFeed:
+            enabled = True
+
+            async def facilities_around(self, center, radius_m):
+                raise RuntimeError("WAF")
+
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), gg_chemical=FailingFeed(),
+        )
+        toxic = category_for(result, "toxic_substance")
+        assert toxic.status == "dataset_missing"
+        assert toxic.facilities == []
+        assert toxic.data_sources == []
+
+    def test_logistics_warehouse_is_reference_pin_for_toxic(self) -> None:
+        feed = FakeLayerFeed([("(주)경기화학물류", 0, 20, "보관·저장업(환경부 등록 창고)")])
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), logistics_warehouse=feed,
+        )
+        toxic = category_for(result, "toxic_substance")
+        assert toxic.status == "dataset_missing" and toxic.manual_check_required
+        pin = toxic.facilities[0]
+        assert pin.provider == "logistics_chem_warehouse" and pin.metadata["reference"]
+        assert "보관·저장업" in pin.classification_note
+        assert "물류창고업" in toxic.note
+
     def test_waste_layer_is_reference_pin_for_other_similar(self) -> None:
         feed = FakeLayerFeed([("○○환경 소각시설", 0, 20, "소각")])
         result = run_review(
@@ -673,3 +721,338 @@ class TestSafemapReferenceLayers:
         assert factory.status == "review_required"
         note = factory.facilities[0].classification_note
         assert "대기배출 신고 있음(생활안전지도" in note and "수질배출 신고 있음" in note
+
+
+# ---------------------------------------------------------------------------
+# 카지노영업소 — 문체부 허가 18곳 명단(H-04-바 §8) · 바목 판정 원천
+# ---------------------------------------------------------------------------
+class FakeCasinoRegistry:
+    def __init__(self, rows, enabled: bool = True) -> None:
+        from app.services.casino_registry import Casino
+
+        self.enabled = enabled
+        self.rows = [
+            Casino(f"C-{n}", name, "서울", "호텔", "주소", status,
+                   offset_coordinates(SITE_CENTER, n, e))
+            for name, n, e, status in rows
+        ]
+
+    async def casinos_around(self, center, radius_m):
+        return list(self.rows)
+
+
+class FakeLpgRetailerFile:
+    def __init__(self, rows, enabled: bool = True) -> None:
+        from app.services.lpg_retailer_file import LpgRetailer
+
+        self.enabled = enabled
+        self.rows = [
+            LpgRetailer(f"R-{n}", name, "주소", offset_coordinates(SITE_CENTER, n, e))
+            for name, n, e in rows
+        ]
+
+    async def retailers_around(self, center, radius_m):
+        return list(self.rows)
+
+
+class FakeLpgMunicipal:
+    def __init__(self, rows, enabled: bool = True) -> None:
+        from app.services.lpg_municipal import MunicipalFacility
+
+        self.enabled = enabled
+        self.rows = [
+            MunicipalFacility("15064201", "전북특별자치도 부안군_액화석유가스업", f"M-{n}", name,
+                              "주소", kind, kind_raw, "신규", offset_coordinates(SITE_CENTER, n, e))
+            for name, n, e, kind, kind_raw in rows
+        ]
+
+    async def facilities_for_site(self, address, center, radius_m):
+        from app.services.lpg_municipal import MunicipalLookup
+
+        return MunicipalLookup(list(self.rows), ["15064201"], {}, [])
+
+
+class TestLpgRetailerWiring:
+    def test_national_file_retailer_within_50m_is_exclusion(self) -> None:
+        result = run_review(
+            build_request("house", "general"),
+            local_sources=LocalSourcesBundle(),
+            lpg_retailer_file=FakeLpgRetailerFile([("대륙가스", 0, 20)]),
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        retailer = category_for(result, "lpg_retailer")
+        assert retailer.status == "exclusion_match", retailer.note
+        assert retailer.facilities[0].provider == "lpg_retailer_file"
+        assert [s.detail for s in retailer.data_sources] == ["lpg_retailer_file"]
+
+    def test_municipal_sales_row_judged_and_storage_row_is_reference_pin(self) -> None:
+        municipal = FakeLpgMunicipal([
+            ("부안가스", 0, 20, "판매", "판매사업"),
+            ("부안저장", 0, 30, "저장", "저장소"),
+            ("집단", 0, 25, "기타", "집단공급사업"),
+        ])
+        result = run_review(
+            build_request("house", "general"),
+            local_sources=LocalSourcesBundle(), lpg_municipal=municipal,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        retailer = category_for(result, "lpg_retailer")
+        assert retailer.status == "exclusion_match", retailer.note
+        assert [f.name for f in retailer.facilities] == ["부안가스"]
+        storage = category_for(result, "lpg_storage")
+        assert storage.status == "dataset_missing" and storage.manual_check_required
+        assert [f.name for f in storage.facilities] == ["부안저장"]
+        assert storage.facilities[0].metadata["reference"]
+        assert "참고 핀 1건" in storage.note and storage.note.startswith("가스안전공사 정기검사")
+
+    def test_municipal_duplicate_of_national_row_is_dropped(self) -> None:
+        result = run_review(
+            build_request("house", "general"),
+            local_sources=LocalSourcesBundle(),
+            lpg_retailer_file=FakeLpgRetailerFile([("대륙가스", 0, 20)]),
+            lpg_municipal=FakeLpgMunicipal([("대륙가스(시군구)", 0, 25, "판매", "판매")]),
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        retailer = category_for(result, "lpg_retailer")
+        assert [f.provider for f in retailer.facilities] == ["lpg_retailer_file"]
+
+    def test_without_sources_note_says_api_not_connected(self) -> None:
+        result = run_review(build_request("house", "general"), local_sources=LocalSourcesBundle())
+        retailer = category_for(result, "lpg_retailer")
+        assert retailer.status == "dataset_missing"
+        assert retailer.note == "" and retailer.data_sources == []
+
+
+class TestCasinoRegistryWiring:
+    def test_casino_within_25m_is_exclusion_for_multi_child(self) -> None:
+        registry = FakeCasinoRegistry([("파라다이스카지노 워커힐점", 0, 20, "영업")])
+        result = run_review(
+            build_request("house", "multi_child"),
+            local_sources=LocalSourcesBundle(), casino_registry=registry,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        casino = category_for(result, "casino")
+        assert casino.status == "exclusion_match", casino.note
+        assert casino.facilities[0].provider == "casino_registry"
+        assert casino.facilities[0].facility_type == "casino"
+        assert [s.detail for s in casino.data_sources] == ["casino_registry"]
+
+    def test_casino_point_only_stays_geometry_missing(self) -> None:
+        # 시설 필지 경계를 못 붙이면 점 좌표만으로 확정하지 않는다(공통 규칙).
+        registry = FakeCasinoRegistry([("파라다이스카지노 워커힐점", 0, 20, "영업")])
+        result = run_review(
+            build_request("house", "multi_child", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), casino_registry=registry,
+        )
+        assert category_for(result, "casino").status == "geometry_missing"
+
+    def test_casino_far_away_is_no_conflict(self) -> None:
+        registry = FakeCasinoRegistry([("강원랜드카지노", 0, 400, "영업")])
+        result = run_review(
+            build_request("house", "multi_child", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), casino_registry=registry,
+        )
+        casino = category_for(result, "casino")
+        assert casino.status == "no_conflict_in_snapshot", casino.note
+        assert not casino.manual_check_required
+
+    def test_casino_without_registry_stays_dataset_missing(self) -> None:
+        result = run_review(
+            build_request("house", "multi_child", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(),
+        )
+        casino = category_for(result, "casino")
+        assert casino.status == "dataset_missing"
+
+
+class TestNotApplicableKeepsSources:
+    def test_not_applicable_rule_still_shows_connected_sources(self) -> None:
+        # 일반 유형에는 위락 Rule 이 미적용이지만 원천(인허가 원장)은 연결돼 있다.
+        store = FakeFacilityStore([stored_facility("entertainment_bars", "유흥", 0, 20)])
+        result = run_review(build_request("house", "general"), facility_store=store,
+                            local_sources=LocalSourcesBundle())
+        bar = category_for(result, "entertainment_bar")
+        assert bar.status == "not_applicable"
+        assert [s.detail for s in bar.data_sources] == ["entertainment_bars"]
+
+
+class FakeBuildingScan:
+    enabled = True
+
+    def __init__(self, rows, failed=()) -> None:
+        from app.services.building_use_scan import ScannedBuilding, ScanResult
+
+        ring = [offset_coordinates(SITE_CENTER, 0, 20), offset_coordinates(SITE_CENTER, 0, 30),
+                offset_coordinates(SITE_CENTER, 10, 30), offset_coordinates(SITE_CENTER, 10, 20),
+                offset_coordinates(SITE_CENTER, 0, 20)]
+        self.result = ScanResult(
+            [ScannedBuilding(f"4111{n:015d}", "주소", ring, offset_coordinates(SITE_CENTER, 5, 25),
+                             "1동", "위험물저장및처리시설", etc, kind) for n, (etc, kind) in enumerate(rows)],
+            parcels_seen=len(rows), lookups=len(rows), failed_pnus=list(failed),
+        )
+
+    async def scan(self, center, radius_m):
+        return self.result
+
+
+class TestBuildingUseScanWiring:
+    def test_scan_pins_land_on_their_categories_as_partial_sources(self) -> None:
+        scan = FakeBuildingScan([
+            ("액화석유가스 저장소", "LPG저장"),
+            ("위험물 옥외탱크저장소", "위험물"),
+            ("주유소", "주유소"),      # 연결된 원천이 덮는 종류 → 뺀다
+            ("", "미분류"),
+            ("", "화약류"),
+        ])
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), building_scan=scan,
+        )
+        storage = category_for(result, "lpg_storage")
+        assert storage.status == "dataset_missing"
+        assert [f.provider for f in storage.facilities] == ["building_use_scan"]
+        assert storage.facilities[0].geometry_type == "polygon" and storage.facilities[0].metadata["reference"]
+        # 빠짐없이 끝난 스캔은 완전 연결과 같은 범위 → 「우회 연결」
+        assert [(s.kind, s.detail) for s in storage.data_sources] == [("bypass", "building_use_scan")]
+        assert "참고 핀 1건" in storage.note
+
+        hazmat = category_for(result, "hazmat_facility")
+        assert [f.metadata["kind"] for f in hazmat.facilities] == ["위험물"]
+        other = category_for(result, "hazmat_other_similar")
+        assert [f.metadata["kind"] for f in other.facilities] == ["미분류"]
+        explosives = category_for(result, "explosive_storage")
+        assert [f.metadata["kind"] for f in explosives.facilities] == ["화약류"]
+        assert explosives.status == "dataset_missing"
+        assert [(s.kind, s.detail) for s in explosives.data_sources] == [("bypass", "building_use_scan")]
+        # 근거(basis)가 핀 설명에 드러난다
+        assert "기타용도 문자열 「액화석유가스 저장소」 추정" in storage.facilities[0].classification_note
+        assert storage.facilities[0].metadata["basis"] == "text"
+        # 주유소는 어느 종류에도 핀으로 오르지 않는다
+        all_kinds = [f.metadata.get("kind") for c in result.categories for f in c.facilities]
+        assert "주유소" not in all_kinds
+        # 도시가스 제조시설(applied·미연결)도 스캔이 붙어 있으면 일부 연결 칩을 받는다
+        city_gas = category_for(result, "city_gas_plant")
+        assert [(s.kind, s.detail) for s in city_gas.data_sources] == [("bypass", "building_use_scan")]
+
+    def test_incomplete_scan_is_only_partially_connected(self) -> None:
+        scan = FakeBuildingScan([("액화석유가스 저장소", "LPG저장")], failed=["4111000000000000009"])
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), building_scan=scan,
+        )
+        storage = category_for(result, "lpg_storage")
+        assert [(s.kind, s.detail) for s in storage.data_sources] == [("partial", "building_use_scan")]
+
+    def test_scan_failure_only_drops_pins(self) -> None:
+        class Failing:
+            enabled = True
+
+            async def scan(self, center, radius_m):
+                raise RuntimeError("vworld down")
+
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), building_scan=Failing(),
+        )
+        storage = category_for(result, "lpg_storage")
+        assert storage.status == "dataset_missing" and storage.facilities == []
+        assert storage.data_sources == []
+
+
+class TestMunicipalCoverageChips:
+    def test_uncovered_regional_provider_gets_no_chip(self) -> None:
+        class NotCovering:
+            enabled = True
+
+            async def facilities_for_site(self, address, center, radius_m):
+                from app.services.lpg_municipal import MunicipalLookup
+
+                return MunicipalLookup([], [], {}, [])
+
+        result = run_review(
+            build_request("house", "general"),
+            local_sources=LocalSourcesBundle(),
+            lpg_retailer_file=FakeLpgRetailerFile([]),
+            lpg_seoul=NotCovering(),
+        )
+        retailer = category_for(result, "lpg_retailer")
+        assert [s.detail for s in retailer.data_sources] == ["lpg_retailer_file"]
+        storage = category_for(result, "lpg_storage")
+        assert "lpg_seoul" not in [s.detail for s in storage.data_sources]
+
+
+# ---------------------------------------------------------------------------
+# 도시가스 제조시설 — LNG 생산기지·터미널·바이오가스 명단(H-02-아 §8) · 아목 판정 원천
+# ---------------------------------------------------------------------------
+class FakeCityGasRegistry:
+    def __init__(self, rows, enabled: bool = True) -> None:
+        from app.services.city_gas_registry import CityGasPlant
+
+        self.enabled = enabled
+        self.rows = [
+            CityGasPlant(f"G-{n}", name, "한국가스공사", "경기", "주소", "LNG생산기지", status,
+                         "https://example.test", offset_coordinates(SITE_CENTER, n, e))
+            for name, n, e, status in rows
+        ]
+
+    async def plants_around(self, center, radius_m):
+        return list(self.rows)
+
+
+class TestCityGasRegistryWiring:
+    def test_plant_within_50m_is_exclusion(self) -> None:
+        registry = FakeCityGasRegistry([("평택LNG생산기지", 0, 30, "운영")])
+        result = run_review(
+            build_request("house", "general"),
+            local_sources=LocalSourcesBundle(), city_gas_registry=registry,
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        plant = category_for(result, "city_gas_plant")
+        assert plant.status == "exclusion_match", plant.note
+        assert plant.facilities[0].provider == "city_gas_registry"
+        assert plant.facilities[0].facility_type == "city_gas_plant"
+        assert plant.facilities[0].metadata["kind"] == "LNG생산기지"
+        assert [s.detail for s in plant.data_sources] == ["city_gas_registry"]
+
+    def test_plant_far_away_is_no_conflict_and_registry_absent_is_missing(self) -> None:
+        registry = FakeCityGasRegistry([("삼척LNG생산기지", 0, 400, "운영")])
+        result = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(), city_gas_registry=registry,
+        )
+        plant = category_for(result, "city_gas_plant")
+        assert plant.status == "no_conflict_in_snapshot", plant.note
+        without = run_review(
+            build_request("house", "general", geometry_source="provisional_polygon"),
+            local_sources=LocalSourcesBundle(),
+        )
+        assert category_for(without, "city_gas_plant").status == "dataset_missing"
+
+
+class TestLpgRetailerZoningDisplay:
+    def test_lpg_retailer_gets_zoning_name_without_changing_verdict(self) -> None:
+        # 나목 LPG 판매소는 소재 용도지역을 표기만 한다(석유대체연료의 확인 요청 규칙은 적용 안 함).
+        class ZonedVWorld(FakeVWorldForFacilities):
+            def __init__(self) -> None:
+                super().__init__(half_size_m=5)
+                self.zoning_calls = 0
+
+            async def zoning_at(self, lat: float, lng: float):
+                from app.services.vworld import ZoningInfo
+
+                self.zoning_calls += 1
+                return ZoningInfo(name="제2종일반주거지역")
+
+        vworld = ZonedVWorld()
+        result = run_review(
+            build_request("house", "general"),
+            local_sources=LocalSourcesBundle(),
+            lpg_retailer_file=FakeLpgRetailerFile([("동네가스", 0, 20)]),
+            vworld=vworld,
+        )
+        retailer = category_for(result, "lpg_retailer")
+        fac = next(f for f in retailer.facilities if f.name == "동네가스")
+        assert fac.zoning_name == "제2종일반주거지역" and fac.zoning_class == "residential"
+        assert vworld.zoning_calls >= 1
+        # 판정은 용도지역과 무관하게 경계 확인 결과 그대로다.
+        assert retailer.status == "exclusion_match", retailer.note

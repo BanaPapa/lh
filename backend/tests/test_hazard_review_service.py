@@ -605,15 +605,21 @@ class TestMissingDatasets:
         # 군부대·사격장은 별도로 판정 제외 처리하므로 여기서 뺀다.
         # LH 회신문 §7 미확보 6개 목은 [요청 2] 승인에 따라 「판정 미적용 — 별도
         # 수기 확인」으로 표시한다. 자료가 없다는 뜻이지 시설이 없다는 뜻이 아니다.
+        # 카지노는 2026-09-17 부터 허가 18곳 명단으로 판정한다(H-04-바 §8) — 목록에서 뺀다.
         for key in (
             "hazmat_facility", "toxic_substance",
-            "explosive_storage", "lpg_storage", "casino",
+            "explosive_storage", "lpg_storage",
         ):
             category = category_for(result, key)
             assert category.status == "dataset_missing"
             assert category.data_state == "manual"
             assert category.manual_check_required is True
-            assert "판정 미적용 — 별도 수기 확인" in category.note
+            # 비고는 비운다(원천 열의 「API 미연결」 칩이 상태를 말한다). LPG 저장소만
+            # 「가스안전공사 정기검사 대상 저장소 DB 개방 요청 필요」 한 줄을 남긴다.
+            if key == "lpg_storage":
+                assert "개방 요청 필요" in category.note
+            else:
+                assert category.note == ""
             assert category.doc_ref.startswith("H-")
 
     def test_negotiate_category_is_not_judged(self) -> None:
@@ -647,8 +653,8 @@ class TestJudgmentExcluded:
             # 판정에서 빠지므로 not_applicable + 판정제외 플래그.
             assert category.status == "not_applicable"
             assert category.judgment_excluded is True
-            assert "판정 대상 제외" in category.not_applicable_reason
-            assert "2026-08-14" in category.not_applicable_reason
+            assert category.not_applicable_reason == "판정 미적용"
+            assert category.note == "판정 미적용"
             assert category.doc_ref == "H-07"
             # 상태값은 룰북 §4 6종을 벗어나지 않는다.
             assert category.status in {
@@ -1181,7 +1187,7 @@ class TestFuelSources:
         )
         cng = category_for(result, "cng_station")
         assert cng.status == "dataset_missing", cng.note
-        assert "원천 조회 실패" in cng.note
+        assert "조회 실패 — 복구 후 재심사 필요" in cng.note
         assert "CNG" in cng.note
 
     def test_local_cng_duplicate_of_api_station_is_dropped(self) -> None:
@@ -1437,8 +1443,9 @@ class TestPerDatasetReadiness:
         result = run_review(request, facility_store=store)
         theme = category_for(result, "theme_park_general")
         assert theme.status == "dataset_missing"
-        assert theme.note
-        assert "미연결" in theme.note
+        # 비고는 비운다 — 연결 상태는 원천 열의 「API 미연결」 칩(data_sources 빈 목록)이 말한다.
+        assert theme.note == ""
+        assert theme.data_sources == []
 
 
 # ---------------------------------------------------------------------------
@@ -1974,6 +1981,16 @@ class TestCategoryDataSources:
         sources = service._category_data_sources(CATEGORY_BY_KEY["gas_station"])
         assert [s.kind for s in sources] == ["api", "api", "api"]
         assert [s.detail for s in sources] == ["oil_retailers", "opinet", "safemap"]
+
+    def test_factory_registry_api_emits_public_api_chip(self) -> None:
+        service = _data_source_service(factory_registry=_FakeEnabledClient())
+        sources = service._category_data_sources(CATEGORY_BY_KEY["factory_registered"])
+        assert [(s.kind, s.detail) for s in sources] == [("api", "factory_registry")]
+
+    def test_casino_registry_emits_public_api_chip(self) -> None:
+        service = _data_source_service(casino_registry=_FakeEnabledClient())
+        sources = service._category_data_sources(CATEGORY_BY_KEY["casino"])
+        assert [s.detail for s in sources] == ["casino_registry"]
 
     def test_crematorium_emits_public_api_chip(self) -> None:
         service = _data_source_service(crematorium=_FakeEnabledClient())

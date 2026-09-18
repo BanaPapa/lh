@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     safemap_api_key: str = ""
     # 서울 열린데이터광장 인증키 — 서울 버스정류소(TAGO 미제공 지역).
     seoul_open_data_key: str = ""
+    # 경기데이터드림 인증키 — 경기 유해화학물질 취급사업장(마목 참고 핀). data.gg.go.kr 발급.
+    gg_open_api_key: str = ""
     # 전국 소음진동배출시설 표준데이터 CSV 보조 경로. 비밀키가 아니라 파일 경로라
     # 서버 키 목록(settings_api/store.py)에는 넣지 않는다. API 미승인(403) 상태에서
     # 전북 CSV(08_noise_vibration_facilities.csv)를 주입해 라목을 보조 동작시킬 때 쓴다.

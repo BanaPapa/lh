@@ -232,6 +232,35 @@ class FacilityStore:
         found.sort(key=lambda item: item.distance_m)
         return found
 
+    def dataset_records(self, dataset_key: str) -> list[StoredFacility]:
+        """데이터셋 하나의 전체 레코드(거리 0). 전량 캐시형 원천의 재적재용."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM facilities WHERE dataset_key = ?", (dataset_key,)
+            ).fetchall()
+        return [
+            StoredFacility(
+                dataset_key=row["dataset_key"],
+                record_id=row["record_id"],
+                name=row["name"],
+                address=row["address"],
+                road_address=row["road_address"],
+                coordinates=Coordinates(lat=row["lat"], lng=row["lng"]),
+                status=row["status"],
+                category=row["category"],
+                distance_m=0.0,
+                extra=_load_extra(row["extra"] if "extra" in row.keys() else ""),
+            )
+            for row in rows
+        ]
+
+    def sync_state_for(self, dataset_key: str) -> SyncState | None:
+        return next(
+            (state for state in self.sync_states() if state.dataset_key == dataset_key),
+            None,
+        )
+
     def sync_states(self) -> list[SyncState]:
         with self._connect() as connection:
             rows = connection.execute("SELECT * FROM sync_state").fetchall()

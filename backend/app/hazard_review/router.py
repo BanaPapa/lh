@@ -116,6 +116,16 @@ API_WARMUP_SOURCES: tuple[tuple[str, str, str], ...] = (
     ("kgs_lpg", "LPG 충전소(가스안전공사)", "all_stations"),
     ("cng", "CNG 충전소(가스안전공사 ODcloud)", "all_stations"),
     ("crematorium", "화장시설(복지부)", "all_crematoriums"),
+    ("logistics_warehouse", "환경부 보관·저장 창고(국토부 물류창고업)", "all_facilities"),
+    ("casino_registry", "카지노영업소 명단(문체부 허가 18곳)", "all_casinos"),
+    ("city_gas_registry", "도시가스 제조시설 명단(LNG 생산기지·터미널 12곳)", "all_plants"),
+    ("lpg_retailer_file", "LPG 판매소(가스안전공사 파일 15091481)", "all_retailers"),
+    ("gg_chemical", "경기 유해화학물질 취급사업장(경기데이터드림)", "all_facilities"),
+    ("lpg_seoul", "서울 액화석유가스업(열린데이터광장)", "all_facilities"),
+    # 생활안전지도 참고 핀·주석 레이어. 콜드 로드가 20초씩이라 심사 중에 일어나지 않게 예열.
+    ("chemical_feed", "생활안전지도 화학물취급시설(IF_0049)", "all_facilities"),
+    ("waste_feed", "생활안전지도 폐기물처리시설(IF_0051)", "all_facilities"),
+    ("emission_feed", "생활안전지도 환경배출시설(IF_0040)", "all_facilities"),
 )
 
 

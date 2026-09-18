@@ -136,6 +136,20 @@ def distance_point_to_polygon_m(
     return _to_point(point, epsg).distance(_to_polygon(ring, epsg))
 
 
+def polygon_overlap_m2(ring_a: Sequence[Coordinates], ring_b: Sequence[Coordinates]) -> float:
+    """두 폴리곤이 겹치는 면적(㎡). 안 겹치면 0."""
+
+    epsg = _ring_epsg(ring_a)
+    return _to_polygon(ring_a, epsg).intersection(_to_polygon(ring_b, epsg)).area
+
+
+def polygon_contains(ring: Sequence[Coordinates], point: Coordinates) -> bool:
+    """점이 폴리곤 안(경계 포함)에 있는가."""
+
+    epsg = _ring_epsg(ring)
+    return _to_polygon(ring, epsg).intersects(_to_point(point, epsg))
+
+
 def max_extent_m(center: Coordinates, ring: Sequence[Coordinates]) -> float:
     """center 에서 폴리곤의 가장 먼 꼭짓점까지 거리(m).
 

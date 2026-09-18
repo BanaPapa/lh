@@ -29,7 +29,7 @@ export type HazardApplicationType =
 /**
  * 항목 상태 — LH 회신문 §6-2 어휘(docs/hazards INDEX §5).
  * applied 판정 적용 · partial 부분 적용 · approximate 근사 적용 ·
- * manual/missing 판정 미적용(별도 수기 확인) · negotiate 개별 협의
+ * manual/missing 판정 미적용 · negotiate 개별 협의
  */
 export type HazardCategoryDataState =
   | "applied"

@@ -26,6 +26,14 @@ from app.services.cadastral_local import CadastralLocalStore
 from app.services.cadastral_vworld import VWorldCadastralStore
 from app.services.cng import CngStationClient
 from app.services.cng_gyeongnam import CngGyeongnamClient
+from app.services.gg_chemical import GgChemicalClient
+from app.services.casino_registry import CasinoRegistryClient
+from app.services.city_gas_registry import CityGasRegistryClient
+from app.services.logistics_warehouse import LogisticsWarehouseClient
+from app.services.lpg_municipal import LpgMunicipalClient
+from app.services.lpg_seoul import SeoulLpgClient
+from app.services.building_use_scan import BuildingUseScanner
+from app.services.lpg_retailer_file import LpgRetailerFileClient
 from app.services.lpg_station_file import LpgStationFileClient
 from app.services.safemap_facilities import SafemapFacilityFeed
 from app.services.crematorium import CrematoriumClient
@@ -181,6 +189,8 @@ def build_hazard_service(
         ),
     )
 
+    vworld = VWorldClient(config.vworld_api_key, domain=config.vworld_domain)
+    building_register = BuildingRegisterClient(config.public_data_key)
     service = HazardReviewService(
         kakao=kakao,
         demo_mode=config.demo_mode,
@@ -190,7 +200,7 @@ def build_hazard_service(
         # 데이터셋 활용신청 전에는 401 이라 조회 실패로 기록된다(로컬 CSV 가 보조).
         cng=CngStationClient(config.public_data_key),
         facility_store=FacilityStore(),
-        vworld=VWorldClient(config.vworld_api_key, domain=config.vworld_domain),
+        vworld=vworld,
         safemap=SafemapFuelClient(config.safemap_api_key),
         crematorium=CrematoriumClient(
             config.public_data_key, geocode=geocode_address
@@ -201,7 +211,7 @@ def build_hazard_service(
         local_sources=LocalSourcesBundle(),
         # 건축물대장 표제부 교차확인(§6.4 단란주점·테마파크 AND). 키가 없으면
         # enabled=False 라 review_required 로 남는다.
-        building_register=BuildingRegisterClient(config.public_data_key),
+        building_register=building_register,
         # 소음진동배출시설. LH 확정 2026-09-11 이후 판정 근거가 아니라 등록공장
         # 후보에 「소음배출 신고 있음」을 덧붙이는 부가 정보(주석) 전용이다. API
         # 미승인(403)·CSV 미주입이면 enabled=False 라 주석을 달지 않을 뿐이다.
@@ -222,6 +232,26 @@ def build_hazard_service(
         cng_gyeongnam=CngGyeongnamClient(config.public_data_key, geocode=geocode_address),
         # 생활안전지도 화학물취급시설(IF_0049) — 마목 유독물 참고 핀(판정 아님).
         chemical_feed=SafemapFacilityFeed(config.safemap_api_key, "IF_0049"),
+        # 경기데이터드림 유해화학물질 취급사업장(ChmstryMttrBizplc) — 마목 참고 핀(경기 한정).
+        gg_chemical=GgChemicalClient(config.gg_open_api_key),
+        # 국토부 물류창고업 등록정보(3048029) — 환경부 보관·저장 창고 286곳, 마목 참고 핀.
+        logistics_warehouse=LogisticsWarehouseClient(
+            config.public_data_key, geocode=geocode_address, store=FacilityStore()
+        ),
+        # 카지노영업소 명단(문체부 허가 18곳) — 바목 판정 원천, 주소 지오코딩.
+        casino_registry=CasinoRegistryClient(geocode=geocode_address),
+        # 도시가스 제조시설 명단(LNG 생산기지·터미널·바이오가스 12곳) — 아목 판정 원천, 주소 지오코딩.
+        city_gas_registry=CityGasRegistryClient(geocode=geocode_address),
+        # 전국 LPG 판매소 파일(15091481) — 4,542건 주소 지오코딩, 저장소 30일 캐시.
+        lpg_retailer_file=LpgRetailerFileClient(
+            config.public_data_key, geocode=geocode_address, store=FacilityStore()
+        ),
+        # 시군구 액화석유가스업 파일 레지스트리(51종) — 사업지 시군구 파일만 조회.
+        lpg_municipal=LpgMunicipalClient(config.public_data_key, geocode=geocode_address),
+        # 서울 열린데이터광장 액화석유가스업(실시간, 520건) — 서울 사업지 판매소·저장소.
+        lpg_seoul=SeoulLpgClient(config.seoul_open_data_key, geocode=geocode_address),
+        # 건축물대장 용도 스캔 — 브이월드 필지 + 표제부로 위험물저장및처리시설 건물을 걸러 참고 핀.
+        building_scan=BuildingUseScanner(vworld, building_register),
         # 생활안전지도 환경배출시설(IF_0040) — 등록공장 대기·수질 배출 주석(판정 아님).
         emission_feed=SafemapFacilityFeed(config.safemap_api_key, "IF_0040"),
         # 생활안전지도 폐기물처리시설(IF_0051) — 차목 협의 대상 참고 핀(판정 아님).

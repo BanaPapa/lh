@@ -40,6 +40,11 @@ BR_BASE = "https://apis.data.go.kr/1613000/BldRgstHubService"
 
 # 표제부(동별) 조회. mainPurpsCdNm·etcPurps 를 주는 오퍼레이션.
 TITLE_OP = "getBrTitleInfo"
+# 층별개요 조회. 층마다 주용도 「세부 코드명」(예: 액화석유가스충전소 19002 ·
+# 위험물저장소 · 유독물보관저장소 · 도시가스제조시설 · 화약류저장소)을 준다. 표제부는
+# 「위험물저장및처리시설」(19000) 한 단계에서 멈추므로 종류를 가르려면 이것을 본다
+# (2026-09-18 실측: 도곡동 LPG 충전소 표제부 19000 → 층별 19002 「액화석유가스충전소」).
+FLOOR_OP = "getBrFlrOulnInfo"
 
 # 한 필지의 동 수는 많아야 수십 건이다. 100이면 한 페이지로 끝난다.
 PAGE_SIZE = 100
@@ -280,6 +285,17 @@ class BuildingUse(NamedTuple):
     etc_purpose: str
 
 
+class FloorUse(NamedTuple):
+    """층별개요 한 행 — 층 단위 주용도(세부 코드명)."""
+
+    dong_name: str
+    floor_label: str
+    main_purpose_code: str
+    main_purpose: str
+    etc_purpose: str
+    area_m2: float
+
+
 class BuildingUseResult(NamedTuple):
     """한 PNU(필지)의 건축물대장 교차확인 결과."""
 
@@ -324,6 +340,8 @@ class BuildingRegisterClient:
         self.concurrency = max(1, concurrency)
         self._cache: dict[str, BuildingUseResult] = {}
         self._cache_times: dict[str, float] = {}
+        self._floor_cache: dict[str, tuple[FloorUse, ...]] = {}
+        self._floor_cache_times: dict[str, float] = {}
 
     @property
     def enabled(self) -> bool:
@@ -346,6 +364,27 @@ class BuildingRegisterClient:
         result = _build_result(pnu, params, uses)
         self._store(pnu, result)
         return result
+
+    async def lookup_floors(self, pnu: str) -> tuple[FloorUse, ...]:
+        """한 필지의 층별개요를 조회해 층 단위 세부 용도를 돌려준다.
+
+        표제부 주용도가 「위험물저장및처리시설」인 필지에서 종류(LPG 저장소·위험물·
+        유독물·도시가스·화약류)를 가르는 데 쓴다. NODATA 는 빈 튜플, 그 외 실패는
+        BuildingRegisterAPIError 로 전파한다. PNU 단위로 캐시한다.
+        """
+
+        params = parse_pnu(pnu)
+        cached = self._floor_cache.get(pnu)
+        if cached is not None and (
+            time.monotonic() - self._floor_cache_times.get(pnu, 0.0) < CACHE_TTL_SECONDS
+        ):
+            return cached
+        async with self._client() as client:
+            text = await self._fetch_xml(client, params, FLOOR_OP)
+        floors = tuple(_parse_floor_xml(text))
+        self._floor_cache[pnu] = floors
+        self._floor_cache_times[pnu] = time.monotonic()
+        return floors
 
     async def lookup_many(self, pnus: list[str]) -> dict[str, BuildingUseResult]:
         """여러 필지를 동시성 제한 아래 병렬 조회한다.
@@ -392,6 +431,11 @@ class BuildingRegisterClient:
     async def _fetch_uses(
         self, client: httpx.AsyncClient, params: BrParams
     ) -> list[BuildingUse]:
+        return _parse_title_xml(await self._fetch_xml(client, params, TITLE_OP))
+
+    async def _fetch_xml(
+        self, client: httpx.AsyncClient, params: BrParams, operation: str
+    ) -> str:
         query = {
             "serviceKey": self.service_key,
             "sigunguCd": params.sigungu_cd,
@@ -402,7 +446,7 @@ class BuildingRegisterClient:
             "numOfRows": str(PAGE_SIZE),
             "pageNo": "1",
         }
-        url = f"{BR_BASE}/{TITLE_OP}"
+        url = f"{BR_BASE}/{operation}"
         response = None
         for attempt in range(MAX_RETRIES):
             try:
@@ -429,7 +473,53 @@ class BuildingRegisterClient:
                 f"({response.status_code if response else '응답 없음'})",
                 response.status_code if response else None,
             )
-        return _parse_title_xml(response.text)
+        return response.text
+
+
+def _parse_items(text: str, what: str) -> list[ET.Element]:
+    """응답 XML 의 item 목록. NODATA 는 빈 목록, 그 외 오류 코드는 예외."""
+
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        raise BuildingRegisterAPIError(
+            f"건축물대장 {what} 응답을 해석하지 못했습니다: {exc}"
+        ) from exc
+    code = (root.findtext(".//resultCode") or "").strip()
+    if code in NODATA_CODES:
+        return []
+    if code != SUCCESS_CODE:
+        msg = (root.findtext(".//resultMsg") or "").strip()
+        raise BuildingRegisterAPIError(f"건축물대장 {what} 오류: {msg or code or '알 수 없음'}")
+    return root.findall(".//item")
+
+
+def _parse_floor_xml(text: str) -> list[FloorUse]:
+    """층별개요 XML 을 층 단위 용도 목록으로 파싱한다."""
+
+    floors: list[FloorUse] = []
+    for item in _parse_items(text, "층별개요"):
+        main = (item.findtext("mainPurpsCdNm") or "").strip()
+        etc = (item.findtext("etcPurps") or "").strip()
+        if not main and not etc:
+            continue
+        gb = (item.findtext("flrGbCdNm") or "").strip()
+        no = (item.findtext("flrNo") or "").strip()
+        try:
+            area = float(item.findtext("area") or 0.0)
+        except ValueError:
+            area = 0.0
+        floors.append(
+            FloorUse(
+                dong_name=(item.findtext("dongNm") or "").strip(),
+                floor_label=" ".join(part for part in (gb, no) if part),
+                main_purpose_code=(item.findtext("mainPurpsCd") or "").strip(),
+                main_purpose=main,
+                etc_purpose=etc,
+                area_m2=area,
+            )
+        )
+    return floors
 
 
 def _parse_title_xml(text: str) -> list[BuildingUse]:
@@ -439,24 +529,8 @@ def _parse_title_xml(text: str) -> list[BuildingUse]:
     실패이므로 예외로 전파한다.
     """
 
-    try:
-        root = ET.fromstring(text)
-    except ET.ParseError as exc:
-        raise BuildingRegisterAPIError(
-            f"건축물대장 표제부 응답을 해석하지 못했습니다: {exc}"
-        ) from exc
-
-    code = (root.findtext(".//resultCode") or "").strip()
-    if code in NODATA_CODES:
-        return []
-    if code != SUCCESS_CODE:
-        msg = (root.findtext(".//resultMsg") or "").strip()
-        raise BuildingRegisterAPIError(
-            f"건축물대장 표제부 오류: {msg or code or '알 수 없음'}"
-        )
-
     uses: list[BuildingUse] = []
-    for item in root.findall(".//item"):
+    for item in _parse_items(text, "표제부"):
         main = (item.findtext("mainPurpsCdNm") or "").strip()
         etc = (item.findtext("etcPurps") or "").strip()
         dong = (item.findtext("dongNm") or "").strip()

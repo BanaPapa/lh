@@ -98,6 +98,13 @@ SERVER_KEY_SPECS: list[KeySpec] = [
         issuer_name="서울 열린데이터광장",
         issuer_url="https://data.seoul.go.kr/together/mypage/actKeyPage.do",
     ),
+    KeySpec(
+        "GG_OPEN_API_KEY",
+        "경기데이터드림 인증키",
+        "경기 사업지의 유해화학물질 취급사업장 참고 핀에 씁니다(마목 판정 아님).",
+        issuer_name="경기데이터드림",
+        issuer_url="https://data.gg.go.kr/portal/openapi/insertApikeyPage.do",
+    ),
 ]
 
 DEMO_MODE_KEY = "DEMO_MODE"

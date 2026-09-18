@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import logging
 import os
+import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.hazard_review.data_sources import (
+    bypass_source,
+    partial_source,
     HazardDataSource,
     api_source,
     demo_source,
@@ -70,6 +74,14 @@ from app.services.facility_store import FacilityStore
 from app.services.kakao import KakaoClient
 from app.services.cng import CngStationClient
 from app.services.cng_gyeongnam import CngGyeongnamClient
+from app.services.gg_chemical import GgChemicalClient
+from app.services.casino_registry import CASINO_REGISTRY_LABEL, CasinoRegistryClient
+from app.services.city_gas_registry import CITY_GAS_REGISTRY_LABEL, CityGasRegistryClient
+from app.services.logistics_warehouse import LogisticsWarehouseClient
+from app.services.lpg_municipal import LpgMunicipalClient
+from app.services.lpg_seoul import SeoulLpgClient
+from app.services.building_use_scan import COVERED_KINDS, BuildingUseScanner
+from app.services.lpg_retailer_file import LPG_RETAILER_AS_OF, LpgRetailerFileClient
 from app.services.lpg_station_file import LpgStationFileClient
 from app.services.safemap_facilities import SafemapFacilityFeed
 from app.services.factory_registry import FactoryRegistryClient
@@ -90,6 +102,8 @@ from app.services.opinet import OpinetAPIError, OpinetClient
 from app.services.safemap import SafemapAPIError, SafemapFuelClient, SafemapStation
 from app.services.vworld import VWorldAPIError, VWorldClient, classify_zoning
 
+
+_rule_log = logging.getLogger(__name__)
 
 HazardProgressCallback = Callable[
     [str, str, str, int, int | None, str],
@@ -139,10 +153,8 @@ POINT_MEASUREMENT = "주소점 ↔ 시설 후보점 예비거리"
 
 # 등록공장이 기준거리 이내일 때의 고정 note (LH 확정 2026-09-11 안건 ①).
 # 「공장 있음」 검토 표시만 하고 자동 제외·가~라목 매칭 판정은 하지 않는다.
-FACTORY_PRESENT_NOTE = (
-    "공장 있음 — 등록공장 소재 (LH 확정 2026-09-11: 유해공장 여부 공적 데이터로 "
-    "전수 확인 불가 → 자동 제외·매칭 판정 없음, 담당자 확인)"
-)
+# 화면 근거는 짧게. 배경(LH 확정 2026-09-11 · 유해공장 매칭 판정 없음)은 H-01 문서에 있다.
+FACTORY_PRESENT_NOTE = "공장 있음 — 담당자 확인"
 # 지식산업센터 지원시설 예외 note.
 KNOWLEDGE_INDUSTRY_NOTE = "지식산업센터 지원시설 — 건축법상 공장 아님"
 
@@ -153,6 +165,17 @@ KNOWLEDGE_INDUSTRY_NOTE = "지식산업센터 지원시설 — 건축법상 공�
 # 원천이 await 사이에 채워져 연결성 검사에서 「연결됨」으로 보이는 일이 없다
 # (조회하지 않은 원천이 no_conflict_in_snapshot 으로 둔갑하는 것을 막는다).
 # ContextVar 는 asyncio 태스크별로 격리되므로 동시 판정 간섭이 없다.
+# 이번 판정에서 사업지를 실제로 덮은 지역 원천(시군구 파일·서울 API). 칩은 이 집합에 든
+# 원천만 낸다 — 전북 사업지에 서울 API 칩이 뜨지 않게, 그리고 판정 중에 예열이 끝난
+# 원천이 뒤늦게 칩만 다는 일이 없게(2026-09-17 부안 첫 심사 사례).
+_covered_providers: contextvars.ContextVar["frozenset[str]"] = (
+    contextvars.ContextVar("_covered_providers", default=frozenset())
+)
+# 이번 심사에서 건축물대장 용도 스캔이 사업지 주변 필지를 빠짐없이 끝냈는가.
+# True 면 스캔 칩을 「우회 연결」로, 아니면(미실행·실패·상한) 「일부 연결」로 낸다.
+_scan_complete: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "_scan_complete", default=False
+)
 _pinned_local_sources: contextvars.ContextVar["LocalSourcesBundle | None"] = (
     contextvars.ContextVar("_pinned_local_sources", default=None)
 )
@@ -167,6 +190,14 @@ SOURCE_FAILURE_LABELS: dict[str, str] = {
     "lpg_file": "한국가스안전공사 전국 LPG 충전소 현황(파일 15001643)",
     "cng_gyeongnam": "경상남도 천연가스 충전소 설치 현황(15055157)",
     "safemap_chemical": "생활안전지도 화학물취급시설(IF_0049)",
+    "gg_chemical": "경기데이터드림 유해화학물질 취급사업장 현황(ChmstryMttrBizplc)",
+    "logistics_chem_warehouse": "국토교통부 물류창고업 등록정보(환경부 보관·저장 창고)",
+    "casino_registry": CASINO_REGISTRY_LABEL,
+    "city_gas_registry": CITY_GAS_REGISTRY_LABEL,
+    "lpg_retailer_file": "한국가스안전공사 전국 LPG 판매소 현황(파일 15091481)",
+    "lpg_municipal": "시군구 액화석유가스업 인허가 파일(ODcloud)",
+    "lpg_seoul": "서울 열린데이터광장 액화석유가스업 현황",
+    "building_use_scan": "건축물대장 용도 스캔(브이월드 필지 + 표제부)",
     "safemap_waste": "생활안전지도 폐기물처리시설(IF_0051)",
     "safemap": "생활안전지도 전국 주유시설 현황",
     "crematorium": "보건복지부 전국 화장시설 현황",
@@ -174,8 +205,12 @@ SOURCE_FAILURE_LABELS: dict[str, str] = {
 }
 
 # 데이터 상태가 applied 인데 전국 단위 원천이 아직 안 붙은 종류의 note.
-APPLIED_NOT_CONNECTED_NOTE = (
-    "룰북상 판정적용 대상이나 현재 원천 미연결 — 연결 시 자동판정"
+# 미연결 종류의 비고는 비운다 — 원천 열의 「API 미연결」 칩이 상태를 말한다.
+APPLIED_NOT_CONNECTED_NOTE = ""
+# 시군구 액화석유가스업 원장의 「저장」 행 — 나목 LPG 저장소 참고 핀(판정 아님, LH [요청 2]).
+LPG_STORAGE_REFERENCE_NOTE = (
+    "시군구 액화석유가스업 인허가 원장의 저장소 행입니다. LPG 저장소는 LH [요청 2] "
+    "승인으로 판정 미적용이며, 수기 확인을 돕는 참고 핀입니다."
 )
 
 # 공장: factoryON 등록공장 원천이 적재되기 전까지 「공장 있음」 판정 불가.
@@ -204,12 +239,51 @@ CHEMICAL_REFERENCE_NOTE = (
     "환경부 화학물질 취급시설(생활안전지도 IF_0049) 등록 사업장입니다. 유독물 "
     "보관·저장·판매시설 해당 여부는 수기 확인이 필요하며 판정 근거로 쓰지 않습니다."
 )
+# 경기데이터드림 유해화학물질 취급사업장(ChmstryMttrBizplc)도 같은 성격이다 — 화학물질
+# 관리법 영업허가 사업장(제조·사용·판매·보관저장)이라 판매업·보관저장업이 마목 후보에
+# 가깝지만, 확정은 LH [요청 2] 승인 범위를 벗어나므로 참고 핀으로만 둔다(경기 한정).
+GG_CHEMICAL_REFERENCE_NOTE = (
+    "경기도 유해화학물질 영업허가 사업장(경기데이터드림)입니다. 판매업·보관저장업이면 "
+    "마목 후보에 가깝지만 유독물 해당 여부는 수기 확인이 필요하며 판정 근거로 쓰지 않습니다."
+)
+# 국토부 물류창고업 등록정보의 환경부 등록 창고(창고번호 5번째 글자 C)는 화학물질관리법
+# 「보관·저장업」 영업허가 창고라 마목 「유독물 보관·저장시설」에 가장 가까운 전국 자료다.
+# 그래도 취급 물질이 유독물질인지는 원장에 없으므로 참고 핀으로만 둔다.
+WAREHOUSE_REFERENCE_NOTE = (
+    "환경부 등록 유해화학물질 보관·저장업 창고(국토부 물류창고업 등록정보)입니다. 마목 "
+    "「유독물 보관·저장시설」에 가장 가까운 전국 자료이나 취급 물질의 유독물 해당 여부는 "
+    "수기 확인이 필요하며 판정 근거로 쓰지 않습니다."
+)
+# 건축물대장 용도 스캔 참고 핀. 종류별 문구는 kind 로 채운다.
+BUILDING_SCAN_REFERENCE_NOTE = (
+    "건축물대장 주용도 「위험물저장및처리시설」 건물입니다(브이월드 필지 + 표제부·층별개요 스캔). "
+    "허가 원장이 아니라 판정 근거로 쓰지 않습니다."
+)
+# 종류를 가른 근거별 문구. code 는 대장 용도코드가 직접 말한 것, text 는 문자열 추정.
+BUILDING_SCAN_BASIS_NOTES = {
+    "code": "층별개요 용도코드 「{evidence}」 일치",
+    "text": "기타용도 문자열 「{evidence}」 추정",
+    "none": "종류 미분류(용도코드·기타용도에 세부 정보 없음)",
+}
+# 스캔 종류 → 참고 핀을 붙일 종류 키. 연결된 원천이 덮는 종류(주유소·LPG 충전·판매·고압가스)는
+# COVERED_KINDS 로 빠지고, 못 가른 건물은 차목(그 밖의 유사시설)에 둔다.
+BUILDING_SCAN_TARGETS: dict[str, tuple[str, str, str]] = {
+    "LPG저장": ("lpg_storage", "lpg_storage", "LPG 저장소(건축물대장 후보)"),
+    "위험물": ("hazmat_facility", "hazmat_facility", "위험물 제조소·저장소·취급소(건축물대장 후보)"),
+    "도시가스": ("city_gas_plant", "city_gas_plant", "도시가스 시설(건축물대장 후보)"),
+    "유독물": ("toxic_substance", "chemical_handling", "유독물 시설(건축물대장 후보)"),
+    "화약류": ("explosive_storage", "explosive_storage", "화약류 저장소(건축물대장 후보)"),
+    "미분류": ("hazmat_other_similar", "waste_treatment", "위험물저장및처리시설(종류 미분류)"),
+}
 # 차목(그 밖의 유사시설)은 개별 협의 항목(H-02-차 §7-1). 환경부 폐기물처리시설
 # (IF_0051)은 협의 대상을 드러내는 참고 핀일 뿐 판정하지 않는다.
 WASTE_REFERENCE_NOTE = (
     "환경부 폐기물처리시설(생활안전지도 IF_0051) 위치입니다. 차목 「그 밖에 비슷한 것」 "
     "해당 여부는 LH 와 개별 협의 대상이며 판정 근거로 쓰지 않습니다."
 )
+
+# 건축물대장 스캔 반경에 더하는 필지 반폭 여유(m). 필지 중심이 반경 밖이어도 경계는 안일 수 있다.
+SCAN_PARCEL_SLACK_M = 40
 
 # 감사(§F)가 "확인 필요"로 둔 미검증 엔드포인트. 장애가 아니라 미검증임을 밝힌다.
 ENDPOINT_UNVERIFIED_NOTE = "엔드포인트 미검증 — 적재 시 응답 확인 필요"
@@ -431,6 +505,14 @@ class HazardReviewService:
         lpg_file: LpgStationFileClient | None = None,
         cng_gyeongnam: CngGyeongnamClient | None = None,
         chemical_feed: SafemapFacilityFeed | None = None,
+        gg_chemical: GgChemicalClient | None = None,
+        logistics_warehouse: LogisticsWarehouseClient | None = None,
+        casino_registry: CasinoRegistryClient | None = None,
+        city_gas_registry: CityGasRegistryClient | None = None,
+        lpg_retailer_file: LpgRetailerFileClient | None = None,
+        lpg_municipal: LpgMunicipalClient | None = None,
+        lpg_seoul: SeoulLpgClient | None = None,
+        building_scan: BuildingUseScanner | None = None,
         emission_feed: SafemapFacilityFeed | None = None,
         waste_feed: SafemapFacilityFeed | None = None,
     ) -> None:
@@ -476,6 +558,22 @@ class HazardReviewService:
         self.cng_gyeongnam = cng_gyeongnam
         # 생활안전지도 화학물취급시설(IF_0049). 마목 유독물의 참고 핀 전용(판정 아님).
         self.chemical_feed = chemical_feed
+        # 경기데이터드림 유해화학물질 취급사업장(경기 한정). 마목 참고 핀 전용(판정 아님).
+        self.gg_chemical = gg_chemical
+        # 국토부 물류창고업 등록정보 — 환경부 보관·저장 창고(전국). 마목 참고 핀 전용.
+        self.logistics_warehouse = logistics_warehouse
+        # 카지노영업소 명단(문체부 허가 18곳, H-04-바 §8). 바목 판정 원천(주소 지오코딩).
+        self.casino_registry = casino_registry
+        # 도시가스 제조시설 명단(LNG 생산기지·터미널·바이오가스 12곳, H-02-아 §8). 아목 판정 원천.
+        self.city_gas_registry = city_gas_registry
+        # 전국 LPG 판매소 파일(15091481, 주소 지오코딩) — 나목 판매소 판정 원천.
+        self.lpg_retailer_file = lpg_retailer_file
+        # 시군구 액화석유가스업 파일 레지스트리 — 판매 행은 나목 판정 후보, 저장 행은 참고 핀.
+        self.lpg_municipal = lpg_municipal
+        # 서울 열린데이터광장 액화석유가스업(실시간). 서울 사업지에서만 시군구 파일 대신 쓴다.
+        self.lpg_seoul = lpg_seoul
+        # 건축물대장 용도 스캔(브이월드 필지 + 표제부). 저장소·위험물·도시가스·유독물 참고 핀.
+        self.building_scan = building_scan
         # 생활안전지도 환경배출시설(IF_0040, 대기·수질). 등록공장 주석 전용(판정 아님).
         self.emission_feed = emission_feed
         # 생활안전지도 폐기물처리시설(IF_0051). 차목 협의 대상 참고 핀 전용(판정 아님).
@@ -512,9 +610,13 @@ class HazardReviewService:
         # 대조·연결성 검사·note·원천 상태가 전부 같은 스냅샷을 본다. 워밍업이
         # 중간에 self._local_sources_bundle 을 교체해도 이 판정은 처음 번들만 본다.
         token = _pinned_local_sources.set(self._local_sources_bundle)
+        covered_token = _covered_providers.set(frozenset())
+        scan_token = _scan_complete.set(False)
         try:
             return await self._review_impl(request, progress, cancel_event)
         finally:
+            _covered_providers.reset(covered_token)
+            _scan_complete.reset(scan_token)
             _pinned_local_sources.reset(token)
 
     async def _review_impl(
@@ -565,6 +667,7 @@ class HazardReviewService:
                 raise asyncio.CancelledError
             item_id, item_label = self._progress_item(rule.rule_id)
             await progress(item_id, item_label, "running", 25, None, "후보를 조회합니다.")
+            rule_started = time.monotonic()
 
             threshold = threshold_for(rule.rule_id, housing, application)
             rule_categories = [c for c in CATEGORIES if c.rule_id == rule.rule_id]
@@ -611,6 +714,13 @@ class HazardReviewService:
                 rule, threshold, summaries, nearby
             )
             findings.append(finding)
+            # 어느 Rule 이 오래 걸리는지 로그로 남긴다(2026-09-17: 위험물 Rule 이 콜드 원천
+            # 예열에 막혀 수 분 걸린 사례).
+            _rule_log.info(
+                "hazard rule %s took %.1fs (%d candidates)",
+                rule.rule_id, time.monotonic() - rule_started,
+                sum(s.candidate_count for s in summaries),
+            )
             await self._checkpoint(
                 cancel_event, progress, item_id, item_label, 100,
                 sum(s.candidate_count for s in summaries), finding.result_reason,
@@ -871,7 +981,8 @@ class HazardReviewService:
         # 석유대체연료 판매업(LH 확정 2026-09-11 #5): 임계거리 이내 석유대체연료 후보에만
         # 용도지역(지적편집도)을 붙인다. 주유소·CNG·LPG 충전소는 조회하지 않는다
         # (결정 범위 밖). VWorld 호출을 아끼려 판정창 이내 후보에만 조회한다.
-        if rule.rule_id == "RB14-FUEL25":
+        # LPG 판매소(나목)도 소재 용도지역을 함께 보인다 — 판정은 바꾸지 않고 표기만 한다.
+        if rule.rule_id in ("RB14-FUEL25", "RB14-HAZMAT"):
             await self._attach_zoning(candidates, threshold)
         # 경계 부착으로 거리가 재측정되면 판정창 밖으로 밀려날 수 있다. 기존 동작대로
         # 판정 후보는 <= search_limit_m 로 최종 거르고, 밀려난 후보는 참고 시설로 합류.
@@ -1220,7 +1331,14 @@ class HazardReviewService:
         want_crematorium = rule.rule_id == "RB14-CREMATION-MILITARY"
         # 마목 유독물 참고 핀(HAZMAT 50m). 판정 근거가 아니라 수기 확인 보조다.
         want_chemical = rule.rule_id == "RB14-HAZMAT"
-        if not (want_gas or want_lpg or want_crematorium or want_chemical):
+        # 바목 카지노영업소(위락 25m · 다자녀). 문체부 허가 18곳 명단(H-04-바 §8).
+        want_casino = rule.rule_id == "RB14-AMUSEMENT"
+        # 나목 LPG 판매소(50m)·저장소 참고 핀 — HAZMAT rule.
+        want_lpg_retail = rule.rule_id == "RB14-HAZMAT"
+        if not (
+            want_gas or want_lpg or want_crematorium or want_chemical or want_casino
+            or want_lpg_retail
+        ):
             return facilities
 
         if want_chemical and self._chemical_ready():
@@ -1230,6 +1348,28 @@ class HazardReviewService:
                     "화학물취급시설(참고)", "생활안전지도 유해화학시설-화학물취급시설(IF_0049)",
                     CHEMICAL_REFERENCE_NOTE, "업종",
                     request, search_limit_m, search_radius_m, now, failed_sources,
+                )
+            )
+        if want_chemical and self._gg_chemical_ready():
+            facilities.extend(
+                await self._layer_reference_facilities(
+                    self.gg_chemical, "gg_chemical", "chemical_handling",
+                    "유해화학물질 취급사업장(참고)",
+                    "경기데이터드림 유해화학물질 취급사업장 현황(ChmstryMttrBizplc)",
+                    GG_CHEMICAL_REFERENCE_NOTE, "업종구분",
+                    request, search_limit_m, search_radius_m, now, failed_sources,
+                    geometry_note="경기데이터드림 WGS84 점 좌표 · 시설경계 미확인",
+                )
+            )
+        if want_chemical and self._logistics_warehouse_ready():
+            facilities.extend(
+                await self._layer_reference_facilities(
+                    self.logistics_warehouse, "logistics_chem_warehouse", "chemical_handling",
+                    "유해화학물질 보관·저장 창고(참고)",
+                    "국토교통부 물류창고업 등록정보(환경부 등록 창고)",
+                    WAREHOUSE_REFERENCE_NOTE, "등록구분",
+                    request, search_limit_m, search_radius_m, now, failed_sources,
+                    geometry_note="주소 지오코딩 점 좌표 · 시설경계 미확인",
                 )
             )
         if want_chemical and self._waste_ready():
@@ -1626,6 +1766,255 @@ class HazardReviewService:
                     )
                 )
 
+        if want_lpg_retail and self._lpg_retailer_ready():
+            try:
+                retailers = await self.lpg_retailer_file.retailers_around(
+                    request.site.coordinates, search_radius_m
+                )
+            except Exception:  # noqa: BLE001 — 원천·지오코더 장애는 이 요청의 원천 실패로 기록
+                failed_sources.add("lpg_retailer_file")
+                retailers = []
+            for retailer in retailers:
+                distance = self._measure_distance(request, retailer.coordinates, None)
+                if distance > search_limit_m:
+                    continue
+                facilities.append(
+                    HazardFacility(
+                        facility_id=f"lpg-retailer:{retailer.record_id}",
+                        facility_type="lpg_retailer",
+                        facility_type_label="LPG 판매소",
+                        name=retailer.name,
+                        coordinates=retailer.coordinates,
+                        distance_m=distance,
+                        nearest_boundary_point=self._boundary_anchor(
+                            request, retailer.coordinates
+                        ),
+                        address=retailer.address,
+                        business_status="등록",
+                        provider="lpg_retailer_file",
+                        source_label="한국가스안전공사 전국 LPG 판매소 현황(파일 15091481)",
+                        source_record_id=retailer.record_id,
+                        source_as_of=now,
+                        geometry_quality="D",
+                        geometry_note="주소 지오코딩 점 좌표 · 시설경계 미확인",
+                        classification_note=(
+                            f"가스안전공사 LPG 판매소 명부(기준 {LPG_RETAILER_AS_OF}, 일회성 "
+                            "자료라 폐업·신규 미반영)."
+                        ),
+                        metadata={"as_of": LPG_RETAILER_AS_OF},
+                    )
+                )
+
+        municipal_items = []
+        for provider_id, client in self._lpg_municipal_providers():
+            if not want_lpg_retail:
+                break
+            try:
+                lookup = await client.facilities_for_site(
+                    request.site.address, request.site.coordinates, search_radius_m
+                )
+            except Exception:  # noqa: BLE001
+                failed_sources.add(provider_id)
+                continue
+            if lookup.covered:
+                _covered_providers.set(_covered_providers.get() | {provider_id})
+            municipal_items.extend((provider_id, item) for item in lookup.facilities)
+        if municipal_items:
+            for provider_id, item in municipal_items:
+                if item.kind not in ("판매", "저장"):
+                    continue
+                distance = self._measure_distance(request, item.coordinates, None)
+                if distance > search_limit_m:
+                    continue
+                is_storage = item.kind == "저장"
+                # 전국 파일과 같은 자리(40m)의 판매소는 중복이다.
+                if not is_storage and any(
+                    existing.facility_type == "lpg_retailer"
+                    and haversine_meters(item.coordinates, existing.coordinates)
+                    <= OFFICIAL_DEDUPE_M
+                    for existing in facilities
+                ):
+                    continue
+                facilities.append(
+                    HazardFacility(
+                        facility_id=f"lpg-municipal:{item.record_id}",
+                        facility_type="lpg_storage" if is_storage else "lpg_retailer",
+                        facility_type_label="LPG 저장소(참고)" if is_storage else "LPG 판매소",
+                        name=item.name,
+                        coordinates=item.coordinates,
+                        distance_m=distance,
+                        nearest_boundary_point=self._boundary_anchor(
+                            request, item.coordinates
+                        ),
+                        address=item.address,
+                        business_status=item.status or "등록",
+                        provider=provider_id,
+                        source_label=f"{item.dataset_title}({item.dataset_id})",
+                        source_record_id=item.record_id,
+                        source_as_of=now,
+                        geometry_quality="D",
+                        geometry_note="주소 지오코딩 점 좌표 · 시설경계 미확인",
+                        classification_note=(
+                            f"{LPG_STORAGE_REFERENCE_NOTE} 사업종류 {item.kind_raw or '미상'}."
+                            if is_storage
+                            else f"시군구 액화석유가스업 인허가 원장. 사업종류 {item.kind_raw or '미상'}."
+                        ),
+                        metadata=(
+                            {"reference": True, "kind": item.kind_raw, "dataset_id": item.dataset_id}
+                            if is_storage
+                            else {"kind": item.kind_raw, "dataset_id": item.dataset_id}
+                        ),
+                    )
+                )
+
+        if want_lpg_retail and self._building_scan_ready():
+            try:
+                # 스캔은 필지 폴리곤을 직접 받으므로 점-경계 여유(BOUNDARY_BUFFER·SEARCH_SLACK)가
+                # 필요 없다. 기준거리 + 사업지 반경 + 필지 반폭만 훑는다 — 여유를 다 더하면
+                # 200m 상한에 걸려 강남에서 160필지를 넘기고 「우회 연결」이 「일부 연결」로
+                # 내려간다(2026-09-18 실측). 문맥 반경(1km)은 더더욱 안 된다.
+                site_extent_m = max_extent_multi(
+                    request.site.coordinates, self._site_boundaries(request)
+                )
+                scan = await self.building_scan.scan(
+                    request.site.coordinates,
+                    (search_limit_m - BOUNDARY_BUFFER_M) + site_extent_m + SCAN_PARCEL_SLACK_M,
+                )
+            except Exception:  # noqa: BLE001 — 스캔 실패는 참고 핀 누락일 뿐
+                failed_sources.add("building_use_scan")
+                scan = None
+            if scan is not None:
+                _scan_complete.set(bool(getattr(scan, "complete", False)))
+                # 미완료(조회 실패·필지 상한)는 「우회 연결」이 「일부 연결」로 내려가는 원인이라
+                # 경고로 남긴다(앱 INFO 는 콘솔에 안 찍힌다).
+                _rule_log.log(
+                    logging.INFO if getattr(scan, "complete", False) else logging.WARNING,
+                    "building scan: parcels=%d lookups=%d failed=%d complete=%s buildings=%d",
+                    scan.parcels_seen, scan.lookups, len(scan.failed_pnus),
+                    getattr(scan, "complete", False), len(scan.buildings),
+                )
+            for building in (scan.buildings if scan else []):
+                if building.kind in COVERED_KINDS:
+                    continue
+                target = BUILDING_SCAN_TARGETS.get(building.kind)
+                if target is None:
+                    continue
+                _category_key, facility_type, type_label = target
+                distance = self._measure_distance(request, building.centroid, None)
+                if distance > search_limit_m:
+                    continue
+                facilities.append(
+                    HazardFacility(
+                        facility_id=f"building-scan:{building.pnu}:{building.dong_name or '0'}",
+                        facility_type=facility_type,
+                        facility_type_label=type_label,
+                        name=building.etc_purpose or building.main_purpose or "위험물저장및처리시설",
+                        coordinates=building.centroid,
+                        distance_m=distance,
+                        nearest_boundary_point=self._boundary_anchor(request, building.centroid),
+                        address=building.address,
+                        business_status="대장 등재",
+                        provider="building_use_scan",
+                        source_label="건축물대장 용도 스캔(브이월드 필지 + 표제부)",
+                        source_record_id=building.pnu,
+                        source_as_of=now,
+                        geometry=list(building.ring),
+                        geometry_type="polygon",
+                        parcel_pnu=building.pnu,
+                        geometry_quality="B",
+                        geometry_note="GIS 건물통합정보 건물 외곽선(브이월드)",
+                        classification_note=(
+                            f"{BUILDING_SCAN_REFERENCE_NOTE} "
+                            + BUILDING_SCAN_BASIS_NOTES.get(
+                                building.basis, BUILDING_SCAN_BASIS_NOTES["none"]
+                            ).format(evidence=building.evidence or building.etc_purpose)
+                            + f" → {building.kind}."
+                        ),
+                        metadata={
+                            "reference": True, "kind": building.kind,
+                            "basis": building.basis, "evidence": building.evidence,
+                            "main_purpose": building.main_purpose, "etc_purpose": building.etc_purpose,
+                        },
+                    )
+                )
+
+        if want_lpg_retail and self._city_gas_ready():
+            try:
+                plants = await self.city_gas_registry.plants_around(
+                    request.site.coordinates, search_radius_m
+                )
+            except Exception:  # noqa: BLE001 — 지오코더 장애. 이 요청에서는 원천 실패로 기록
+                failed_sources.add("city_gas_registry")
+                plants = []
+            for plant in plants:
+                distance = self._measure_distance(request, plant.coordinates, None)
+                if distance > search_limit_m:
+                    continue
+                facilities.append(
+                    HazardFacility(
+                        facility_id=f"city-gas:{plant.facility_id}",
+                        facility_type="city_gas_plant",
+                        facility_type_label="도시가스 제조시설",
+                        name=plant.name,
+                        coordinates=plant.coordinates,
+                        distance_m=distance,
+                        nearest_boundary_point=self._boundary_anchor(request, plant.coordinates),
+                        address=plant.address,
+                        business_status=plant.status,
+                        provider="city_gas_registry",
+                        source_label=CITY_GAS_REGISTRY_LABEL,
+                        source_record_id=plant.facility_id,
+                        source_as_of=now,
+                        geometry_quality="D",
+                        geometry_note="주소 지오코딩 점 좌표 · 부지가 넓어 필지 경계로 재측정",
+                        classification_note=(
+                            f"도시가스사업법 가스제조시설 · {plant.kind} · {plant.operator} · {plant.status}."
+                        ),
+                        metadata={
+                            "region": plant.region, "operator": plant.operator,
+                            "kind": plant.kind, "source_url": plant.source_url,
+                        },
+                    )
+                )
+
+        if want_casino and self._casino_ready():
+            try:
+                casinos = await self.casino_registry.casinos_around(
+                    request.site.coordinates, search_radius_m
+                )
+            except Exception:  # noqa: BLE001 — 지오코더 장애. 이 요청에서는 원천 실패로 기록
+                failed_sources.add("casino_registry")
+                casinos = []
+            for casino in casinos:
+                distance = self._measure_distance(request, casino.coordinates, None)
+                if distance > search_limit_m:
+                    continue
+                facilities.append(
+                    HazardFacility(
+                        facility_id=f"casino:{casino.facility_id}",
+                        facility_type="casino",
+                        facility_type_label="카지노영업소",
+                        name=casino.name,
+                        coordinates=casino.coordinates,
+                        distance_m=distance,
+                        nearest_boundary_point=self._boundary_anchor(
+                            request, casino.coordinates
+                        ),
+                        address=casino.address,
+                        business_status=casino.status,
+                        provider="casino_registry",
+                        source_label=CASINO_REGISTRY_LABEL,
+                        source_record_id=casino.facility_id,
+                        source_as_of=now,
+                        geometry_quality="D",
+                        geometry_note="주소 지오코딩 점 좌표 · 시설경계 미확인",
+                        classification_note=(
+                            f"문체부 허가 카지노영업소 · {casino.venue} 내 · {casino.status}."
+                        ),
+                        metadata={"region": casino.region, "venue": casino.venue},
+                    )
+                )
+
         return facilities
 
 
@@ -1884,7 +2273,7 @@ class HazardReviewService:
 
     async def _layer_reference_facilities(
         self,
-        feed: SafemapFacilityFeed | None,
+        feed: SafemapFacilityFeed | GgChemicalClient | None,
         provider: str,
         facility_type: str,
         type_label: str,
@@ -1896,6 +2285,7 @@ class HazardReviewService:
         search_radius_m: float,
         now: datetime,
         failed_sources: set[str],
+        geometry_note: str = "생활안전지도 점 좌표 · 시설경계 미확인",
     ) -> list[HazardFacility]:
         """생활안전지도 레이어를 「참고 핀」으로 붙인다(판정 아님).
 
@@ -1933,7 +2323,7 @@ class HazardReviewService:
                     source_record_id=row.record_id,
                     source_as_of=now,
                     geometry_quality="C",
-                    geometry_note="생활안전지도 점 좌표 · 시설경계 미확인",
+                    geometry_note=geometry_note,
                     classification_note=f"{reference_note} {kind_label} {row.kind or '미상'}.",
                     metadata={"reference": True, "kind": row.kind},
                 )
@@ -2144,7 +2534,10 @@ class HazardReviewService:
             f
             for f in facilities
             if f.distance_m <= threshold
-            and f.metadata.get("dataset") == "petroleum_alt_fuel_retailers"
+            and (
+                f.metadata.get("dataset") == "petroleum_alt_fuel_retailers"
+                or f.facility_type == "lpg_retailer"
+            )
         ]
         for facility in targets:
             try:
@@ -2192,13 +2585,76 @@ class HazardReviewService:
         )
 
     def _chemical_ready(self) -> bool:
-        return bool(self.chemical_feed and self.chemical_feed.enabled and not self.demo_mode)
+        # 참고 핀 레이어는 기동 예열이 채운다. 예열 전(콜드)에는 20초씩 막지 않게 건너뛴다.
+        return bool(
+            self.chemical_feed and self.chemical_feed.enabled and not self.demo_mode
+            and getattr(self.chemical_feed, "has_fast_path", True)
+        )
+
+    def _gg_chemical_ready(self) -> bool:
+        return bool(self.gg_chemical and self.gg_chemical.enabled and not self.demo_mode)
+
+    def _logistics_warehouse_ready(self) -> bool:
+        # 전량 수집(6분)이 심사 중에 일어나지 않게, 캐시·저장분이 있을 때만 준비로 본다.
+        return bool(
+            self.logistics_warehouse
+            and self.logistics_warehouse.enabled
+            and not self.demo_mode
+            and getattr(self.logistics_warehouse, "has_fast_path", True)
+        )
+
+    def _lpg_retailer_ready(self) -> bool:
+        # 지오코딩 4,542건(10분)이 심사 중에 일어나지 않게, 캐시·저장분이 있을 때만 준비로 본다.
+        return bool(
+            self.lpg_retailer_file
+            and self.lpg_retailer_file.enabled
+            and not self.demo_mode
+            and getattr(self.lpg_retailer_file, "has_fast_path", True)
+        )
+
+    def _lpg_municipal_providers(self) -> list[tuple[str, Any]]:
+        """사업지 시군구 원장을 주는 지역 원천들(시군구 파일 레지스트리 · 서울 열린데이터광장)."""
+
+        providers: list[tuple[str, Any]] = []
+        if self._lpg_municipal_ready():
+            providers.append(("lpg_municipal", self.lpg_municipal))
+        if self._lpg_seoul_ready():
+            providers.append(("lpg_seoul", self.lpg_seoul))
+        return providers
+
+    def _lpg_seoul_ready(self) -> bool:
+        return bool(
+            self.lpg_seoul and self.lpg_seoul.enabled and not self.demo_mode
+            and getattr(self.lpg_seoul, "has_fast_path", True)
+        )
+
+    def _building_scan_ready(self) -> bool:
+        return bool(self.building_scan and self.building_scan.enabled and not self.demo_mode)
+
+    def _lpg_municipal_ready(self) -> bool:
+        return bool(self.lpg_municipal and self.lpg_municipal.enabled and not self.demo_mode)
+
+    def _casino_ready(self) -> bool:
+        return bool(
+            self.casino_registry and self.casino_registry.enabled and not self.demo_mode
+        )
+
+    def _city_gas_ready(self) -> bool:
+        return bool(
+            self.city_gas_registry and self.city_gas_registry.enabled and not self.demo_mode
+        )
 
     def _waste_ready(self) -> bool:
-        return bool(self.waste_feed and self.waste_feed.enabled and not self.demo_mode)
+        return bool(
+            self.waste_feed and self.waste_feed.enabled and not self.demo_mode
+            and getattr(self.waste_feed, "has_fast_path", True)
+        )
 
     def _emission_ready(self) -> bool:
-        return bool(self.emission_feed and self.emission_feed.enabled and not self.demo_mode)
+        return bool(
+            self.emission_feed and self.emission_feed.enabled and not self.demo_mode
+            and getattr(self.emission_feed, "has_fast_path", True)
+        )
 
     def _safemap_ready(self) -> bool:
         return bool(self.safemap and self.safemap.enabled and not self.demo_mode)
@@ -2310,6 +2766,15 @@ class HazardReviewService:
             )
         if category.key == "crematorium":
             return self._crematorium_ready()
+        # 카지노영업소: 문체부 허가 18곳 명단 + 카카오 지오코딩(H-04-바 §8).
+        if category.key == "casino":
+            return self._casino_ready()
+        # 도시가스 제조시설: LNG 생산기지·터미널·바이오가스 제조소 명단 + 카카오 지오코딩(H-02-아 §8).
+        if category.key == "city_gas_plant":
+            return self._city_gas_ready()
+        # LPG 판매소: 전국 파일(15091481) 또는 시군구 파일 레지스트리가 붙어 있으면 판정.
+        if category.key == "lpg_retailer":
+            return self._lpg_retailer_ready() or bool(self._lpg_municipal_providers())
         # 공장 있음(등록공장): factoryON 등록공장(표준본 공장 좌표)이 후보다. 파일만
         # 있고 좌표를 해석할 수 있는 레코드가 0건이면 조회할 스냅샷이 없는 것이므로,
         # 좌표 보유 공장 레코드가 최소 1건은 있어야 연결로 인정한다(없으면
@@ -2330,6 +2795,43 @@ class HazardReviewService:
         # 아직 없어 판정할 수 없는 상태다(현행 유지). 그 외 전국 단위 공개원천이 아직
         # 없는 applied 종류(테마파크 등)도 여기로 온다.
         return False
+
+    # 종류 → 「일부 연결」 원천(참고 핀·우회 스캔) 식별자와 준비 술어.
+    def _category_partial_sources(
+        self, category: Category, failed_sources: set[str] | None = None
+    ) -> list[HazardDataSource]:
+        """판정 원천은 없지만 참고 핀·스캔으로 붙은 API 를 「일부 연결」 칩으로 낸다."""
+
+        if self.demo_mode:
+            return []
+        failed = failed_sources or set()
+        scan_keys = {target[0] for target in BUILDING_SCAN_TARGETS.values()}
+        candidates: list[tuple[str, bool]] = []
+        if category.key == "toxic_substance":
+            candidates += [
+                ("gg_chemical", self._gg_chemical_ready()),
+                ("logistics_chem_warehouse", self._logistics_warehouse_ready()),
+                ("safemap_chemical", self._chemical_ready()),
+            ]
+        if category.key == "lpg_storage":
+            covered = _covered_providers.get()
+            candidates += [(pid, pid in covered) for pid, _c in self._lpg_municipal_providers()]
+        if category.key == "hazmat_other_similar":
+            candidates.append(("safemap_waste", self._waste_ready()))
+        if category.key in scan_keys:
+            candidates.append(("building_use_scan", self._building_scan_ready()))
+        sources: list[HazardDataSource] = []
+        for identifier, ready in candidates:
+            if not ready or identifier in failed:
+                continue
+            # 스캔이 빠짐없이 끝난 사업지에서는 용도코드 교차확인이 완전 연결과 같은 범위다.
+            if identifier == "building_use_scan" and _scan_complete.get():
+                chip = bypass_source(identifier)
+            else:
+                chip = partial_source(identifier)
+            if chip is not None and chip.detail not in {s.detail for s in sources}:
+                sources.append(chip)
+        return sources
 
     def _not_connected_note(self, category: Category) -> str:
         """연결되지 않은 종류의 dataset_missing note. 원인을 구분해 드러낸다."""
@@ -2353,7 +2855,7 @@ class HazardReviewService:
             return f"{ENDPOINT_UNVERIFIED_NOTE} ({', '.join(unverified)})"
         if category.data_state == "applied":
             return APPLIED_NOT_CONNECTED_NOTE
-        return "필요 데이터셋이 아직 연결되지 않았습니다."
+        return ""
 
     def _category_active_sources(self, category: Category) -> set[str]:
         """이 종류가 실제로 조회하는(=활성화된) 원천 식별자 집합."""
@@ -2382,6 +2884,20 @@ class HazardReviewService:
         if category.key == "crematorium":
             if self._crematorium_ready():
                 sources.add("crematorium")
+            return sources
+        if category.key == "casino":
+            if self._casino_ready():
+                sources.add("casino_registry")
+            return sources
+        if category.key == "city_gas_plant":
+            if self._city_gas_ready():
+                sources.add("city_gas_registry")
+            return sources
+        if category.key == "lpg_retailer":
+            if self._lpg_retailer_ready():
+                sources.add("lpg_retailer_file")
+            for provider_id, _client in self._lpg_municipal_providers():
+                sources.add(provider_id)
             return sources
         if category.key == "cng_station":
             if self._cng_ready():
@@ -2475,6 +2991,19 @@ class HazardReviewService:
         elif category.key == "crematorium":
             if self._crematorium_ready() and "crematorium" not in failed_sources:
                 sources.append(api_source("crematorium"))  # type: ignore[arg-type]
+        elif category.key == "casino":
+            if self._casino_ready() and "casino_registry" not in failed_sources:
+                sources.append(api_source("casino_registry"))  # type: ignore[arg-type]
+        elif category.key == "city_gas_plant":
+            if self._city_gas_ready() and "city_gas_registry" not in failed_sources:
+                sources.append(api_source("city_gas_registry"))  # type: ignore[arg-type]
+        elif category.key == "lpg_retailer":
+            if self._lpg_retailer_ready() and "lpg_retailer_file" not in failed_sources:
+                sources.append(api_source("lpg_retailer_file"))  # type: ignore[arg-type]
+            covered = _covered_providers.get()
+            for provider_id, _client in self._lpg_municipal_providers():
+                if provider_id in covered and provider_id not in failed_sources:
+                    sources.append(api_source(provider_id))  # type: ignore[arg-type]
 
         # CNG 충전소: 가스안전공사 API 가 붙어 있고 이번 요청에서 실패하지 않았으면
         # api 칩. 로컬 CSV 는 아래서 보조 칩으로 뒤에 붙는다(API 먼저).
@@ -2484,8 +3013,11 @@ class HazardReviewService:
             if self._cng_gyeongnam_ready() and "cng_gyeongnam" not in failed_sources:
                 sources.append(api_source("cng_gyeongnam"))  # type: ignore[arg-type]
 
-        # 로컬 납품 파일 원천. active_sources 에는 집계되지 않으므로 여기서 붙인다.
-        # 등록공장은 공개 API 가 없어 XLSX 로만, CNG 는 API 보조로 CSV 를 쓴다(§A-1).
+        # 등록공장: 산단공 공장등록 필지정보 API(15087615)가 붙어 있고 이번 요청에서 실패하지
+        # 않았으면 api 칩. 로컬 표준본이 있으면 그 칩을 뒤에 붙인다(API 먼저).
+        if category.key == "factory_registered":
+            if self._factory_api_ready() and "factory_registry" not in failed_sources:
+                sources.append(api_source("factory_registry"))  # type: ignore[arg-type]
         if category.key == "factory_registered" and self.local_sources.factory_facilities:
             sources.append(local_source(self._local_source_detail("factory_registry")))
         elif category.key == "cng_station" and self.local_sources.cng_facilities:
@@ -2582,6 +3114,11 @@ class HazardReviewService:
         reason: str,
     ) -> HazardCategorySummary:
         impl_state, impl_note = self._implementation_state(category)
+        # 신청유형 때문에 Rule 이 미적용이어도 원천 연결 여부는 그대로다. 연결된 원천은
+        # 칩으로 보여 「API 미연결」로 오해되지 않게 한다(판정은 하지 않는다).
+        data_sources = (
+            self._category_data_sources(category) if self._category_connected(category) else []
+        )
         return HazardCategorySummary(
             key=category.key,
             label=category.label,
@@ -2590,6 +3127,7 @@ class HazardReviewService:
             facility_types=list(category.facility_types),
             threshold_m=None,
             status="not_applicable",
+            data_sources=data_sources,
             status_label=STATUS_LABELS["not_applicable"],
             data_state=category.data_state,
             implementation_state=impl_state,
@@ -2627,17 +3165,18 @@ class HazardReviewService:
             note = category.note
             if references:
                 labels = sorted({f.source_label for f in references})
-                note = (
-                    f"{note} · 참고 핀 {len(references)}건({', '.join(labels)} — "
-                    "판정 근거 아님, 수기 확인·협의 대상 표시)"
-                )
-            return self._category_summary(
+                pin_note = f"참고 핀 {len(references)}건({', '.join(labels)})"
+                note = f"{note} · {pin_note}" if note else pin_note
+            summary = self._category_summary(
                 category, threshold, "dataset_missing", note, references,
                 connected=False, site_boundary_resolved=site_boundary_resolved,
                 manual_check_required=(
                     category.data_state in MANUAL_CHECK_DATA_STATES
                 ),
             )
+            # 참고 핀·스캔 원천은 「일부 연결」 칩으로 드러낸다(판정 원천 칩과 구분).
+            summary.data_sources = self._category_partial_sources(category, failed_sources)
+            return summary
 
         # 원천 조회가 실패했으면(활성 원천이 모두 실패) 스냅샷 자체가 없다.
         # no_conflict_in_snapshot 로 둔갑시키지 않고 dataset_missing 으로 낸다.
@@ -2650,8 +3189,7 @@ class HazardReviewService:
             )
             return self._category_summary(
                 category, threshold, "dataset_missing",
-                f"원천 조회 실패({labels})로 스냅샷을 구성하지 못했습니다. "
-                "조회 복구 후 재판정이 필요합니다.", [],
+                f"{labels} 조회 실패 — 복구 후 재심사 필요", [],
                 connected=False, site_boundary_resolved=site_boundary_resolved,
             )
 
@@ -2696,7 +3234,8 @@ class HazardReviewService:
                 kept.append(facility)
             matched = kept
 
-        # 운영상태 필터: 폐업·취소·말소 제외, 휴업·공란은 review 후보.
+        # 운영상태 필터: 폐업·취소·말소 제외, 휴업은 영업과 같이 판정(LH 확정 2026-09-11 #2),
+        # 상태 공란만 review 후보.
         active: list[HazardFacility] = []
         hold: list[HazardFacility] = []
         for facility in matched:
@@ -2714,11 +3253,13 @@ class HazardReviewService:
             # "판정적용" 배지와 "데이터셋 미확보"가 충돌한다. 그 모순을 note 로
             # 정직하게 드러낸다. factoryON 미적재·미검증 엔드포인트는 원인을
             # 구분해 밝힌다. 룰북 정본의 data_state 는 훼손하지 않는다.
-            return self._category_summary(
+            summary = self._category_summary(
                 category, threshold, "dataset_missing",
                 self._not_connected_note(category), candidates,
                 connected=False, site_boundary_resolved=site_boundary_resolved,
             )
+            summary.data_sources = self._category_partial_sources(category, failed_sources)
+            return summary
 
         status, note = self._decide_status(
             category, threshold, active, hold, site_boundary_resolved
@@ -2740,12 +3281,7 @@ class HazardReviewService:
                 for source in sorted(failed_for_category)
             )
             status = "review_required"
-            note = (
-                f"활성 원천 일부({labels}) 조회가 실패해 그 원천 범위의 스냅샷이 "
-                "없습니다. 나머지 원천에서는 충돌이 없었으나, 실패 원천을 확인하지 "
-                "못했으므로 충돌 없음으로 확정하지 않고 검토대상으로 남깁니다. "
-                "조회 복구 후 재판정이 필요합니다."
-            )
+            note = f"{labels} 조회 실패 — 복구 후 재심사 필요"
         return self._category_summary(
             category, threshold, status, note, candidates,
             connected=True, site_boundary_resolved=site_boundary_resolved,
@@ -2781,7 +3317,7 @@ class HazardReviewService:
                     note = f"{note} 후보는 기준 {threshold}m 밖 여유구간에 있습니다."
                 if hold:
                     note = (
-                        f"{note} 휴업·상태 공란 후보는 확정하지 않고 검토로 남겼습니다."
+                        f"{note} 운영상태 공란 후보는 확정하지 않고 검토로 남겼습니다."
                     )
                 return "review_required", note
             return "no_conflict_in_snapshot", (
@@ -2837,7 +3373,7 @@ class HazardReviewService:
             if buffer_active and not (uncertain or inside_active):
                 note = f"{note} 후보는 기준 {threshold}m 밖 여유구간에 있습니다."
             if hold:
-                note = f"{note} 휴업·상태 공란 후보는 확정하지 않고 검토로 남겼습니다."
+                note = f"{note} 운영상태 공란 후보는 확정하지 않고 검토로 남겼습니다."
             return "review_required", note
         if excluded_by_use:
             return "no_conflict_in_snapshot", (
@@ -2980,7 +3516,7 @@ class HazardReviewService:
                 "대상이 있습니다."
             )
             if hold:
-                note = f"{note} 휴업·상태 공란 후보는 확정하지 않고 검토로 남겼습니다."
+                note = f"{note} 운영상태 공란 후보는 확정하지 않고 검토로 남겼습니다."
             return "review_required", note
         return "no_conflict_in_snapshot", (
             f"스냅샷 범위 기준 {threshold}m 안에 해당 시설이 없습니다."

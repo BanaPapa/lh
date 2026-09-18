@@ -244,6 +244,13 @@ class SafemapFacilityFeed:
     def service_key(self) -> str:
         return self._client.service_key
 
+    @property
+    def has_fast_path(self) -> bool:
+        """전량 캐시가 데워져 즉시 답할 수 있는가. 아니면 첫 호출이 전량 수신(IF_0049 3,820건
+        약 20초)으로 판정을 막으므로, 판정 경로는 False 인 동안 이 레이어를 건너뛴다."""
+
+        return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
+
     async def all_facilities(self) -> list[SafemapFacility]:
         if not self.enabled:
             return []

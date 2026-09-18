@@ -18,6 +18,7 @@ import httpx
 import pytest
 
 from app.services.building_register import (
+    FLOOR_OP,
     BrParams,
     BuildingRegisterAPIError,
     BuildingRegisterClient,
@@ -325,3 +326,55 @@ class TestFailurePropagates:
         with pytest.raises(ValueError):
             asyncio.run(client_with(handler).lookup("badpnu"))
         assert called["n"] == 0
+
+
+# ── 층별개요(getBrFlrOulnInfo) ────────────────────────────────────────
+
+
+def floor_item_xml(main: str, etc: str = "", code: str = "", flr: str = "1", gb: str = "지상") -> str:
+    return (
+        "<item><dongNm></dongNm>"
+        f"<flrGbCdNm>{gb}</flrGbCdNm><flrNo>{flr}</flrNo>"
+        f"<mainPurpsCd>{code}</mainPurpsCd><mainPurpsCdNm>{main}</mainPurpsCdNm>"
+        f"<etcPurps>{etc}</etcPurps><area>12.5</area></item>"
+    )
+
+
+class TestFloorLookup:
+    def test_returns_floor_uses_with_standard_code_names(self) -> None:
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.url.path)
+            return httpx.Response(200, text=title_xml([
+                floor_item_xml("사무소", "제2종근린생활시설(사무소)", "04402"),
+                floor_item_xml("액화석유가스충전소", "가스충전소", "19002"),
+            ]))
+
+        floors = asyncio.run(client_with(handler).lookup_floors(SAMPLE_PNU))
+        assert seen == [f"/1613000/BldRgstHubService/{FLOOR_OP}"]
+        assert [(f.main_purpose, f.main_purpose_code, f.etc_purpose, f.floor_label) for f in floors] == [
+            ("사무소", "04402", "제2종근린생활시설(사무소)", "지상 1"),
+            ("액화석유가스충전소", "19002", "가스충전소", "지상 1"),
+        ]
+        assert floors[1].area_m2 == 12.5
+
+    def test_nodata_is_empty_and_cached(self) -> None:
+        calls = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            calls += 1
+            return httpx.Response(200, text=title_xml([], code="03", msg="NODATA_ERROR"))
+
+        client = client_with(handler)
+        assert asyncio.run(client.lookup_floors(SAMPLE_PNU)) == ()
+        assert asyncio.run(client.lookup_floors(SAMPLE_PNU)) == ()
+        assert calls == 1
+
+    def test_error_code_raises(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text=title_xml([], code="30", msg="SERVICE_KEY_IS_NOT_REGISTERED_ERROR"))
+
+        with pytest.raises(BuildingRegisterAPIError):
+            asyncio.run(client_with(handler).lookup_floors(SAMPLE_PNU))

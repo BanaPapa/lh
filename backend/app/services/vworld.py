@@ -20,6 +20,10 @@ VWORLD_DATA_URL = "https://api.vworld.kr/req/data"
 
 # 연속지적도(부번 포함). 지적도 도형은 이 레이어에서 나온다.
 CADASTRAL_LAYER = "LP_PA_CBND_BUBUN"
+# 국토교통부 GIS 건물통합정보. 건물 외곽선 + usability(건축물대장 주용도코드 5자리, 예 19000 =
+# 위험물저장및처리시설) + 건물명·동명·층수. 실측(2026-09-18, 도곡동 200m 박스): 75동 중
+# usability 공란 25동(대장 미연계) — 공란은 필지 표제부로 보완한다.
+BUILDING_LAYER = "LT_C_BLDGINFO"
 
 # 국토교통부 용도지역(지적편집도) 레이어. 점 조회로 용도지역명을 얻는다.
 # 실측 응답(2026-09-13, VWORLD_API_KEY):
@@ -72,6 +76,16 @@ class VWorldAPIError(RuntimeError):
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
+
+
+class BuildingFeature(NamedTuple):
+    """건물통합정보 건물 하나. use_code 는 건축물대장 주용도코드(5자리) 또는 빈 문자열."""
+
+    name: str
+    dong_name: str
+    use_code: str
+    ring: list[Coordinates]
+    ground_floors: int
 
 
 class ParcelFeature(NamedTuple):
@@ -232,6 +246,43 @@ class VWorldClient:
             limit=limit,
         )
 
+    async def buildings_in_box(
+        self,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        limit: int = MAX_PAGE_SIZE,
+    ) -> list[BuildingFeature]:
+        """사각 영역의 건물(외곽선 + 주용도코드)을 조회한다 — 건축물대장 용도 스캔의 1차 원천."""
+
+        features = await self._request_features(
+            BUILDING_LAYER,
+            {"geomFilter": f"BOX({west},{south},{east},{north})", "crs": "EPSG:4326"},
+            limit=limit,
+        )
+        buildings: list[BuildingFeature] = []
+        for feature in features:
+            properties = feature.get("properties") or {}
+            try:
+                ring = _outer_ring(feature.get("geometry") or {})
+            except VWorldAPIError:
+                continue
+            try:
+                floors = int(float(properties.get("grnd_flr") or 0))
+            except (TypeError, ValueError):
+                floors = 0
+            buildings.append(
+                BuildingFeature(
+                    name=str(properties.get("bld_nm") or ""),
+                    dong_name=str(properties.get("dong_nm") or ""),
+                    use_code=str(properties.get("usability") or "").strip(),
+                    ring=ring,
+                    ground_floors=floors,
+                )
+            )
+        return buildings
+
     async def _fetch(
         self,
         filters: dict[str, str],
@@ -246,13 +297,41 @@ class VWorldClient:
         limit: int,
         fallback_pnu: str = "",
     ) -> list[ParcelFeature]:
+        features = await self._request_features(CADASTRAL_LAYER, filters, limit)
+        parcels: list[ParcelFeature] = []
+        for feature in features:
+            properties = feature.get("properties") or {}
+            try:
+                ring = _outer_ring(feature.get("geometry") or {})
+            except VWorldAPIError:
+                # 영역 조회는 필지가 많아 한 건이 깨져도 나머지는 살린다.
+                continue
+            parcels.append(
+                ParcelFeature(
+                    pnu=str(properties.get("pnu") or fallback_pnu),
+                    address=str(properties.get("addr") or ""),
+                    jibun=str(properties.get("jibun") or ""),
+                    ring=ring,
+                    area_m2=polygon_area_m2(ring),
+                )
+            )
+        return parcels
+
+    async def _request_features(
+        self,
+        layer: str,
+        filters: dict[str, str],
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """데이터 API 한 레이어를 조회해 GeoJSON feature 목록(limit 건까지)을 돌려준다."""
+
         if not self.enabled:
             return []
 
         params = {
             "service": "data",
             "request": "GetFeature",
-            "data": CADASTRAL_LAYER,
+            "data": layer,
             "key": self.api_key,
             "geometry": "true",
             "format": "json",
@@ -293,22 +372,4 @@ class VWorldClient:
         features = (
             (body.get("result") or {}).get("featureCollection") or {}
         ).get("features") or []
-
-        parcels: list[ParcelFeature] = []
-        for feature in features[:limit]:
-            properties = feature.get("properties") or {}
-            try:
-                ring = _outer_ring(feature.get("geometry") or {})
-            except VWorldAPIError:
-                # 영역 조회는 필지가 많아 한 건이 깨져도 나머지는 살린다.
-                continue
-            parcels.append(
-                ParcelFeature(
-                    pnu=str(properties.get("pnu") or fallback_pnu),
-                    address=str(properties.get("addr") or ""),
-                    jibun=str(properties.get("jibun") or ""),
-                    ring=ring,
-                    area_m2=polygon_area_m2(ring),
-                )
-            )
-        return parcels
+        return [f for f in features[:limit] if isinstance(f, dict)]
