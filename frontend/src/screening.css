@@ -15,6 +15,8 @@
   --sh-micro: 14px;
   /* 탭 버튼 높이(52px) + 밑선 1px. 1차 표 머리(thead)가 이 아래에 붙는다. */
   --sh-tabs-h: 53px;
+  /* 고정 머리말 높이. 실제 값은 ScreeningSheet 가 ResizeObserver 로 채운다. */
+  --sh-head-h: 0px;
   display: grid;
   gap: 14px;
   padding: 14px 16px 26px;
@@ -48,12 +50,19 @@
 /* ── A. 머리말 ──────────────────────────────────────────────── */
 
 .screening-head {
+  /* 스크롤해도 모달 맨 위에 고정한다. 시트 여백(위 14px·좌우 16px)까지 덮어 그
+     틈으로 본문이 비치지 않게 하고, 바탕은 모달과 같은 불투명 색을 쓴다. */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: -14px -16px 0;
+  padding: 14px 16px 12px;
+  background: var(--raise);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -323,7 +332,7 @@
 /* 탭 줄은 모달 스크롤 위에 고정한다. 표 머리(thead)는 그 아래(--sh-tabs-h)에 붙는다. */
 .screening-stage-tabs {
   position: sticky;
-  top: 0;
+  top: var(--sh-head-h);
   z-index: 4;
   display: flex;
   margin: 0;
@@ -755,7 +764,7 @@
 .screening-stage-one-table thead th {
   position: sticky;
   /* 탭 줄 높이(--sh-tabs-h)와 정확히 맞춘다. 틈이 생기면 그 사이로 본문이 비친다. */
-  top: var(--sh-tabs-h);
+  top: calc(var(--sh-head-h) + var(--sh-tabs-h));
   z-index: 3;
   background: var(--surface-3);
   box-shadow: 0 1px 0 var(--border);
@@ -1513,6 +1522,11 @@
     padding: 12px 12px 22px;
   }
 
+.screening-head {
+    margin: -12px -12px 0;
+    padding: 12px 12px 12px;
+  }
+
 .screening-head-controls {
     width: 100%;
   }
@@ -1524,6 +1538,13 @@
 
 .screening-field {
     flex: 1 1 140px;
+  }
+}
+
+@media print {.screening-head {
+    position: static;
+    margin: 0;
+    padding: 0 0 12px;
   }
 }
 

@@ -514,6 +514,19 @@ export function ScreeningSheet({
   onRerun,
 }: ScreeningSheetProps) {
   const rows = useExpandedKeys(result?.screening_id);
+  // 머리말은 스크롤해도 위에 고정한다. 주소가 길면 줄이 바뀌어 높이가 변하므로
+  // 실제 높이를 --sh-head-h 로 올려 탭·1차 표 머리가 그 바로 아래에 붙게 한다.
+  const [headEl, setHeadEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const sheet = headEl?.parentElement;
+    if (!headEl || !sheet) return;
+    const apply = () =>
+      sheet.style.setProperty("--sh-head-h", `${headEl.offsetHeight}px`);
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(headEl);
+    return () => observer.disconnect();
+  }, [headEl]);
   const tiers = useExpandedKeys(result?.screening_id);
   // 1차 대분류 접기. 기본은 펼침이라 「접힌 키」 집합으로 든다.
   const folded = useExpandedKeys(result?.screening_id);
@@ -1071,7 +1084,7 @@ export function ScreeningSheet({
   return (
     <section className="screening-sheet" aria-label="LH 서류심사표">
       {/* A. 머리말 */}
-      <header className="screening-head">
+      <header className="screening-head" ref={setHeadEl}>
         <div className="screening-head-title">
           <small>LH 신축매입약정 서류심사</small>
           <h2>{result.site.name}</h2>
