@@ -362,6 +362,20 @@ async def test_passthrough_variants_all_pass_with_notes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_not_applicable_rule_wins_over_manual_check() -> None:
+    # 오피스텔은 위험물 Rule 이 붙지 않는다. 수기 확인 목이어도 「통과 처리」가 아니라 미적용이다.
+    service = build_service(
+        [category("toxic", "not_applicable", manual_check_required=True)]
+    )
+
+    result = await service.screen(ScreeningRequest(site=site()))
+    item = result.stage_one.items[0]
+
+    assert item.outcome == "not_applicable"
+    assert not item.passthrough
+
+
+@pytest.mark.asyncio
 async def test_exclusion_match_fails_and_names_the_reason() -> None:
     service = build_service(
         [

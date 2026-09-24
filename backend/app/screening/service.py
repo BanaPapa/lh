@@ -357,6 +357,15 @@ def _decide(category: HazardCategorySummary) -> tuple[str, str, bool, str]:
 
     if category.judgment_excluded:
         return "advisory", "pass", True, "협의에 따라 판정 제외 — 통과 처리"
+    # 주택유형·신청유형에 Rule 이 붙지 않는 항목은 수기 확인 대상이어도 미적용이다.
+    # 먼저 보지 않으면 오피스텔의 위험물 목이 「통과 처리」로 찍혀 판정한 것처럼 보인다.
+    if category.status == "not_applicable":
+        return (
+            "not_applicable",
+            "not_applicable",
+            False,
+            category.not_applicable_reason or "이 신청유형에는 적용되지 않습니다",
+        )
     if category.manual_check_required and category.status != "exclusion_match":
         return "advisory", "pass", True, "판정 미적용 — 통과 처리"
 
