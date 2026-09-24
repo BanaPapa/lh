@@ -261,6 +261,21 @@ async def test_bus_stops_prefer_tago_and_fall_back_to_kakao() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tago_outage_result_is_not_cached() -> None:
+    # 일시 장애로 지도 검색에 떨어진 결과를 캐시하면 복구 뒤에도 10분간 낮은 점수가 굳는다.
+    tago = BrokenTago([])
+    collector = AmenityCollector(kakao=FakeKakao(), tago=tago)
+
+    await collector.collect([], CENTER)
+    tago.__class__ = FakeTago
+    tago.rows = [{"gpslati": CENTER.lat, "gpslong": CENTER.lng, "nodenm": "판교역"}]
+    result = await collector.collect([], CENTER)
+
+    assert tago.calls == 2
+    assert [f.name for f in result["bus_stop"].facilities] == ["판교역"]
+
+
+@pytest.mark.asyncio
 async def test_distance_is_measured_from_the_parcel_boundary() -> None:
     half = 20.0
     ring = [

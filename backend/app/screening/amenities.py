@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, NamedTuple
@@ -56,6 +57,9 @@ from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
 from app.services.transfer_center import TransferCenterClient
 from app.services.vworld import ParcelFeature, VWorldClient
+
+# uvicorn 이 출력 설정을 걸어 둔 로거라 원천 장애가 서버 콘솔에 보인다.
+logger = logging.getLogger("uvicorn.error")
 
 
 # 등급 조건이 쓰는 최대 반경은 3km(주거여건 3km)다. 그보다 넓게 볼 이유가 없다.
@@ -298,6 +302,9 @@ class FeedResult(NamedTuple):
     # 양방향 정류장은 하나로 합쳐(LH 시트도 「공수내다리(30497, 3050047)」처럼 한
     # 정류장으로 셌다) 15분당 도착 수가 큰 쪽을 대표로 둔다.
     headways: dict[str, StopHeadway] | None = None
+    # 지정 원천이 장애로 실패해 대체 원천으로 떨어졌는지. 이런 결과는 캐시하지 않는다 —
+    # 일시 장애 한 번이 캐시 수명(10분) 내내 낮은 점수로 굳는다.
+    degraded: bool = False
 
 
 class MeasuredDoor(NamedTuple):
@@ -696,7 +703,16 @@ class AmenityCollector:
             for group in FACILITY_GROUPS
         }
         collections = await self._attach_boundaries(collections, valid_rings, center)
-        self._cache_set(key, collections)
+        degraded = [
+            name
+            for name, outcome in results.items()
+            if isinstance(outcome, BaseException)
+            or (isinstance(outcome, FeedResult) and outcome.degraded)
+        ]
+        if degraded:
+            logger.warning("주변시설 원천 장애(%s): 이번 결과는 캐시하지 않음", ", ".join(degraded))
+        else:
+            self._cache_set(key, collections)
         return collections
 
     # -- 시설 경계 측정(초·중·고·공원·상업·문화·공공·버스정류장) ----------------
@@ -1410,7 +1426,8 @@ class AmenityCollector:
         try:
             by_ref = await self.headway_resolver.resolve_many(refs)  # type: ignore[arg-type]
         except Exception:
-            return None
+            logger.warning("TAGO 운행주기 조회 실패", exc_info=True)
+            raise
         merged: dict[str, StopHeadway] = {}
         for place in places:
             headway = by_ref.get(place.stop_ref)
@@ -1436,12 +1453,17 @@ class AmenityCollector:
         0.5km 등급이 핵심이라 공식 원천을 먼저 쓴다.
         """
 
+        tago_failed = False
         if self.tago is not None and self.tago.enabled:
             try:
                 rows = await self.tago.nearby_stops(center.lat, center.lng)
                 if rows:
                     places = _places(rows, _tago_place)
-                    headways = await self._stop_headways(places)
+                    try:
+                        headways = await self._stop_headways(places)
+                    except Exception:
+                        # 정류장은 받았으니 전체 정류장을 세되, 캐시하지 않고 다음 심사에서 다시 판정한다.
+                        return FeedResult(places, TAGO_SOURCE, degraded=True)
                     if headways is None:
                         return FeedResult(places, TAGO_SOURCE)
                     return FeedResult(places, TAGO_HEADWAY_SOURCE, headways)
@@ -1449,7 +1471,8 @@ class AmenityCollector:
                 # 아니라 미제공 지역일 수 있으니 서울시 원천 → 지도 순으로 넘어간다.
             except Exception:
                 # 공공 API 장애를 정류장 0개로 둔갑시키지 않는다. 지도로 넘어간다.
-                pass
+                logger.warning("TAGO 정류소 근접조회 실패: 지도 검색으로 대체", exc_info=True)
+                tago_failed = True
         if self.seoul_bus is not None and self.seoul_bus.enabled:
             try:
                 stops = await self.seoul_bus.stops_around(center, radius_m)
@@ -1468,7 +1491,9 @@ class AmenityCollector:
         documents = await self.kakao.search_keyword(
             "버스정류장", center.lat, center.lng, radius_m
         )
-        return FeedResult(_places(documents, _kakao_place), KAKAO_PLACE_SOURCE)
+        return FeedResult(
+            _places(documents, _kakao_place), KAKAO_PLACE_SOURCE, degraded=tago_failed
+        )
 
     async def _transfer_centers(self, center: Coordinates, radius_m: int) -> FeedResult:
         """환승센터 표준데이터(지정 원천) + 지도 검색 보충.
