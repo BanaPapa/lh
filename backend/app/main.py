@@ -15,7 +15,8 @@ from app.settings_api.router import router as settings_router
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """기동 직후 전국 목록 공개 API(KGS LPG·CNG·화장시설)와 로컬 원천 묶음을 예열한다.
+    """기동 직후 전국 목록 공개 API(KGS LPG·CNG·화장시설)와 로컬 원천 묶음을 예열하고,
+    오래된 인허가 원장을 다시 받는다.
 
     첫 심사가 콜드스타트(전량 조회 수십 페이지)를 심사 도중 겪어 「조회 실패 → 검토」로
     떨어지던 것을 막는다(2026-09-14 검수). 데모 모드면 둘 다 아무 것도 하지 않는다.
@@ -27,9 +28,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         get_hazard_service,
     )
 
+    from app.sync_facilities import ensure_facility_sync
+
     service = get_hazard_service()
     ensure_api_sources_warmup(service)
     ensure_local_sources_warmup(service)
+    # 받은 지 하루가 넘은 인허가 원장(숙박·위락·대규모점포 등)을 백그라운드로 다시 받는다.
+    ensure_facility_sync(get_settings())
     yield
 
 
