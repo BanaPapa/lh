@@ -45,6 +45,7 @@ from app.screening.models import (
     ScreeningGroupStatus,
     ScreeningOutOfScopeItem,
     ScreeningRequest,
+    ScreeningRequirement,
     ScreeningResult,
     ScreeningStageOne,
     ScreeningStageTwo,
@@ -58,6 +59,7 @@ from app.screening.scorebook import (
     TOTAL_SHEET_POINTS,
     Criterion,
     Facts,
+    Tier,
     evaluate,
     sheet_for,
 )
@@ -440,9 +442,14 @@ def _build_stage_two(
     sheet = sheet_for(application_type)
     distances = {key: list(item.distances_m) for key, item in collections.items()}
     missing = {key for key, item in collections.items() if item.state == "missing"}
+    # 배점 근거 문장에 쓰는 시설명. 배점에 센 시설만 넣는다(운행주기 미달 정류장 제외).
+    named = {
+        key: [(f.name, f.distance_m) for f in item.facilities if f.counted]
+        for key, item in collections.items()
+    }
 
-    pessimistic = Facts(distances, missing, assume_missing_present=False)
-    optimistic = Facts(distances, missing, assume_missing_present=True)
+    pessimistic = Facts(distances, missing, assume_missing_present=False, named=named)
+    optimistic = Facts(distances, missing, assume_missing_present=True, named=named)
 
     criteria = [
         _build_criterion(criterion, pessimistic, optimistic, collections, measurement)
@@ -495,6 +502,7 @@ def _build_criterion(
             condition=tier.condition,
             achieved=tier.check(pessimistic),
             selected=determined and tier is min_tier,
+            requirements=_tier_requirements(tier, pessimistic, optimistic),
         )
         for tier in criterion.tiers
     ]
@@ -532,6 +540,24 @@ def _build_criterion(
         basis=criterion.basis,
         note=note,
     )
+
+
+def _tier_requirements(
+    tier: Tier, pessimistic: Facts, optimistic: Facts
+) -> list[ScreeningRequirement]:
+    """등급 요건마다 충족 여부와 근거. 미확보 원천에 따라 갈리는 요건은 None(확인 불가)."""
+
+    requirements: list[ScreeningRequirement] = []
+    for req in tier.requirements:
+        low, high = req.check(pessimistic), req.check(optimistic)
+        requirements.append(
+            ScreeningRequirement(
+                text=req.text,
+                met=low if low == high else None,
+                evidence=req.evidence(pessimistic),
+            )
+        )
+    return requirements
 
 
 def _group_status(

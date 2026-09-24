@@ -130,6 +130,34 @@ def test_common_sheet_marks_selected_tier() -> None:
     assert transit.tier_condition == "반경 0.5km 이내 교통시설 둘 이상"
 
 
+def test_tier_requirements_explain_why_ten_points_were_missed() -> None:
+    # 효자동2가 1243-3 실측(LH 제출본 8/10): 초 451m · 중 854m · 고 256m.
+    stage = stage_two(
+        "general",
+        school_elementary=group("school_elementary", [451.0]),
+        school_middle=group("school_middle", [854.0]),
+        school_high=group("school_high", [256.0]),
+    )
+    education = criterion(stage, "education")
+    top, eight = education.tiers[0], education.tiers[1]
+
+    assert education.awarded == 8
+    assert eight.selected and all(req.met for req in eight.requirements)
+    # 10점을 못 받은 까닭은 중학교가 500m 밖이라서다.
+    unmet = [req for req in top.requirements if req.met is False]
+    assert [req.text for req in unmet] == ["반경 0.5km 이내 중학교"]
+    assert unmet[0].evidence == "school_middle-0 854m"
+
+
+def test_requirement_is_unknown_when_source_is_missing() -> None:
+    stage = stage_two("general", retail=group("retail", [], state="missing"))
+    living_top = criterion(stage, "living").tiers[0]
+
+    retail = next(req for req in living_top.requirements if "상업시설" in req.text)
+    assert retail.met is None
+    assert retail.evidence == "상업시설 원천 미확보"
+
+
 def test_youth_sheet_transit_twenty_and_university_four() -> None:
     stage = stage_two(
         "youth",

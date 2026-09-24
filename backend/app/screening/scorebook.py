@@ -97,6 +97,7 @@ class Facts:
 
     등급 조건은 전부 이 객체에 대한 질의로만 쓴다. 데이터가 없는 시설군은
     `missing` 에 담아 두고, 낙관·비관 두 번 평가해서 확정 여부를 가린다.
+    `named` 는 시설군별 (시설명, 거리) 목록으로, 배점 근거 문장에만 쓴다.
     """
 
     def __init__(
@@ -105,11 +106,13 @@ class Facts:
         missing_groups: set[str],
         *,
         assume_missing_present: bool = False,
+        named: dict[str, list[tuple[str, float]]] | None = None,
     ) -> None:
         # 시설군별 거리 목록(m). 오름차순 정렬을 가정하지 않는다.
         self.distances_m = distances_m
         self.missing_groups = missing_groups
         self._assume = assume_missing_present
+        self.named = named or {}
 
     def count_within(self, group: str, km: float) -> int:
         """해당 시설군에서 반경 km 이내 시설 수."""
@@ -146,16 +149,112 @@ class Facts:
             return None
         return min(values)
 
+    def nearest_name(self, group: str) -> tuple[str, float] | None:
+        """가장 가까운 시설의 (이름, 거리). 이름을 모르면 이름을 비운다."""
+
+        named = self.named.get(group)
+        if named:
+            return min(named, key=lambda item: item[1])
+        distance = self.nearest_m(group)
+        return None if distance is None else ("", distance)
+
 
 # ---------------------------------------------------------------------------
 # 등급 정의
 # ---------------------------------------------------------------------------
+def _km(km: float) -> str:
+    return f"{km:g}km"
+
+
+def _nearest_text(facts: Facts, group: str) -> str:
+    """「전주새연초등학교 451m」 — 시설군 최근접 시설 한 줄."""
+
+    label = FACILITY_GROUP_BY_KEY[group].label
+    if group in facts.missing_groups:
+        return f"{label} 원천 미확보"
+    nearest = facts.nearest_name(group)
+    if nearest is None:
+        return f"{label} 없음"
+    name, distance = nearest
+    return f"{name or label} {distance:,.0f}m"
+
+
+class Requirement(NamedTuple):
+    """등급 조건을 이루는 요건 하나. 충족 여부와 근거 문장을 함께 낸다."""
+
+    text: str
+    check: Callable[[Facts], bool]
+    evidence: Callable[[Facts], str]
+
+
+def _req_has(group: str, km: float) -> Requirement:
+    return Requirement(
+        f"반경 {_km(km)} 이내 {FACILITY_GROUP_BY_KEY[group].label}",
+        lambda f: f.has(group, km),
+        lambda f: _nearest_text(f, group),
+    )
+
+
+def _req_any(groups: tuple[str, ...], km: float, text: str) -> Requirement:
+    return Requirement(
+        text,
+        lambda f: f.has_any(groups, km),
+        lambda f: " · ".join(_nearest_text(f, g) for g in groups),
+    )
+
+
+def _req_transit(km: float, minimum: int) -> Requirement:
+    def evidence(f: Facts) -> str:
+        parts: list[str] = []
+        found = 0
+        for group in TRANSIT_GROUPS:
+            label = FACILITY_GROUP_BY_KEY[group].label
+            if group in f.missing_groups:
+                parts.append(f"{label} 원천 미확보")
+                continue
+            count = f.count_within(group, km)
+            found += count
+            if count:
+                parts.append(f"{label} {count}개(최근접 {_nearest_text(f, group)})")
+        head = f"{_km(km)} 이내 {found}개"
+        return f"{head} — {' · '.join(parts)}" if parts else head
+
+    return Requirement(
+        f"반경 {_km(km)} 이내 교통시설 {'둘' if minimum >= 2 else '하나'} 이상",
+        lambda f: f.transit_count(km) >= minimum,
+        evidence,
+    )
+
+
+def _req_kinds(km: float, minimum: int) -> Requirement:
+    def evidence(f: Facts) -> str:
+        present = [
+            _nearest_text(f, g)
+            for g in AMENITY_KIND_GROUPS
+            if g not in f.missing_groups and f.has(g, km)
+        ]
+        head = f"{_km(km)} 이내 {len(present)}종"
+        return f"{head} — {' · '.join(present)}" if present else head
+
+    return Requirement(
+        f"반경 {_km(km)} 이내 공원·문화·공공시설 중 {minimum}가지 종류 이상",
+        lambda f: f.amenity_kind_count(km) >= minimum,
+        evidence,
+    )
+
+
 class Tier(NamedTuple):
-    """평가항목 한 줄. 위에서부터 먼저 만족하는 등급을 채택한다."""
+    """평가항목 한 줄. 위에서부터 먼저 만족하는 등급을 채택한다.
+
+    요건이 없는 등급(「해당 없음」)은 항상 참이다.
+    """
 
     points: int
     condition: str
-    check: Callable[[Facts], bool]
+    requirements: tuple[Requirement, ...] = ()
+
+    def check(self, facts: Facts) -> bool:
+        return all(req.check(facts) for req in self.requirements)
 
 
 class Criterion(NamedTuple):
@@ -175,88 +274,93 @@ def _transit_tiers(p1: int, p2: int, p3: int, p4: int, p5: int) -> tuple[Tier, .
     """교통시설 등급표. 배점만 심사표별로 다르고 조건은 같다."""
 
     return (
-        Tier(p1, "반경 0.5km 이내 교통시설 둘 이상", lambda f: f.transit_count(0.5) >= 2),
-        Tier(p2, "반경 0.5km 이내 교통시설 하나 이상", lambda f: f.transit_count(0.5) >= 1),
-        Tier(p3, "반경 1km 이내 교통시설 하나 이상", lambda f: f.transit_count(1.0) >= 1),
-        Tier(p4, "반경 1.5km 이내 교통시설 하나 이상", lambda f: f.transit_count(1.5) >= 1),
-        Tier(p5, "해당 없음", lambda f: True),
+        Tier(p1, "반경 0.5km 이내 교통시설 둘 이상", (_req_transit(0.5, 2),)),
+        Tier(p2, "반경 0.5km 이내 교통시설 하나 이상", (_req_transit(0.5, 1),)),
+        Tier(p3, "반경 1km 이내 교통시설 하나 이상", (_req_transit(1.0, 1),)),
+        Tier(p4, "반경 1.5km 이내 교통시설 하나 이상", (_req_transit(1.5, 1),)),
+        Tier(p5, "해당 없음"),
     )
 
 
 # --- 주거여건 --------------------------------------------------------------
+_RETAIL_HOSPITAL: tuple[str, ...] = ("retail", "hospital")
+
+
 def _living_tiers(p1: int, p2: int, p3: int, p4: int, p5: int) -> tuple[Tier, ...]:
     """주거여건 등급표. 상업·의료 조합과 공원·문화·공공 종류 수로 갈린다."""
 
+    either = _req_any(_RETAIL_HOSPITAL, 3, "반경 3km 이내 상업·의료시설 중 1개 이상")
     return (
         Tier(
             p1,
             "반경 2km 이내 상업·의료시설 모두 존재하고 공원·문화·공공시설 중 2가지 종류 이상 존재",
-            lambda f: f.has("retail", 2) and f.has("hospital", 2) and f.amenity_kind_count(2) >= 2,
+            (_req_has("retail", 2), _req_has("hospital", 2), _req_kinds(2, 2)),
         ),
         Tier(
             p2,
             "반경 3km 이내 상업·의료시설 모두 존재하고 공원·문화·공공시설 중 1개 이상 존재",
-            lambda f: f.has("retail", 3) and f.has("hospital", 3) and f.amenity_kind_count(3) >= 1,
+            (_req_has("retail", 3), _req_has("hospital", 3), _req_kinds(3, 1)),
         ),
         Tier(
             p3,
             "반경 3km 이내 상업·의료시설 중 1개 이상 존재하고 공원·문화·공공시설 중 2가지 종류 이상 존재",
-            lambda f: (f.has("retail", 3) or f.has("hospital", 3)) and f.amenity_kind_count(3) >= 2,
+            (either, _req_kinds(3, 2)),
         ),
         Tier(
             p4,
             "반경 3km 이내 상업·의료시설 중 1개 존재하고 공원·문화·공공시설 중 1개 이상 존재",
-            lambda f: (f.has("retail", 3) or f.has("hospital", 3)) and f.amenity_kind_count(3) >= 1,
+            (either, _req_kinds(3, 1)),
         ),
-        Tier(p5, "해당 없음", lambda f: True),
+        Tier(p5, "해당 없음"),
     )
 
 
 # --- 교육여건(공통) --------------------------------------------------------
+# 요건은 조건 문장을 가장 좁은 반경으로 줄인 것이다. 「1km 이내 초·중·고 + 500m 이내
+# 초·중」은 초·중이 500m 안에 있으면 1km 도 충족하므로 초 0.5 · 중 0.5 · 고 1 과 같다.
 _COMMON_EDUCATION_TIERS: tuple[Tier, ...] = (
     Tier(
         10,
         "반경 1km 이내 초·중·고 모두 존재하고, 반경 500m 이내 초·중 모두 존재",
-        lambda f: (
-            f.has("school_elementary", 1)
-            and f.has("school_middle", 1)
-            and f.has("school_high", 1)
-            and f.has("school_elementary", 0.5)
-            and f.has("school_middle", 0.5)
+        (
+            _req_has("school_elementary", 0.5),
+            _req_has("school_middle", 0.5),
+            _req_has("school_high", 1),
         ),
     ),
     Tier(
         8,
         "반경 1.5km 이내 초·중·고 모두 존재하고, 반경 1km 이내 초등학교 존재",
-        lambda f: (
-            f.has("school_elementary", 1.5)
-            and f.has("school_middle", 1.5)
-            and f.has("school_high", 1.5)
-            and f.has("school_elementary", 1)
+        (
+            _req_has("school_elementary", 1),
+            _req_has("school_middle", 1.5),
+            _req_has("school_high", 1.5),
         ),
     ),
     Tier(
         6,
         "반경 2km 이내 초·중 모두 존재하고, 반경 3km 이내 고등학교 존재",
-        lambda f: (
-            f.has("school_elementary", 2) and f.has("school_middle", 2) and f.has("school_high", 3)
+        (
+            _req_has("school_elementary", 2),
+            _req_has("school_middle", 2),
+            _req_has("school_high", 3),
         ),
     ),
     Tier(
         4,
         "반경 3km 이내 초·중 모두 존재",
-        lambda f: f.has("school_elementary", 3) and f.has("school_middle", 3),
+        (_req_has("school_elementary", 3), _req_has("school_middle", 3)),
     ),
-    Tier(2, "해당 없음", lambda f: True),
+    Tier(2, "해당 없음"),
 )
 
 # --- 교육여건(청년·기숙사형) ----------------------------------------------
 _YOUTH_EDUCATION_TIERS: tuple[Tier, ...] = (
-    Tier(5, "반경 1km 이내 대학교가 존재", lambda f: f.has("university", 1)),
-    Tier(4, "반경 1.5km 이내 대학교가 존재", lambda f: f.has("university", 1.5)),
-    Tier(3, "반경 2km 이내 대학교가 존재", lambda f: f.has("university", 2)),
-    Tier(2, "반경 2.5km 이내 대학교가 존재", lambda f: f.has("university", 2.5)),
-    Tier(1, "해당 없음", lambda f: True),
+    Tier(5, "반경 1km 이내 대학교가 존재", (_req_has("university", 1),)),
+    Tier(4, "반경 1.5km 이내 대학교가 존재", (_req_has("university", 1.5),)),
+    Tier(3, "반경 2km 이내 대학교가 존재", (_req_has("university", 2),)),
+    Tier(2, "반경 2.5km 이내 대학교가 존재", (_req_has("university", 2.5),)),
+    Tier(1, "해당 없음"),
 )
 
 # --- 가점 · 역세권 ---------------------------------------------------------
@@ -264,9 +368,15 @@ _STATION_AREA_TIERS: tuple[Tier, ...] = (
     Tier(
         5,
         "반경 500m 이내 지하철역·철도역·터미널·환승시설 중 하나 이상 존재",
-        lambda f: f.has_any(STATION_AREA_GROUPS, 0.5),
+        (
+            _req_any(
+                STATION_AREA_GROUPS,
+                0.5,
+                "반경 0.5km 이내 지하철역·철도역·터미널·환승시설 중 하나 이상",
+            ),
+        ),
     ),
-    Tier(0, "해당 없음", lambda f: True),
+    Tier(0, "해당 없음"),
 )
 
 

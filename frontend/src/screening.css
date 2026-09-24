@@ -13,6 +13,8 @@
   --sh-body: 19px;
   --sh-small: 16px;
   --sh-micro: 14px;
+  /* 탭 버튼 높이(52px) + 밑선 1px. 1차 표 머리(thead)가 이 아래에 붙는다. */
+  --sh-tabs-h: 53px;
   display: grid;
   gap: 14px;
   padding: 14px 16px 26px;
@@ -333,15 +335,17 @@
 .screening-stage-tabs button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: 9px;
+  box-sizing: border-box;
+  height: 52px;
+  padding: 0 18px;
   color: var(--muted);
   background: transparent;
   border: 0;
   border-bottom: 2px solid transparent;
   font: inherit;
-  font-size: var(--sh-small);
-  font-weight: 600;
+  font-size: var(--sh-h3);
+  font-weight: 700;
   cursor: pointer;
   transition:
     color 150ms ease,
@@ -364,8 +368,8 @@
 
 .screening-stage-tabs b {
   color: var(--muted-2);
-  font-size: var(--sh-micro);
-  font-weight: 500;
+  font-size: var(--sh-h3);
+  font-weight: 800;
 }
 
 .screening-stage-tabs button.is-active b {
@@ -750,8 +754,8 @@
 
 .screening-stage-one-table thead th {
   position: sticky;
-  /* 탭 줄 높이(버튼 10px 패딩 + 글자 + 1px 밑선)와 정확히 맞춘다. 틈이 생기면 그 사이로 본문이 비친다. */
-  top: var(--sh-tabs-h, 43px);
+  /* 탭 줄 높이(--sh-tabs-h)와 정확히 맞춘다. 틈이 생기면 그 사이로 본문이 비친다. */
+  top: var(--sh-tabs-h);
   z-index: 3;
   background: var(--surface-3);
   box-shadow: 0 1px 0 var(--border);
@@ -799,6 +803,56 @@
 
 .screening-stage-one-table .screening-data-cell {
   max-width: none;
+}
+
+/* 2차 연결상세 표 — 1차 표와 같은 고정 레이아웃·같은 열 비율. 시설군마다 표가 따로
+   있어도 열 위치가 모두 같아 위아래로 읽힌다. */
+.screening-group-table {
+  table-layout: fixed;
+  min-width: 0;
+}
+
+.screening-group-table thead th:nth-child(1) { width: 23%; min-width: 0; }
+.screening-group-table thead th:nth-child(2) { width: 7%; }
+.screening-group-table thead th:nth-child(3) { width: 8%; }
+.screening-group-table thead th:nth-child(4) { width: 8%; }
+.screening-group-table thead th:nth-child(5) { width: 21.6%; min-width: 0; }
+.screening-group-table thead th:nth-child(6) { width: 9%; }
+.screening-group-table thead th:nth-child(7) { width: 23.4%; min-width: 0; max-width: none; }
+
+.screening-group-table tbody > .screening-row > td:nth-child(2),
+.screening-group-table tbody > .screening-row > td:nth-child(3),
+.screening-group-table tbody > .screening-row > td:nth-child(4),
+.screening-group-table tbody > .screening-row > td:nth-child(6) {
+  text-align: center;
+}
+
+.screening-group-table .screening-source-cell .screening-source-kinds {
+  justify-content: center;
+}
+
+.screening-group-table .screening-row-label,
+.screening-group-table .screening-row-toggle > span,
+.screening-group-table .screening-row-reason,
+.screening-group-table .screening-data-cell {
+  width: auto;
+  max-width: none;
+}
+
+.screening-group-table tbody th[scope="row"] > small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--sh-micro);
+  line-height: 1.5;
+}
+
+/* 원천 이름이 긴 칩(TAGO 정류소 근접조회 + …)은 칸 안에서 말줄임한다. 전체는 title 로 본다. */
+.screening-group-table .screening-data-chip {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
 }
 
 .screening-data-chip {
@@ -1145,7 +1199,7 @@
   list-style: none;
 }
 
-.screening-tier-list li {
+.screening-tier-list > li {
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr) auto;
   align-items: baseline;
@@ -1159,13 +1213,13 @@
   line-height: 1.5;
 }
 
-.screening-tier-list li b {
+.screening-tier-list > li > b {
   color: var(--fg-2);
   font-size: var(--sh-small);
   text-align: right;
 }
 
-.screening-tier-list li em {
+.screening-tier-list > li > em {
   color: var(--teal);
   font-size: var(--sh-micro);
   font-style: normal;
@@ -1173,19 +1227,119 @@
   white-space: nowrap;
 }
 
-.screening-tier-list li.is-achieved {
+.screening-tier-list > li.is-achieved {
   color: var(--fg-2);
 }
 
-.screening-tier-list li.is-selected {
+.screening-tier-list > li.is-selected {
   color: var(--fg);
   background: var(--blue-dim);
   border-color: color-mix(in srgb, var(--blue) 40%, transparent);
   font-weight: 700;
 }
 
-.screening-tier-list li.is-selected b {
+.screening-tier-list > li.is-selected > b {
   color: var(--blue);
+}
+
+.screening-tier-list > li > .screening-req-list {
+  grid-column: 2 / -1;
+  font-weight: 400;
+}
+
+/* 배점 근거 — 항목별 받은 근거 · 더 받지 못한 이유 */
+.screening-score-reasons {
+  display: grid;
+  gap: 7px;
+}
+
+.screening-score-reasons > header {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.screening-score-reasons > header strong {
+  font-size: var(--sh-h3);
+}
+
+.screening-score-reasons > header small {
+  color: var(--muted);
+  font-size: var(--sh-small);
+}
+
+/* 공용 표 열 폭(1차 7열용)을 덮고 4열 비율로 고정한다. 두 근거 열이 폭을 나눠 가진다. */
+.screening-reason-table {
+  table-layout: fixed;
+  min-width: 640px;
+}
+
+.screening-reason-table thead th:nth-child(1) { width: 15%; min-width: 0; }
+.screening-reason-table thead th:nth-child(2) { width: 9%; min-width: 0; }
+.screening-reason-table thead th:nth-child(3) { width: 41%; min-width: 0; }
+.screening-reason-table thead th:nth-child(4) { width: 35%; min-width: 0; max-width: none; }
+
+.screening-reason-table tbody th[scope="row"] {
+  font-weight: 700;
+}
+
+.screening-reason-table tbody td.is-num {
+  text-align: center;
+  font-size: var(--sh-body);
+}
+
+.screening-reason-table td.is-num b {
+  font-size: var(--sh-h3);
+}
+
+.screening-reason-tier {
+  margin: 0 0 4px;
+  color: var(--fg);
+  font-weight: 700;
+}
+
+.screening-reason-tier.is-full {
+  color: var(--teal);
+}
+
+.screening-req-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  list-style: none;
+}
+
+.screening-req {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 6px;
+  font-size: var(--sh-small);
+  line-height: 1.5;
+}
+
+.screening-req > b {
+  font-weight: 800;
+  text-align: center;
+}
+
+.screening-req > small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: var(--sh-micro);
+}
+
+.screening-req.is-met > b {
+  color: var(--teal);
+}
+
+.screening-req.is-unmet > b {
+  color: var(--red);
+}
+
+.screening-req.is-unknown > b {
+  color: var(--amber);
 }
 
 .screening-out-of-scope {

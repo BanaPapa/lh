@@ -31,8 +31,10 @@ import type {
   ScreeningDataSource,
   ScreeningFacilityHit,
   ScreeningGroupStatus,
+  ScreeningRequirement,
   ScreeningResult,
   ScreeningExclusionItem,
+  ScreeningStageTwo,
 } from "./types";
 
 /**
@@ -216,6 +218,114 @@ function RowTriangle({ open, muted }: { open?: boolean; muted?: boolean }) {
 }
 
 /** 건축물대장 스캔 핀이 종류를 가른 근거 — 층별개요 용도코드 일치인지, 기타용도 문자열 추정인지. */
+const REQUIREMENT_MARK = { met: "✓", unmet: "✗", unknown: "?" } as const;
+
+function requirementState(req: ScreeningRequirement): keyof typeof REQUIREMENT_MARK {
+  if (req.met === null) return "unknown";
+  return req.met ? "met" : "unmet";
+}
+
+/** 요건 한 줄 — 「✓ 반경 1km 이내 초등학교 · 전주새연초등학교 451m」. */
+function RequirementLine({ req }: { req: ScreeningRequirement }) {
+  const state = requirementState(req);
+  return (
+    <li className={`screening-req is-${state}`}>
+      <b aria-hidden="true">{REQUIREMENT_MARK[state]}</b>
+      <span>{req.text}</span>
+      {req.evidence && <small>{req.evidence}</small>}
+    </li>
+  );
+}
+
+/**
+ * 2차 배점 근거표. 항목마다 「받은 점수 · 그 등급을 받은 근거 · 한 단계 위를 못 받은
+ * 이유」를 한 줄로 보여 준다. 등급·요건 판정은 백엔드 scorebook 이 낸 값을 그대로 쓴다.
+ */
+function ScoreReasons({ stageTwo }: { stageTwo: ScreeningStageTwo }) {
+  const rows = stageTwo.bonus ? [...stageTwo.criteria, stageTwo.bonus] : stageTwo.criteria;
+  return (
+    <div className="screening-score-reasons">
+      <header>
+        <strong>배점 근거</strong>
+        <small>항목별로 받은 등급의 근거와, 한 단계 위 등급을 받지 못한 이유입니다.</small>
+      </header>
+      <div className="screening-table-scroll">
+        <table className="screening-table screening-reason-table">
+          <thead>
+            <tr>
+              <th scope="col">평가항목</th>
+              <th scope="col">점수</th>
+              <th scope="col">받은 근거</th>
+              <th scope="col">더 받지 못한 이유</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((criterion) => {
+              const index = criterion.tiers.findIndex((tier) => tier.selected);
+              const selected = index >= 0 ? criterion.tiers[index] : null;
+              const above = index > 0 ? criterion.tiers[index - 1] : null;
+              const isBonus = criterion === stageTwo.bonus;
+              return (
+                <tr key={criterion.key}>
+                  <th scope="row">
+                    {criterion.label}
+                    {isBonus && <em className="screening-badge is-bonus">가점</em>}
+                  </th>
+                  <td className="is-num">
+                    <b>{formatPoints(criterion.awarded)}</b> / {criterion.maximum}
+                  </td>
+                  <td>
+                    {selected ? (
+                      <>
+                        <p className="screening-reason-tier">
+                          {selected.points}점 등급 · {selected.condition}
+                        </p>
+                        {selected.requirements.length > 0 ? (
+                          <ul className="screening-req-list">
+                            {selected.requirements.map((req) => (
+                              <RequirementLine key={req.text} req={req} />
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="screening-row-note">
+                            위 등급 조건을 하나도 충족하지 못해 최하 등급입니다.
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="screening-row-note">
+                        산정 가능 범위 {criterion.awarded_min}~{criterion.awarded_max}점
+                        {criterion.note ? ` · ${criterion.note}` : ""}
+                      </p>
+                    )}
+                  </td>
+                  <td>
+                    {selected && !above && (
+                      <p className="screening-reason-tier is-full">만점</p>
+                    )}
+                    {above && (
+                      <>
+                        <p className="screening-reason-tier">{above.condition}</p>
+                        <ul className="screening-req-list">
+                          {above.requirements
+                            .filter((req) => req.met !== true)
+                            .map((req) => (
+                              <RequirementLine key={req.text} req={req} />
+                            ))}
+                        </ul>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function scanBasisLabel(metadata: Record<string, unknown>): string {
   const evidence = typeof metadata.evidence === "string" ? metadata.evidence : "";
   if (metadata.basis === "code") return `용도코드 일치 「${evidence}」`;
@@ -311,7 +421,7 @@ interface ScreeningSheetProps {
 }
 
 /** 심사표 본문은 1차와 2차 두 장이다. 한 화면에 쏟지 않고 탭으로 가른다. */
-type ScreeningStageTab = "stage-one" | "stage-two";
+type ScreeningStageTab = "stage-one" | "stage-two" | "stage-two-sources";
 
 /** 열림 상태를 키 집합으로 들고 있는다. 여러 줄을 동시에 펼칠 수 있다. */
 function useExpandedKeys(resetKey: string | undefined) {
@@ -461,6 +571,15 @@ export function ScreeningSheet({
 
   const stageOne = result.stage_one;
   const stageTwo = result.stage_two;
+  // 역세권 가점은 교통 시설군을 다시 쓰므로 키로 한 번씩만 센다.
+  const twoGroups = [
+    ...new Map(
+      [...stageTwo.criteria, ...(stageTwo.bonus ? [stageTwo.bonus] : [])]
+        .flatMap((criterion) => criterion.groups)
+        .map((group) => [group.key, group] as const),
+    ).values(),
+  ];
+  const connectedGroups = twoGroups.filter((group) => group.state === "connected").length;
   const verdict = SCREENING_VERDICT_CONFIG[result.verdict];
   const VerdictIcon = verdict.icon;
 
@@ -792,6 +911,13 @@ export function ScreeningSheet({
                     <b className="is-num">{tier.points}점</b>
                     <span>{tier.condition}</span>
                     {tier.achieved && <em>충족</em>}
+                    {tier.requirements.length > 0 && (
+                      <ul className="screening-req-list">
+                        {tier.requirements.map((req) => (
+                          <RequirementLine key={req.text} req={req} />
+                        ))}
+                      </ul>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -910,8 +1036,8 @@ export function ScreeningSheet({
                                 className="screening-data-chip is-api"
                                 title={
                                   sourceDiffers
-                                    ? `지정 원천 ${group.designated_source}`
-                                    : undefined
+                                    ? `${group.actual_source} (지정 원천 ${group.designated_source})`
+                                    : group.actual_source
                                 }
                               >
                                 {group.actual_source}
@@ -1115,6 +1241,18 @@ export function ScreeningSheet({
               : `${stageTwo.living_score_min}~${stageTwo.living_score_max}`}
           </b>
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={stageTab === "stage-two-sources"}
+          className={stageTab === "stage-two-sources" ? "is-active" : ""}
+          onClick={() => setStageTab("stage-two-sources")}
+        >
+          2차 생활편의시설 연결상세
+          <b className="is-num">
+            {connectedGroups}/{twoGroups.length}
+          </b>
+        </button>
       </nav>
 
       {/* C-1. 1차 매입제외 — 「주거환경 저해시설」만 보여준다.
@@ -1260,10 +1398,7 @@ export function ScreeningSheet({
           )}
         </div>
 
-        <div className="screening-criteria">
-          {stageTwo.criteria.map((criterion) => renderCriterion(criterion))}
-          {stageTwo.bonus && renderCriterion(stageTwo.bonus, true)}
-        </div>
+        <ScoreReasons stageTwo={stageTwo} />
 
         {stageTwo.out_of_scope.length > 0 && (
           <div className="screening-out-of-scope">
@@ -1282,6 +1417,29 @@ export function ScreeningSheet({
             </ul>
           </div>
         )}
+      </section>
+
+      {/* C-3. 2차 생활편의시설 연결상세 — 점수가 아니라 시설군별 원천 연결 상태와
+         조회 결과를 본다. 점수 근거는 2차 배점 탭의 배점 근거 표에 있다. */}
+      <section
+        className="screening-section"
+        role="tabpanel"
+        hidden={stageTab !== "stage-two-sources"}
+      >
+        <div className="screening-section-heading">
+          <div>
+            <span>2차</span>
+            <strong>생활편의시설 연결상세</strong>
+          </div>
+          <small>
+            시설군 {twoGroups.length}종 중 지정 원천 연결 {connectedGroups}종
+          </small>
+        </div>
+
+        <div className="screening-criteria">
+          {stageTwo.criteria.map((criterion) => renderCriterion(criterion))}
+          {stageTwo.bonus && renderCriterion(stageTwo.bonus, true)}
+        </div>
       </section>
 
       {/* E. 하단 고지 */}

@@ -184,6 +184,16 @@ class ScreeningGroupStatus(BaseModel):
     hits: list[ScreeningFacilityHit] = Field(default_factory=list)
 
 
+class ScreeningRequirement(BaseModel):
+    """등급 조건을 이루는 요건 하나와 그 판정 근거. 점수가 왜 나왔는지 보이는 단위다."""
+
+    text: str
+    # 원천 미확보로 충족 여부를 가릴 수 없으면 None.
+    met: bool | None
+    # 「전주새연초등학교 451m」처럼 실제로 잰 최근접 시설.
+    evidence: str = ""
+
+
 class ScreeningTier(BaseModel):
     """평가항목의 등급 한 줄. 화면에 등급표를 그대로 그린다."""
 
@@ -191,6 +201,7 @@ class ScreeningTier(BaseModel):
     condition: str
     achieved: bool = False
     selected: bool = False
+    requirements: list[ScreeningRequirement] = Field(default_factory=list)
 
 
 class ScreeningCriterion(BaseModel):

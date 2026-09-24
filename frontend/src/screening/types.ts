@@ -185,12 +185,22 @@ export interface ScreeningGroupStatus {
   hits: ScreeningFacilityHit[];
 }
 
+/** 등급 조건을 이루는 요건 하나와 판정 근거. */
+export interface ScreeningRequirement {
+  text: string;
+  /** 원천 미확보로 가릴 수 없으면 null. */
+  met: boolean | null;
+  /** 실제로 잰 최근접 시설. 예: 「전주새연초등학교 451m」 */
+  evidence: string;
+}
+
 /** 평가항목의 등급 한 줄. */
 export interface ScreeningTier {
   points: number;
   condition: string;
   achieved: boolean;
   selected: boolean;
+  requirements: ScreeningRequirement[];
 }
 
 /** 평가항목 하나 — 대중교통 접근성 · 주거여건 · 교육여건 · 역세권 가점. */
