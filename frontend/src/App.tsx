@@ -11,6 +11,7 @@ import {
   resolveHazardParcel,
   resolveHazardParcelAt,
 } from "./hazard-review/api";
+import { BatchPanel } from "./screening/BatchPanel";
 import { ScreeningProgressModal } from "./screening/ScreeningProgressModal";
 import { ringCentroid } from "./hazard-review/mapViewport";
 import type {
@@ -129,6 +130,7 @@ function App() {
     useState<ScreeningJobStatus | null>(null);
   const [screeningRunning, setScreeningRunning] = useState(false);
   const [screeningError, setScreeningError] = useState("");
+  const [batchOpen, setBatchOpen] = useState(false);
   const [selectedHazardFindingId, setSelectedHazardFindingId] =
     useState<string | null>(null);
   const [selectedHazardFacilityId, setSelectedHazardFacilityId] =
@@ -677,6 +679,45 @@ function App() {
     screeningJobIdRef.current = null;
   };
 
+  /**
+   * 일괄 심사 결과 한 건을 본 화면으로 가져온다. 결과에 든 사업지·필지·유형을
+   * 그대로 올려 지도와 심사표가 그 건을 가리키게 하고, 진행 중이던 단건 심사는 버린다.
+   */
+  const handleOpenBatchResult = (result: ScreeningResult) => {
+    screeningRunRef.current += 1;
+    siteParcelRunRef.current += 1;
+    setSelectedCandidate({
+      id: `batch:${result.screening_id}`,
+      name: result.site.name,
+      address: result.site.address,
+      road_address: "",
+      coordinates: result.site.coordinates,
+      source: "kakao",
+    });
+    setQuery(result.site.address);
+    setHazardParcels(result.site.parcels);
+    setParcelNote("");
+    setHazardHousingType(result.housing_type);
+    setHazardApplicationType(result.application_type);
+    setScreeningResult(result);
+    setScreeningProgress(null);
+    setScreeningRunning(false);
+    setScreeningError("");
+    setScreeningDiff(null);
+    setSelectedHazardFindingId(null);
+    setSelectedHazardFacilityId(null);
+    setExpandedScreeningGroupKey(null);
+    setSelectedScreeningHitName(null);
+    setDesignationTarget(null);
+    setDesignationError("");
+    setSearchError("");
+    setSearchNotice("");
+    setRailVisible(true);
+    setSheetOpen(true);
+    setBatchOpen(false);
+    setViewportRequest((seq) => seq + 1);
+  };
+
   const showRail = Boolean(selectedCandidate) && railVisible;
 
   return (
@@ -703,6 +744,7 @@ function App() {
         running={screeningRunning}
         runAttention={runAttention}
         canPrint={Boolean(screeningResult)}
+        onOpenBatch={() => setBatchOpen(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
@@ -833,6 +875,15 @@ function App() {
           </div>
         )}
       </div>
+
+      <BatchPanel
+        open={batchOpen}
+        onClose={() => setBatchOpen(false)}
+        applicationTypes={hazardApplicationTypes}
+        defaultHousingType={hazardHousingType}
+        defaultApplicationType={hazardApplicationType}
+        onOpenResult={handleOpenBatchResult}
+      />
 
       <ScreeningProgressModal
         open={screeningRunning}

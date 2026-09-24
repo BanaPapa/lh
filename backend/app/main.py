@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import Settings, get_settings
 from app.hazard_review.router import router as hazard_review_router
 from app.models import GeocodeResponse
+from app.screening.batch import router as screening_batch_router
 from app.screening.router import router as screening_router
 from app.services.demo import demo_geocode
 from app.services.kakao import KakaoAPIError, KakaoClient
@@ -56,6 +57,7 @@ app.add_middleware(
 
 app.include_router(hazard_review_router)
 app.include_router(screening_router)
+app.include_router(screening_batch_router)
 app.include_router(settings_router)
 
 

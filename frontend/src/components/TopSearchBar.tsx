@@ -1,11 +1,13 @@
 import {
   BookOpen,
   ClipboardCheck,
+  FileSpreadsheet,
   Moon,
   Plug,
   Printer,
   RotateCcw,
   Search,
+  SlidersHorizontal,
   Sun,
 } from "lucide-react";
 import { useState } from "react";
@@ -14,6 +16,7 @@ import type { ThemeMode } from "../theme";
 import { ApiKeysPanel } from "./ApiKeysPanel";
 import { SettingsMenu } from "./SettingsMenu";
 import { RulebookModal } from "../rulebook/RulebookModal";
+import { RulesPanel } from "./RulesPanel";
 
 interface TopSearchBarProps {
   query: string;
@@ -34,6 +37,8 @@ interface TopSearchBarProps {
   canPrint: boolean;
   theme: ThemeMode;
   onToggleTheme: () => void;
+  /** 일괄 심사(신청자 엑셀 올리기) 모달을 연다. */
+  onOpenBatch: () => void;
 }
 
 /**
@@ -58,11 +63,14 @@ export function TopSearchBar({
   canPrint,
   theme,
   onToggleTheme,
+  onOpenBatch,
 }: TopSearchBarProps) {
   // API 연결 패널(상단 바 전용 버튼이 연다).
   const [apiOpen, setApiOpen] = useState(false);
   // 심사 룰북 모달(API 연결 옆 버튼이 연다).
   const [rulebookOpen, setRulebookOpen] = useState(false);
+  // 관리자 「기준 편집」(임계거리·완화 기준·LH 개별 확인 제외).
+  const [rulesOpen, setRulesOpen] = useState(false);
   return (
     <header className="solo-topbar">
       <div className="solo-bar-primary">
@@ -148,6 +156,16 @@ export function TopSearchBar({
 
           <button
             type="button"
+            className="solo-icon-button"
+            onClick={onOpenBatch}
+            aria-label="일괄 심사"
+            title="일괄 심사 — 신청자 엑셀 올리기"
+          >
+            <FileSpreadsheet size={18} />
+          </button>
+
+          <button
+            type="button"
             className={`solo-icon-button ${apiOpen ? "is-active" : ""}`}
             onClick={() => setApiOpen(true)}
             aria-label="API 연결"
@@ -164,6 +182,16 @@ export function TopSearchBar({
             title="심사 룰북"
           >
             <BookOpen size={18} />
+          </button>
+
+          <button
+            type="button"
+            className={`solo-icon-button ${rulesOpen ? "is-active" : ""}`}
+            onClick={() => setRulesOpen(true)}
+            aria-label="기준 편집"
+            title="기준 편집 — 임계거리 · 2027 완화 기준 · LH 개별 확인 제외"
+          >
+            <SlidersHorizontal size={18} />
           </button>
 
           <SettingsMenu
@@ -185,6 +213,7 @@ export function TopSearchBar({
       </div>
       <ApiKeysPanel open={apiOpen} onClose={() => setApiOpen(false)} />
       <RulebookModal open={rulebookOpen} onClose={() => setRulebookOpen(false)} />
+      <RulesPanel open={rulesOpen} onClose={() => setRulesOpen(false)} />
     </header>
   );
 }
