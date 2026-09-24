@@ -203,15 +203,12 @@ RULES: tuple[Rule, ...] = (
 RULE_BY_ID: dict[str, Rule] = {rule.rule_id: rule for rule in RULES}
 
 
-def threshold_for(
+def default_threshold_for(
     rule_id: str,
     housing_type: HousingType,
     application_type: ApplicationType,
 ) -> int | None:
-    """해당 신청유형에 적용되는 임계거리(m). 미적용이면 None.
-
-    매트릭스가 유일 기준이다. Rule 이나 조합이 없으면 None 을 돌려준다.
-    """
+    """룰북 정본(MATRIX)의 임계거리. 관리자 편집값을 보지 않는다."""
 
     rule = RULE_BY_ID.get(rule_id)
     if rule is None:
@@ -220,6 +217,28 @@ def threshold_for(
     if cell is None:
         return None
     return cell.get(rule.column)
+
+
+def threshold_for(
+    rule_id: str,
+    housing_type: HousingType,
+    application_type: ApplicationType,
+) -> int | None:
+    """해당 신청유형에 적용되는 임계거리(m). 미적용이면 None.
+
+    매트릭스가 기준이되, 관리자 「기준 편집」(rules_config)에 덮어쓴 값이 있으면
+    그 값이 앞선다(09/22 결정 6 — 거리 숫자는 화면에서 고치고 기본값은 보관).
+    """
+
+    from app.rules_config import stage1_override
+
+    rule = RULE_BY_ID.get(rule_id)
+    if rule is None:
+        return None
+    overridden, value = stage1_override(housing_type, application_type, rule.column)
+    if overridden:
+        return value
+    return default_threshold_for(rule_id, housing_type, application_type)
 
 
 def thresholds_for(

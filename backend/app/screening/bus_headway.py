@@ -111,10 +111,8 @@ def _label(
 ) -> str:
     if not determined:
         if not routes and not unknown:
-            return "경유 노선 정보 없음 — 운행주기 확인 필요(배점 제외)"
-        return (
-            f"경유 노선 {len(unknown)}개 배차간격 미확인 — 운행주기 확인 필요(배점 제외)"
-        )
+            return "경유 노선 정보 없음 — 운행주기 확인 불가, 정류장으로 셈"
+        return f"경유 노선 {len(unknown)}개 배차간격 미확인 — 운행주기 확인 불가, 정류장으로 셈"
     parts = ", ".join(f"{r.route_no}({r.interval_min:g}분)" for r in routes[:6])
     more = f" 외 {len(routes) - 6}개" if len(routes) > 6 else ""
     tail = f" · 배차 미확인 {len(unknown)}개" if unknown else ""

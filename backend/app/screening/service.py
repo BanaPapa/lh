@@ -51,16 +51,18 @@ from app.screening.models import (
     ScreeningStageTwo,
     ScreeningTier,
 )
+from app.rules_config import is_relaxed
 from app.screening.scorebook import (
-    BONUS_CRITERION,
     FACILITY_GROUP_BY_KEY,
     OUT_OF_SCOPE_ITEMS,
-    PASS_THRESHOLD,
+    RELAXED_NOTE,
     TOTAL_SHEET_POINTS,
     Criterion,
     Facts,
     Tier,
+    bonus_criterion,
     evaluate,
+    pass_threshold_for,
     sheet_for,
 )
 
@@ -439,7 +441,8 @@ def _build_stage_two(
     measurement: str,
     reference_only: bool,
 ) -> ScreeningStageTwo:
-    sheet = sheet_for(application_type)
+    relaxed = is_relaxed()
+    sheet = sheet_for(application_type, relaxed)
     distances = {key: list(item.distances_m) for key, item in collections.items()}
     missing = {key for key, item in collections.items() if item.state == "missing"}
     # 배점 근거 문장에 쓰는 시설명. 배점에 센 시설만 넣는다(운행주기 미달 정류장 제외).
@@ -456,7 +459,7 @@ def _build_stage_two(
         for criterion in sheet.criteria
     ]
     bonus = _build_criterion(
-        BONUS_CRITERION, pessimistic, optimistic, collections, measurement
+        bonus_criterion(sheet.key, relaxed), pessimistic, optimistic, collections, measurement
     )
 
     score_min = sum(item.awarded_min for item in criteria)
@@ -479,9 +482,9 @@ def _build_stage_two(
         ],
         out_of_scope_points=sum(item.maximum for item in OUT_OF_SCOPE_ITEMS),
         total_sheet_points=TOTAL_SHEET_POINTS,
-        pass_threshold=PASS_THRESHOLD,
+        pass_threshold=pass_threshold_for(relaxed),
         reference_only=reference_only,
-        note=_stage_two_note(collections, reference_only),
+        note=" ".join(part for part in (RELAXED_NOTE if relaxed else "", _stage_two_note(collections, reference_only)) if part),
     )
 
 

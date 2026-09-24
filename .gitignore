@@ -105,3 +105,6 @@ backend/.env.bak.*
 !docs/HANDOFF_260914.md
 # 상용화 로드맵(2026-09-14). 코드 감사 근거로 고칠 것 전부와 우선순위·완료 기준.
 !docs/PRODUCTION_ROADMAP_2026-09-14.md
+
+# 관리자 「기준 편집」 저장값(로컬 설정)
+backend/data/rule_overrides.json

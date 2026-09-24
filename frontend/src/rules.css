@@ -1,0 +1,318 @@
+/* ── 관리자 「기준 편집」 모달 ────────────────────────────────────
+   배경·닫기 버튼은 API 연결 패널(.api-keys-backdrop · .api-keys-close)과 공유한다. */
+
+.rules-modal {
+  box-sizing: border-box;
+  width: max(88vw, min(1000px, 100%));
+  height: max(78vh, min(640px, calc(100vh - 48px)));
+  max-width: 100%;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  color: var(--fg);
+  background: var(--raise);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+
+.rules-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rules-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.rules-head h2 > svg {
+  color: var(--blue);
+}
+
+.rules-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.rules-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.rules-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 18px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rules-tabs button.is-active {
+  color: var(--fg);
+  border-bottom-color: var(--blue);
+}
+
+.rules-tabs button b {
+  padding: 1px 7px;
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.rules-message {
+  margin: 0;
+  padding: 9px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.rules-message.is-error {
+  color: var(--red);
+}
+
+.rules-message.is-notice {
+  color: var(--teal);
+}
+
+.rules-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 22px;
+}
+
+.rules-section > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.rules-section h3 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.rules-section > header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.rules-ghost,
+.rules-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rules-ghost {
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+}
+
+.rules-ghost.is-danger {
+  color: var(--red);
+}
+
+.rules-ghost:disabled,
+.rules-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rules-save {
+  color: #fff;
+  background: var(--blue);
+  border: 1px solid var(--blue);
+}
+
+.rules-table-scroll {
+  overflow: auto;
+}
+
+.rules-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.rules-table th {
+  padding: 8px 8px;
+  color: var(--muted);
+  background: var(--surface-3);
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.rules-table th small,
+.rules-table tbody th small {
+  display: block;
+  color: var(--muted-2);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.rules-table .is-left {
+  text-align: left;
+}
+
+.rules-table tbody th {
+  color: var(--fg);
+  background: transparent;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  white-space: nowrap;
+}
+
+.rules-table td {
+  padding: 6px 6px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  vertical-align: top;
+}
+
+.rules-table td input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 82px;
+  padding: 7px 8px;
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 15px;
+  text-align: center;
+}
+
+.rules-table td input::placeholder {
+  color: var(--muted-2);
+}
+
+.rules-table td.is-changed input {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  font-weight: 700;
+}
+
+.rules-table td.is-invalid input {
+  border-color: var(--red);
+}
+
+.rules-cell-reset {
+  display: block;
+  margin: 3px auto 0;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.rules-excluded td input {
+  text-align: left;
+  min-width: 200px;
+}
+
+.rules-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.rules-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
+.rules-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.rules-list b {
+  margin-right: 6px;
+}
+
+.rules-list em {
+  color: var(--blue);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.rules-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.rules-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--border);
+}
+
+.rules-foot small {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.rules-foot > div {
+  display: flex;
+  gap: 8px;
+}

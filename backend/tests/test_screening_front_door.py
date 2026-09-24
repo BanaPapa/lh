@@ -20,7 +20,6 @@ import pytest
 from app.models import Coordinates
 from app.screening.amenities import (
     FRONT_DOOR_PENDING_NOTICE,
-    HOSPITAL_FRONT_DOOR_PENDING_NOTICE,
     AmenityCollector,
     _distance_m,
 )
@@ -456,27 +455,21 @@ class TestHospitalFrontDoor:
     def _hospital_kakao(self) -> FakeKakao:
         return FakeKakao(categories={"HP8": [_hospital_place("전주사랑종합병원", 500.0)]})
 
-    def test_hospital_without_front_door_falls_back_to_coordinate_with_decision_notice(
-        self,
-    ) -> None:
-        # #8: 종합병원도 정문 3단을 타되, 정문 미확인이면 좌표 폴백 + 결정 근거 고지.
-        collector = AmenityCollector(kakao=self._hospital_kakao(), tago=FakeTago([]))
-        hospital = _collect(collector)["hospital"]
-        facility = hospital.facilities[0]
-        assert facility.measurement_tier == "coordinate"
-        assert facility.front_door_notice == HOSPITAL_FRONT_DOOR_PENDING_NOTICE
-        assert "2026-09-11" in hospital.front_door_notice
-
-    def test_hospital_uses_naver_front_door_when_available(self) -> None:
+    def test_hospital_ignores_front_doors_and_measures_by_parcel_boundary(self) -> None:
+        # LH 09/22 결정 2: 종합병원은 필지 경계 기준. 네이버에 정문이 있어도 묻지 않는다
+        # (경계 원천이 없는 테스트 환경에서는 좌표로 남고, 정문 후보는 비어 있다).
         naver = FakeNaver(
             {"전주사랑종합병원 정문": [_local("전주사랑종합병원 정문", 400.0)]}
         )
         collector = AmenityCollector(
             kakao=self._hospital_kakao(), tago=FakeTago([]), naver=naver
         )
-        facility = _collect(collector)["hospital"].facilities[0]
-        assert facility.measurement_tier == "front_door_point"
-        assert facility.front_door_candidates[0].label == "전주사랑종합병원 정문"
+        hospital = _collect(collector)["hospital"]
+        facility = hospital.facilities[0]
+        assert facility.measurement_tier == "coordinate"
+        assert facility.front_door_candidates == ()
+        assert facility.front_door_source == ""
+        assert hospital.front_door_notice == ""
 
 
 class TestStationExitCandidates:

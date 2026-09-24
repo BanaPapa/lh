@@ -243,6 +243,23 @@ def _req_kinds(km: float, minimum: int) -> Requirement:
     )
 
 
+def _req_or(text: str, *alternatives: tuple[Requirement, ...]) -> Requirement:
+    """여러 묶음 중 하나라도 전부 충족하면 되는 요건(2027 완화안의 「…하거나」)."""
+
+    def check(f: Facts) -> bool:
+        return any(all(r.check(f) for r in group) for group in alternatives)
+
+    def evidence(f: Facts) -> str:
+        parts = []
+        for group in alternatives:
+            met = all(r.check(f) for r in group)
+            body = " · ".join(r.evidence(f) for r in group)
+            parts.append(f"{'충족' if met else '미충족'}: {body}")
+        return " / ".join(parts)
+
+    return Requirement(text, check, evidence)
+
+
 class Tier(NamedTuple):
     """평가항목 한 줄. 위에서부터 먼저 만족하는 등급을 채택한다.
 
@@ -354,6 +371,35 @@ _COMMON_EDUCATION_TIERS: tuple[Tier, ...] = (
     Tier(2, "해당 없음"),
 )
 
+# --- 교육여건(공통) · 2027 완화안 --------------------------------------------
+# 「서류심사 기준 완화」(LH, 09/22 전달): 100%·80% 등급의 「…하고」를 「…하거나」로.
+# 60% 이하는 현행과 같다.
+_COMMON_EDUCATION_TIERS_RELAXED: tuple[Tier, ...] = (
+    Tier(
+        10,
+        "반경 1km 이내 초·중·고 모두 존재하거나, 반경 500m 이내 초·중 모두 존재",
+        (
+            _req_or(
+                "반경 1km 이내 초·중·고 모두 또는 반경 0.5km 이내 초·중 모두",
+                (_req_has("school_elementary", 1), _req_has("school_middle", 1), _req_has("school_high", 1)),
+                (_req_has("school_elementary", 0.5), _req_has("school_middle", 0.5)),
+            ),
+        ),
+    ),
+    Tier(
+        8,
+        "반경 1.5km 이내 초·중·고 모두 존재하거나, 반경 1km 이내 초등학교 존재",
+        (
+            _req_or(
+                "반경 1.5km 이내 초·중·고 모두 또는 반경 1km 이내 초등학교",
+                (_req_has("school_elementary", 1.5), _req_has("school_middle", 1.5), _req_has("school_high", 1.5)),
+                (_req_has("school_elementary", 1),),
+            ),
+        ),
+    ),
+    *_COMMON_EDUCATION_TIERS[2:],
+)
+
 # --- 교육여건(청년·기숙사형) ----------------------------------------------
 _YOUTH_EDUCATION_TIERS: tuple[Tier, ...] = (
     Tier(5, "반경 1km 이내 대학교가 존재", (_req_has("university", 1),)),
@@ -390,7 +436,7 @@ _LIVING_BASIS = (
 )
 
 
-def _criteria(sheet: ScoreSheet) -> tuple[Criterion, ...]:
+def _criteria(sheet: ScoreSheet, relaxed: bool = False) -> tuple[Criterion, ...]:
     if sheet == "common":
         return (
             Criterion(
@@ -405,8 +451,9 @@ def _criteria(sheet: ScoreSheet) -> tuple[Criterion, ...]:
             Criterion(
                 "education", "교육여건", 10,
                 ("school_elementary", "school_middle", "school_high"),
-                _COMMON_EDUCATION_TIERS,
-                "초등학교·중학교·고등학교 존재 유무 및 개수로 평가한다(평가기준 2-3).",
+                _COMMON_EDUCATION_TIERS_RELAXED if relaxed else _COMMON_EDUCATION_TIERS,
+                "초등학교·중학교·고등학교 존재 유무 및 개수로 평가한다(평가기준 2-3)."
+                + (" 2027 완화안 — 100%·80% 등급은 두 조건 중 하나만 충족해도 된다." if relaxed else ""),
             ),
         )
     if sheet == "youth":
@@ -446,6 +493,41 @@ BONUS_CRITERION = Criterion(
     "반경 500m 이내 지하철역·철도역·터미널·환승시설 중 하나 이상 존재 시 가점(심사표 5-2).",
 )
 
+# 2027 완화안 ❹ 가산점 확대 — 역세권 가점을 대학교 정문 500m 까지 넓히고, 청년형은
+# 대학교 인근 가산을 10점으로 올린다. 생활편의 40점은 그대로 두고 가점만 따로 표시한다.
+_UNIVERSITY_500 = _req_has("university", 0.5)
+_STATION_500 = _req_any(
+    STATION_AREA_GROUPS, 0.5, "반경 0.5km 이내 지하철역·철도역·터미널·환승시설 중 하나 이상"
+)
+_RELAXED_BONUS_GROUPS: tuple[str, ...] = (*STATION_AREA_GROUPS, "university")
+
+
+def bonus_criterion(sheet: ScoreSheet, relaxed: bool = False) -> Criterion:
+    if not relaxed:
+        return BONUS_CRITERION
+    if sheet == "youth":
+        return Criterion(
+            "station_area", "역세권·대학교 가점", 10, _RELAXED_BONUS_GROUPS,
+            (
+                Tier(10, "반경 500m 이내 대학교 정문 존재(청년형 추가가산)", (_UNIVERSITY_500,)),
+                Tier(5, "반경 500m 이내 지하철역·철도역·터미널·환승시설 중 하나 이상 존재", (_STATION_500,)),
+                Tier(0, "해당 없음"),
+            ),
+            "2027 완화안 ❹ — 역세권 가점을 대학교 정문 500m 까지 확대하고, 청년형은 대학교 인근 가산을 10점으로 올린다.",
+        )
+    return Criterion(
+        "station_area", "역세권·대학교 가점", 5, _RELAXED_BONUS_GROUPS,
+        (
+            Tier(
+                5,
+                "반경 500m 이내 지하철역·철도역·터미널·환승시설·대학교 정문 중 하나 이상 존재",
+                (_req_or("반경 0.5km 이내 역·터미널·환승시설 또는 대학교 정문", (_STATION_500,), (_UNIVERSITY_500,)),),
+            ),
+            Tier(0, "해당 없음"),
+        ),
+        "2027 완화안 ❹ — 역세권 가점(5점)을 대학교 정문 500m 이내까지 확대한다.",
+    )
+
 
 class Sheet(NamedTuple):
     key: ScoreSheet
@@ -455,11 +537,11 @@ class Sheet(NamedTuple):
     criteria: tuple[Criterion, ...]
 
 
-def sheet_for(application_type: str) -> Sheet:
-    """신청유형에 해당하는 2차 심사표를 돌려준다."""
+def sheet_for(application_type: str, relaxed: bool = False) -> Sheet:
+    """신청유형에 해당하는 2차 심사표를 돌려준다. relaxed 면 2027 완화안 등급표."""
 
     key = SHEET_BY_APPLICATION_TYPE.get(application_type, "common")
-    criteria = _criteria(key)
+    criteria = _criteria(key, relaxed)
     return Sheet(key, SCORE_SHEET_LABELS[key], sum(c.maximum for c in criteria), criteria)
 
 
@@ -496,3 +578,15 @@ OUT_OF_SCOPE_ITEMS: tuple[OutOfScopeItem, ...] = (
 
 TOTAL_SHEET_POINTS = 100
 PASS_THRESHOLD = 70
+# 2027 완화안 ❸ — 서류심사 통과기준 70 → 65점(매입심의 140/200 은 그대로).
+PASS_THRESHOLD_RELAXED = 65
+
+
+def pass_threshold_for(relaxed: bool) -> int:
+    return PASS_THRESHOLD_RELAXED if relaxed else PASS_THRESHOLD
+
+
+RELAXED_NOTE = (
+    "2027 서류심사 기준 완화안 적용 — 교육여건 100%·80% 등급은 두 조건 중 하나만 충족해도 "
+    "되고, 합격선은 65점, 역세권 가점은 대학교 정문 500m 까지(청년형 10점) 넓힙니다."
+)

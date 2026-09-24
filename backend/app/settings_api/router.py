@@ -19,6 +19,13 @@ from app.settings_api.connections import (
     build_connections,
     check_connections,
 )
+from app.rules_config import (
+    ExcludedFacility,
+    RulesConfig,
+    get_config as get_rules_config,
+    save_config as save_rules_config,
+    threshold_key,
+)
 from app.settings_api.store import (
     DEMO_MODE_KEY,
     SERVER_KEY_SPECS,
@@ -81,6 +88,114 @@ def require_loopback(request: Request) -> None:
             status_code=403,
             detail="설정 API는 로컬(루프백)에서만 사용할 수 있습니다.",
         )
+
+
+class RulesMatrixCell(BaseModel):
+    key: str
+    housing_type: str
+    application_type: str
+    column: str
+    rule_id: str
+    default: int | None
+    value: int | None
+    overridden: bool
+
+
+class RulesResponse(BaseModel):
+    config: RulesConfig
+    rules: list[dict[str, str]]
+    combos: list[dict[str, str]]
+    cells: list[RulesMatrixCell]
+    default_pass_threshold: int
+    relaxed_pass_threshold: int
+
+
+def _rules_response() -> RulesResponse:
+    from app.hazard_review.rulebook import (
+        APPLICATION_TYPE_LABELS,
+        HOUSING_TYPE_LABELS,
+        MATRIX,
+        RULES,
+        default_threshold_for,
+    )
+    from app.screening.scorebook import PASS_THRESHOLD, PASS_THRESHOLD_RELAXED
+
+    config = get_rules_config()
+    cells: list[RulesMatrixCell] = []
+    for housing, application in MATRIX:
+        for rule in RULES:
+            key = threshold_key(housing, application, rule.column)
+            default = default_threshold_for(rule.rule_id, housing, application)
+            overridden = key in config.stage1_thresholds
+            cells.append(
+                RulesMatrixCell(
+                    key=key, housing_type=housing, application_type=application,
+                    column=rule.column, rule_id=rule.rule_id, default=default,
+                    value=config.stage1_thresholds[key] if overridden else default,
+                    overridden=overridden,
+                )
+            )
+    return RulesResponse(
+        config=config,
+        rules=[{"rule_id": r.rule_id, "label": r.label, "column": r.column} for r in RULES],
+        combos=[
+            {
+                "housing_type": housing, "housing_label": HOUSING_TYPE_LABELS[housing],
+                "application_type": application, "application_label": APPLICATION_TYPE_LABELS[application],
+            }
+            for housing, application in MATRIX
+        ],
+        cells=cells,
+        default_pass_threshold=PASS_THRESHOLD,
+        relaxed_pass_threshold=PASS_THRESHOLD_RELAXED,
+    )
+
+
+class RulesUpdateRequest(BaseModel):
+    """기준 편집 저장. stage1_thresholds 는 덮어쓸 칸만 담는다(정본과 같은 값은 빼도 된다)."""
+
+    stage1_thresholds: dict[str, int | None] = {}
+    relaxed_2027: bool = False
+    excluded_facilities: list[ExcludedFacility] = []
+
+
+@router.get("/rules", response_model=RulesResponse, dependencies=[Depends(require_loopback)])
+async def read_rules() -> RulesResponse:
+    return _rules_response()
+
+
+@router.put("/rules", response_model=RulesResponse, dependencies=[Depends(require_loopback)])
+async def update_rules(payload: RulesUpdateRequest) -> RulesResponse:
+    from app.hazard_review.rulebook import MATRIX, RULES, default_threshold_for
+
+    valid_keys = {
+        threshold_key(h, a, r.column): default_threshold_for(r.rule_id, h, a)
+        for h, a in MATRIX
+        for r in RULES
+    }
+    thresholds: dict[str, int | None] = {}
+    for key, value in payload.stage1_thresholds.items():
+        if key not in valid_keys:
+            raise HTTPException(status_code=400, detail=f"알 수 없는 기준 칸입니다: {key}")
+        if value is not None and not 0 <= value <= 5000:
+            raise HTTPException(status_code=400, detail=f"{key}: 거리는 0~5000m 사이여야 합니다.")
+        # 정본과 같은 값은 덮어쓰기로 남기지 않는다(기본값 보관).
+        if value != valid_keys[key]:
+            thresholds[key] = value
+    facilities = [
+        ExcludedFacility(name=item.name.strip(), reason=item.reason.strip())
+        for item in payload.excluded_facilities
+        if item.name.strip()
+    ]
+    save_rules_config(
+        RulesConfig(
+            stage1_thresholds=thresholds,
+            relaxed_2027=payload.relaxed_2027,
+            excluded_facilities=facilities,
+        )
+    )
+    # 임계거리·완화 여부는 판정 때마다 읽으므로 서비스 캐시(예열된 원천)를 버릴 필요가 없다.
+    return _rules_response()
 
 
 class ServerKeyStatus(BaseModel):

@@ -112,3 +112,58 @@ export function updateSettingsKeys(
 export function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/api/health");
 }
+
+// ── 관리자 「기준 편집」 ───────────────────────────────────────────────
+export interface ExcludedFacility {
+  name: string;
+  reason: string;
+}
+
+export interface RulesConfig {
+  stage1_thresholds: Record<string, number | null>;
+  relaxed_2027: boolean;
+  excluded_facilities: ExcludedFacility[];
+  updated_at: string;
+}
+
+export interface RulesMatrixCell {
+  key: string;
+  housing_type: string;
+  application_type: string;
+  column: string;
+  rule_id: string;
+  default: number | null;
+  value: number | null;
+  overridden: boolean;
+}
+
+export interface RulesResponse {
+  config: RulesConfig;
+  rules: { rule_id: string; label: string; column: string }[];
+  combos: {
+    housing_type: string;
+    housing_label: string;
+    application_type: string;
+    application_label: string;
+  }[];
+  cells: RulesMatrixCell[];
+  default_pass_threshold: number;
+  relaxed_pass_threshold: number;
+}
+
+export interface RulesUpdatePayload {
+  stage1_thresholds: Record<string, number | null>;
+  relaxed_2027: boolean;
+  excluded_facilities: ExcludedFacility[];
+}
+
+export function getRules(): Promise<RulesResponse> {
+  return request<RulesResponse>("/api/settings/rules");
+}
+
+export function updateRules(payload: RulesUpdatePayload): Promise<RulesResponse> {
+  return request<RulesResponse>("/api/settings/rules", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}

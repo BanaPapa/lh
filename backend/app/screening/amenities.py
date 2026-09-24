@@ -80,6 +80,9 @@ MAX_HITS_PER_GROUP = 20
 # 정류장은 정류장 좌표(점)로 잰다.
 BOUNDARY_GROUPS: frozenset[str] = frozenset(
     {
+        # 종합병원 등 대형 필지 시설은 필지 경계(대지 끝점) 기준 — LH 09/22 결정 2
+        # (09/11 결정 8 「정문 기본」을 바꿈). 대학교만 정문 좌표로 잰다.
+        "hospital",
         "terminal",
         "transfer",
         "retail",
@@ -177,9 +180,9 @@ TAGO_HEADWAY_SOURCE = "국토교통부 TAGO 정류소 근접조회 + 경유노�
 # 버스정류장 운행주기 고지. LH 심사 담당자 계산법(2026-09-15 백승환 대리 자료):
 # 노선별 60/배차간격 합산 ÷4 = 15분당 평균 도착 버스 수 ≥ 1 → 인정.
 BUS_STOP_HEADWAY_NOTE = (
-    "운행주기 15분 이내 정류장만 셌습니다 — 경유 노선별 60/배차간격(분)을 합산해 "
-    "4로 나눈 「15분당 평균 도착 버스 수」가 1 이상인 정류장(LH 심사 담당자 "
-    "계산법, 2026-09-15). 미달·배차 미확인 정류장은 목록에 남기되 배점에서 뺐습니다."
+    "운행주기 15분 판정 — 경유 노선별 60/배차간격(분)을 합산해 4로 나눈 「15분당 평균 "
+    "도착 버스 수」가 1 이상이면 인정(LH 심사 담당자 계산법, 2026-09-15). 배차간격을 "
+    "확인한 정류장 중 미달만 배점에서 빼고, 배차를 확인할 수 없는 정류장은 셌습니다."
 )
 BUS_STOP_NO_HEADWAY_NOTE = (
     "운행주기 15분 이내 요건을 확인할 수 있는 원천이 없어 전체 정류장을 셌습니다."
@@ -200,12 +203,6 @@ FRONT_DOOR_PENDING_NOTICE = (
     "대학 캠퍼스 통필지 — 정문 기준점 지정 대기(현재 좌표 기준 보수 폴백)"
 )
 
-# 종합병원 등 대형 필지 시설의 정문 미확인 폴백 고지(#8, LH 확정 2026-09-11).
-# 대형 필지 시설은 정문을 기본 기준점으로 재되, 확인 전에는 좌표로 보수 폴백한다.
-HOSPITAL_FRONT_DOOR_PENDING_NOTICE = (
-    "정문 미확인 — 시설 좌표 기준"
-    "(LH 확정 2026-09-11: 대형 필지 시설은 정문 기본)"
-)
 
 # 국립중앙의료원 원장으로 종합병원을 산정할 때의 고지. 상급종합병원은 종합병원에
 # 포함해 인정한다(2026-09-18 확정) — is_tertiary 는 표기 구분용이다.
@@ -745,7 +742,13 @@ class AmenityCollector:
                     if can_fetch
                     else None
                 )
-                measured.append(_measure_to_parcel(facility, parcel, rings, center))
+                # 종합병원은 필지가 아무리 넓어도 경계로 잰다(LH 09/22 결정 2 — 전북대병원
+                # 같은 통필지가 핵심 사례다). 다른 시설군은 통필지 왜곡 방지 상한을 지킨다.
+                measured.append(
+                    _measure_to_parcel(
+                        facility, parcel, rings, center, large_parcel_ok=(key == "hospital")
+                    )
+                )
             facilities = sorted(measured + list(tail), key=lambda f: f.distance_m)
             shown = len(collection.facilities)
             distances = sorted(
@@ -849,11 +852,7 @@ class AmenityCollector:
                             _AUTO_EXCLUDE_TOKENS,
                             place.coordinates,
                         )
-        hospital_result = results.get("hospital")
-        if isinstance(hospital_result, FeedResult):
-            for place in hospital_result.places:
-                if _is_general_hospital(place):
-                    _add(place.name, HOSPITAL_EXCLUDE_TOKENS, place.coordinates)
+        # 종합병원은 09/22 결정으로 필지 경계 기준이라 정문을 묻지 않는다.
         if not targets:
             return
 
@@ -1587,16 +1586,12 @@ class AmenityCollector:
             kept = [self._with_station_entrance(place, center) for place in kept]
         source_label = " + ".join(sources)
         group_notice = ""
-        if key in ("university", "hospital"):
-            # 대학교·종합병원(대형 필지 시설)은 시설 측 3단(정문 → 부지경계 → 좌표)으로
-            # 잰다(국장님 §3-2 · LH 확정 2026-09-11 #8).
+        if key == "university":
+            # 대학교만 시설 측 3단(정문 → 부지경계 → 좌표)으로 잰다(LH 09/22 결정 2).
+            # 종합병원은 BOUNDARY_GROUPS 로 필지 경계에서 잰다.
             stop_points = _stop_points(results.get("bus_stop"))
-            if key == "university":
-                pending_notice = FRONT_DOOR_PENDING_NOTICE
-                exclude_tokens = _AUTO_EXCLUDE_TOKENS
-            else:
-                pending_notice = HOSPITAL_FRONT_DOOR_PENDING_NOTICE
-                exclude_tokens = HOSPITAL_EXCLUDE_TOKENS
+            pending_notice = FRONT_DOOR_PENDING_NOTICE
+            exclude_tokens = _AUTO_EXCLUDE_TOKENS
             facilities = sorted(
                 (
                     self._measure_with_front_door(
@@ -2013,21 +2008,18 @@ def _apply_bus_headway(
 ) -> list[CollectedFacility]:
     """정류장마다 운행주기 판정을 붙이고, 인정 정류장이 앞에 오도록 정렬한다.
 
-    인정(15분당 1대 이상)만 counted=True. 미달·배차 미확인은 counted=False 로
-    남겨 화면에는 보이되 배점에서 빠진다. 판정 정보가 없는 정류장(이름 불일치 등)
-    은 확인 필요로 두고 세지 않는다 — 자료 부재를 시설 존재로 접지 않는다.
+    배차간격을 확인한 정류장만 거른다 — 확인했는데 미달이면 counted=False 로 남겨
+    화면에는 보이되 배점에서 뺀다. 배차를 확인할 수 없는 정류장(원천이 배차를 주지
+    않는 지역·이름 불일치)은 센다. 자료 부재로 정류장을 없는 것으로 접지 않는다
+    (2026-09-25 결정 — 참조 앱은 운행주기를 보지 않는다).
     """
 
     tagged: list[CollectedFacility] = []
     for facility in facilities:
         headway = headways.get(_stop_name_key(facility.name))
-        if headway is None:
-            tagged.append(
-                facility._replace(
-                    counted=False,
-                    count_note="운행주기 판정 정보 없음 — 확인 필요(배점 제외)",
-                )
-            )
+        if headway is None or not headway.determined:
+            note = headway.label if headway is not None else "운행주기 판정 정보 없음"
+            tagged.append(facility._replace(counted=True, count_note=note))
             continue
         tagged.append(
             facility._replace(counted=headway.qualifies, count_note=headway.label)
@@ -2098,8 +2090,13 @@ def _measure_to_parcel(
     parcel: ParcelFeature | None,
     rings: Sequence[Sequence[Coordinates]],
     center: Coordinates,
+    *,
+    large_parcel_ok: bool = False,
 ) -> CollectedFacility:
-    """시설 한 곳을 필지 경계 기준으로 바꾼 새 값. 못 바꾸면 사유만 적어 돌려준다."""
+    """시설 한 곳을 필지 경계 기준으로 바꾼 새 값. 못 바꾸면 사유만 적어 돌려준다.
+
+    large_parcel_ok 면 통필지 상한(CAMPUS_PARCEL_MAX_AREA_M2)을 적용하지 않는다.
+    """
 
     if parcel is None:
         return facility._replace(front_door_notice=BOUNDARY_FALLBACK_NOTICE)
@@ -2108,7 +2105,7 @@ def _measure_to_parcel(
         # 좌표가 도로·하천 필지 위에 떨어진 경우(지도 POI 가 시설 앞 도로에 찍힘).
         # 그 필지를 경계로 쓰면 도로망 전체가 시설이 된다. 좌표로 잰다.
         return facility._replace(front_door_notice=f"{rejection} — 시설 좌표로 쟀습니다.")
-    if parcel.area_m2 >= CAMPUS_PARCEL_MAX_AREA_M2:
+    if parcel.area_m2 >= CAMPUS_PARCEL_MAX_AREA_M2 and not large_parcel_ok:
         # 좌표가 떨어진 필지가 통필지(하천·단지 전체 등)면 경계가 시설 실체보다
         # 훨씬 넓어 거리가 부당하게 줄어든다. 좌표 기준을 유지하고 사유를 적는다.
         notice = (

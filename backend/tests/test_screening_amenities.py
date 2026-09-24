@@ -875,7 +875,8 @@ def gate_place(name: str, offset_m: float) -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
-async def test_hospital_gate_from_kakao_becomes_front_door_point() -> None:
+async def test_hospital_is_measured_by_parcel_boundary_not_gate() -> None:
+    # LH 09/22 결정 2: 종합병원은 필지 경계 기준(대학교만 정문). 지도에 문 후보가 있어도 쓰지 않는다.
     kakao = FakeKakao(
         categories={"HP8": [place("건국대학교병원", 500, "의료,건강 > 병원 > 종합병원")]},
         keywords={
@@ -890,9 +891,10 @@ async def test_hospital_gate_from_kakao_becomes_front_door_point() -> None:
     result = await collector.collect([], CENTER)
 
     facility = result["hospital"].facilities[0]
-    assert facility.measurement_tier == "front_door_point"
-    assert facility.distance_m == pytest.approx(420, abs=3)
-    assert [c.label for c in facility.front_door_candidates] == ["건국대학교병원 입구"]
+    assert facility.measurement_tier == "coordinate"
+    assert facility.distance_m == pytest.approx(500, abs=3)
+    assert facility.front_door_candidates == ()
+    assert "건국대학교병원 정문" not in kakao.calls
 
 
 @pytest.mark.asyncio
@@ -1061,7 +1063,7 @@ async def test_bus_stops_count_only_fifteen_minute_headway_stops() -> None:
         rows=[
             stop_row("공수내다리", "N1", 100),   # 10분·30분 노선 → 15분당 2대 → 인정
             stop_row("외딴정류장", "N2", 200),   # 120분 노선 하나 → 0.125대 → 미달
-            stop_row("미확인정류장", "N3", 300), # 배차 미확인 → 확인 필요
+            stop_row("미확인정류장", "N3", 300), # 배차 미확인 → 확인 불가, 정류장으로 셈
         ],
         stop_routes={
             "N1": [{"routeid": "R1", "routeno": "1"}, {"routeid": "R2", "routeno": "2"}],
@@ -1080,19 +1082,19 @@ async def test_bus_stops_count_only_fifteen_minute_headway_stops() -> None:
     result = await collector.collect([], CENTER)
     group = result["bus_stop"]
 
-    # 배점 거리는 인정 정류장 하나뿐이다.
-    assert len(group.distances_m) == 1
+    # 배점 거리는 인정 정류장 + 배차를 확인할 수 없는 정류장. 확인한 미달만 뺀다.
+    assert len(group.distances_m) == 2
     assert group.state == "connected"
     assert "15분" in group.note and "배차간격" in group.actual_source
     # 목록에는 셋 다 남고, 인정 정류장이 먼저 온다.
     names = [f.name for f in group.facilities]
-    assert names == ["공수내다리", "외딴정류장", "미확인정류장"]
+    assert names == ["공수내다리", "미확인정류장", "외딴정류장"]
     counted = {f.name: f.counted for f in group.facilities}
-    assert counted == {"공수내다리": True, "외딴정류장": False, "미확인정류장": False}
+    assert counted == {"공수내다리": True, "외딴정류장": False, "미확인정류장": True}
     notes = {f.name: f.count_note for f in group.facilities}
     assert "인정" in notes["공수내다리"] and "2.00대" in notes["공수내다리"]
     assert "미달" in notes["외딴정류장"]
-    assert "확인 필요" in notes["미확인정류장"]
+    assert "확인 불가" in notes["미확인정류장"]
 
 
 @pytest.mark.asyncio
@@ -1127,3 +1129,21 @@ async def test_bus_stops_without_route_info_keep_counting_all_with_notice() -> N
     assert len(group.distances_m) == 1
     assert group.state == "substituted"
     assert "전체 정류장" in group.note
+
+
+@pytest.mark.asyncio
+async def test_hospital_uses_parcel_boundary_even_for_oversized_parcel() -> None:
+    # LH 09/22 결정 2: 종합병원은 통필지(전북대병원 같은 대형 캠퍼스)여도 필지 경계로 잰다.
+    from app.screening.front_door import CAMPUS_PARCEL_MAX_AREA_M2
+
+    site = square_ring(CENTER, 20.0)
+    kakao = FakeKakao(categories={"HP8": [place("전북대학교병원", 400, "의료,건강 > 병원 > 종합병원")]})
+    vworld = FakeVWorld(half=300.0, area_m2=CAMPUS_PARCEL_MAX_AREA_M2 * 2)
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=vworld)
+
+    result = await collector.collect([site], CENTER)
+
+    facility = result["hospital"].facilities[0]
+    assert facility.measurement_tier == "site_boundary"
+    assert facility.distance_m < 380
+    assert "통필지" not in facility.front_door_notice

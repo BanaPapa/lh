@@ -34,6 +34,7 @@ from app.hazard_review.models import (
     HazardSourceState,
     HazardSourceStatus,
 )
+from app.rules_config import excluded_reason
 from app.hazard_review.rulebook import (
     APPLICATION_TYPE_LABELS,
     CATEGORIES,
@@ -3220,6 +3221,18 @@ class HazardReviewService:
                     f"건축물용도 「체육시설」 {sports_count}건은 운동시설 해당으로 "
                     "뺐습니다 (H-04-다 §6-1)."
                 )
+
+        # LH 가 개별 확인해 판정에서 뺀 시설(예: 철거 확인된 주유소 — LH 09/11 회신).
+        # 관리자 「기준 편집」의 목록과 이름을 맞춰 판정 후보에서 뺀다. 지도·표에는
+        # 남기지 않는다 — 뺀 사실은 note 로 밝힌다.
+        lh_excluded = [(f, reason) for f in matched if (reason := excluded_reason(f.name))]
+        if lh_excluded:
+            dropped = {id(f) for f, _ in lh_excluded}
+            matched = [f for f in matched if id(f) not in dropped]
+            named = " · ".join(f"{f.name}({reason})" for f, reason in lh_excluded[:3])
+            more = f" 외 {len(lh_excluded) - 3}건" if len(lh_excluded) > 3 else ""
+            lh_note = f"LH 개별 확인으로 판정에서 뺀 시설 {len(lh_excluded)}건 — {named}{more}."
+            extra_note = f"{extra_note} {lh_note}".strip()
 
         # 지식산업센터 지원시설 예외(공장 rule): 동일 PNU 지원시설은 제외.
         knic_note = ""
