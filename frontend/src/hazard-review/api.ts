@@ -31,8 +31,13 @@ export function getHazardApplicationTypes(): Promise<HazardApplicationTypesRespo
   );
 }
 
+/**
+ * 사업지 필지를 확보한다. `multiParcelAddress` 를 주면(「363-2, -4, 364-1」·「외 N필지(…)」
+ * 같이 여러 지번을 적은 검색어) 그 원문으로 필지 합집합을 푼다(#9).
+ */
 export function resolveHazardParcel(
   site: GeocodeCandidate,
+  multiParcelAddress?: string,
 ): Promise<HazardParcelResolveResponse> {
   return request<HazardParcelResolveResponse>(
     "/api/hazard-review/parcels/resolve",
@@ -40,11 +45,16 @@ export function resolveHazardParcel(
       method: "POST",
       body: JSON.stringify({
         name: site.name,
-        address: site.road_address || site.address,
+        address: multiParcelAddress || site.road_address || site.address,
         coordinates: site.coordinates,
       }),
     },
   );
+}
+
+/** 검색어에 지번이 여럿(쉼표 목록·외 N필지) 들어 있는지. */
+export function isMultiParcelQuery(query: string): boolean {
+  return /[,，]|외\s*\d+\s*필지/.test(query);
 }
 
 /** 지도에서 누른 좌표의 필지를 조회한다. 사업지 다중 선택에 쓴다. */

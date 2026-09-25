@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
+from app.hazard_review.multi_parcel import representative_address
 from app.hazard_review.router import router as hazard_review_router
 from app.models import GeocodeResponse
 from app.screening.batch import router as screening_batch_router
@@ -81,8 +82,13 @@ async def geocode(
     if config.demo_mode:
         return GeocodeResponse(query=query, candidates=demo_geocode(query), demo=True)
 
+    # 「363-2, -4, 364-1」·「764-10 외 3필지」처럼 여러 지번이 든 검색어는 대표필지로
+    # 지오코딩한다. 필지 합집합은 이어지는 필지 확보(parcels/resolve)가 원문으로 푼다.
+    lookup = representative_address(query)
     try:
-        candidates = await KakaoClient(config.kakao_rest_api_key).geocode(query)
+        candidates = await KakaoClient(config.kakao_rest_api_key).geocode(lookup)
+        if not candidates and lookup != query:
+            candidates = await KakaoClient(config.kakao_rest_api_key).geocode(query)
     except KakaoAPIError as exc:
         if exc.status_code in {401, 403}:
             raise HTTPException(

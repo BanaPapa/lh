@@ -116,3 +116,17 @@ def parse_multi_parcel_address(address: str) -> ParsedParcels:
         number = _format_number(*key)
         addresses.append(f"{prefix} {number}".strip())
     return ParsedParcels(addresses, note)
+
+
+def representative_address(address: str) -> str:
+    """지오코딩에 넣을 대표필지 주소 하나.
+
+    「효자동2가 363-2, -4, 364-1」·「부송동 764-10 외 3필지」처럼 여러 지번이 든 문자열은
+    지도 API 가 주소로 인식하지 못한다. 첫 지번(대표필지)만 남긴 주소를 돌려주고, 지번을
+    못 찾으면 원문 그대로 돌려준다(장소명 검색은 그대로 통과).
+    """
+
+    parsed = parse_multi_parcel_address(address)
+    if not parsed.jibun_addresses:
+        return (address or "").strip()
+    return parsed.jibun_addresses[0]

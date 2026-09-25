@@ -477,3 +477,60 @@
   padding: 12px 20px;
   border-top: 1px solid var(--border);
 }
+
+/* ── 실시간 진행률 — 전체 막대에 % 를 얹고, 도는 행마다 작은 막대를 둔다 ── */
+.batch-progress-bar {
+  position: relative;
+  height: 18px;
+}
+
+.batch-progress-bar > b {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--fg);
+  mix-blend-mode: difference;
+}
+
+.batch-progress-bar.is-running > span {
+  background-image: linear-gradient(
+    90deg,
+    var(--blue) 0%,
+    color-mix(in srgb, var(--blue) 65%, #fff) 50%,
+    var(--blue) 100%
+  );
+  background-size: 200% 100%;
+  animation: batch-progress-shimmer 1.4s linear infinite;
+}
+
+@keyframes batch-progress-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: 0 0; }
+}
+
+.batch-row-progress {
+  display: grid;
+  gap: 3px;
+  min-width: 120px;
+}
+
+.batch-row-bar {
+  height: 5px;
+  overflow: hidden;
+  background: var(--surface-2);
+  border-radius: 999px;
+}
+
+.batch-row-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  transition: width 400ms ease;
+}
+
+.batch-row-progress small {
+  white-space: nowrap;
+}

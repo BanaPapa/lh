@@ -255,3 +255,31 @@ async def test_cancel_skips_remaining_rows() -> None:
 
     assert batch.status == "cancelled"
     assert all(r.status == "cancelled" for r in batch.rows)
+
+
+def test_representative_address_strips_extra_parcels() -> None:
+    from app.hazard_review.multi_parcel import representative_address
+
+    assert representative_address("전주시 완산구 효자동2가 363-2, -4, -8, 364-1") == "전주시 완산구 효자동2가 363-2"
+    assert representative_address("익산시 부송동 764-10 외 3필지") == "익산시 부송동 764-10"
+    assert representative_address("우아동3가 734-16 외 4필지(11,13)") == "우아동3가 734-16"
+    # 장소명은 그대로 통과한다.
+    assert representative_address("전주역") == "전주역"
+
+
+@pytest.mark.asyncio
+async def test_batch_geocodes_representative_parcel_and_reports_progress() -> None:
+    rows = [BatchRowInput(id="1", address="전주시 완산구 효자동2가 363-2, -4, 364-1")]
+    batch = _batch(rows)
+    kakao = FakeKakao()
+
+    await run_batch(
+        batch, rows, screening=SpyScreening(), resolver=FakeResolver(), kakao=kakao,  # type: ignore[arg-type]
+        rule_pack_id="", cancel=asyncio.Event(),
+    )
+
+    # 쉼표 목록은 대표필지로만 지오코딩하고, 필지 확보에는 원문을 넘긴다.
+    assert kakao.calls == ["전주시 완산구 효자동2가 363-2"]
+    assert batch.rows[0].status == "completed"
+    assert batch.rows[0].progress == 100 and batch.progress == 100
+    assert batch.rows[0].stage == "완료"

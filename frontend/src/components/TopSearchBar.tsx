@@ -93,7 +93,7 @@ export function TopSearchBar({
                 aria-label="사업지 주소 또는 장소"
                 value={query}
                 onChange={(event) => onQueryChange(event.target.value)}
-                placeholder="주소, 건물명, 역명으로 사업지 검색"
+                placeholder="주소·건물명·역명 검색 — 여러 필지는 363-2, -4, 364-1 처럼 쉼표로"
               />
             </form>
 

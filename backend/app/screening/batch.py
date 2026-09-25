@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.hazard_review.models import HazardParcelResolveRequest, HazardSite
+from app.hazard_review.multi_parcel import representative_address
 from app.hazard_review.parcels import ParcelResolver
 from app.hazard_review.router import get_parcel_resolver
 from app.hazard_review.rulebook import (
@@ -43,7 +44,10 @@ from app.hazard_review.rulebook import (
 )
 from app.models import Coordinates
 from app.screening.models import ScreeningRequest, ScreeningResult
-from app.screening.service import ScreeningService
+from app.screening.service import ScreeningProgressCallback, ScreeningService
+
+# 심사 엔진이 보고하는 4단계(screening.router.PROGRESS_ITEMS 와 같다).
+STAGE_IDS = ("STAGE1_COLLECT", "STAGE1_JUDGE", "STAGE2_COLLECT", "STAGE2_SCORE")
 from app.services.kakao import KakaoClient
 
 logger = logging.getLogger("uvicorn.error")
@@ -134,6 +138,9 @@ class BatchRowStatus(BaseModel):
     extras: dict[str, str] = Field(default_factory=dict)
     status: RowState = "queued"
     message: str = ""
+    # 진행률(0~100)과 지금 도는 단계 이름. 심사 엔진의 4단계 보고를 평균낸다.
+    progress: int = 0
+    stage: str = ""
     error: str = ""
     screening_id: str | None = None
     # 아래는 완료 후 채운다.
@@ -160,6 +167,8 @@ class BatchStatus(BaseModel):
     application_type: ApplicationType
     total: int
     done: int = 0
+    # 전체 진행률(0~100) — 행별 진행률의 평균. 건이 끝나기 전에도 움직인다.
+    progress: int = 0
     rows: list[BatchRowStatus] = Field(default_factory=list)
 
 
@@ -447,13 +456,18 @@ async def run_row(
     resolver: ParcelResolver,
     kakao: KakaoClient,
     rule_pack_id: str,
+    progress: ScreeningProgressCallback | None = None,
 ) -> ScreeningResult:
     """한 건 심사 경로 그대로: 좌표 → 필지 → 심사."""
 
     if source.lat is not None and source.lng is not None:
         coordinates = Coordinates(lat=source.lat, lng=source.lng)
     else:
-        candidates = await kakao.geocode(source.address)
+        # 여러 지번이 든 주소는 대표필지로 좌표를 잡고, 합집합은 필지 확보가 원문으로 푼다.
+        lookup = representative_address(source.address)
+        candidates = await kakao.geocode(lookup)
+        if not candidates and lookup != source.address:
+            candidates = await kakao.geocode(source.address)
         if not candidates:
             raise RuntimeError("주소를 찾지 못했습니다. 소재지를 확인해 주세요.")
         coordinates = candidates[0].coordinates
@@ -473,7 +487,7 @@ async def run_row(
         rule_pack_id=rule_pack_id,
         requested_by="lh-screening-batch",
     )
-    result = await screening.screen(request)
+    result = await screening.screen(request, progress)
     _fill_row(row, result, len(resolved.parcels), resolved.note)
     return result
 
@@ -492,6 +506,9 @@ async def run_batch(
     batch.status = "running"
     semaphore = asyncio.Semaphore(max(1, concurrency))
 
+    def refresh_progress() -> None:
+        batch.progress = round(sum(r.progress for r in batch.rows) / max(batch.total, 1))
+
     async def one(row: BatchRowStatus, source: BatchRowInput) -> None:
         async with semaphore:
             if cancel.is_set():
@@ -501,22 +518,58 @@ async def run_batch(
                 return
             row.status = "running"
             row.message = "심사 중"
+            row.stage = "좌표·필지 확보"
+            row.progress = 2
+            refresh_progress()
+            stages: dict[str, int] = {}
+            substeps: dict[str, dict[str, int]] = {}
+
+            async def report(
+                item_id: str, label: str, item_status: str, item_progress: int,
+                count: int | None, message: str,
+            ) -> None:
+                # 「부모/자식」 꼴은 부모 단계(1차 유해시설 조회)의 규칙별 하위 단계다. 1차
+                # 조회는 길게 도는데 부모 보고는 시작·끝뿐이라, 하위 단계 평균으로 부모
+                # 막대를 채워 그동안에도 막대가 움직이게 한다.
+                if "/" in item_id:
+                    parent_id, step_id = item_id.split("/", 1)
+                    steps = substeps.setdefault(parent_id, {})
+                    steps[step_id] = item_progress
+                    stages[parent_id] = max(
+                        stages.get(parent_id, 0), round(sum(steps.values()) / len(steps))
+                    )
+                    row.stage = f"{label} 조회" if item_status == "running" else row.stage
+                else:
+                    stages[item_id] = max(stages.get(item_id, 0), item_progress)
+                    row.stage = label
+                row.progress = max(
+                    row.progress,
+                    round(sum(stages.get(k, 0) for k in STAGE_IDS) / len(STAGE_IDS)),
+                )
+                refresh_progress()
+
             try:
                 result = await run_row(
-                    row, source, screening=screening, resolver=resolver, kakao=kakao, rule_pack_id=rule_pack_id
+                    row, source, screening=screening, resolver=resolver, kakao=kakao,
+                    rule_pack_id=rule_pack_id, progress=report,
                 )
                 batch_results[(batch.batch_id, row.id)] = result
                 row.status = "completed"
                 row.message = result.verdict_label
+                row.stage = "완료"
             except Exception as exc:  # 한 건 실패가 나머지를 막지 않는다.
                 logger.warning("일괄 심사 실패 [%s] %s: %s", row.id, source.address, exc)
                 row.status = "failed"
                 row.error = str(exc) or type(exc).__name__
                 row.message = "실패"
+                row.stage = "실패"
             finally:
+                row.progress = 100
                 batch.done += 1
+                refresh_progress()
 
     await asyncio.gather(*(one(row, source) for row, source in zip(batch.rows, sources)))
+    batch.progress = 100
     batch.status = "cancelled" if cancel.is_set() else "completed"
 
 

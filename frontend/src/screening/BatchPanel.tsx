@@ -344,12 +344,20 @@ export function BatchPanel({
 
         {batch && (
           <div className="batch-progress" aria-live="polite">
-            <div className="batch-progress-bar">
-              <span style={{ width: `${(batch.done / Math.max(batch.total, 1)) * 100}%` }} />
+            <div
+              className={`batch-progress-bar${running ? " is-running" : ""}`}
+              role="progressbar"
+              aria-valuenow={batch.progress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <span style={{ width: `${batch.progress}%` }} />
+              <b>{batch.progress}%</b>
             </div>
             <small>
               {running ? "검토 중" : batch.status === "cancelled" ? "중단됨" : "완료"} ·{" "}
-              {batch.done}/{batch.total}건 · 완료 {completed} · 실패 {failed}
+              {batch.done}/{batch.total}건 끝남 · 완료 {completed} · 실패 {failed}
+              {running && ` · 진행 중 ${batch.rows.filter((r) => r.status === "running").length}건`}
             </small>
           </div>
         )}
@@ -420,7 +428,18 @@ export function BatchPanel({
                     <td className="is-num">{criterionText(row, "station_area")}</td>
                     <td className="is-num">{row.parcel_count || ""}</td>
                     <td>
-                      <small className={`batch-state is-${row.status}`}>{row.message || "대기"}</small>
+                      {row.status === "running" ? (
+                        <div className="batch-row-progress" title={row.stage}>
+                          <div className="batch-row-bar">
+                            <span style={{ width: `${row.progress}%` }} />
+                          </div>
+                          <small className="batch-state is-running">
+                            {row.progress}% · {row.stage || "심사 중"}
+                          </small>
+                        </div>
+                      ) : (
+                        <small className={`batch-state is-${row.status}`}>{row.message || "대기"}</small>
+                      )}
                     </td>
                     <td>
                       {row.status === "completed" && (

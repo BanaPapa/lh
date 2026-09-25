@@ -10,6 +10,7 @@ import {
   getHazardRulePacks,
   resolveHazardParcel,
   resolveHazardParcelAt,
+  isMultiParcelQuery,
 } from "./hazard-review/api";
 import { BatchPanel } from "./screening/BatchPanel";
 import { ScreeningProgressModal } from "./screening/ScreeningProgressModal";
@@ -200,7 +201,11 @@ function App() {
     const runId = siteParcelRunRef.current + 1;
     siteParcelRunRef.current = runId;
     try {
-      const resolved = await resolveHazardParcel(candidate);
+      // 「363-2, -4, 364-1」처럼 지번을 여럿 적었으면 그 원문으로 필지를 합쳐 잡는다.
+      const resolved = await resolveHazardParcel(
+        candidate,
+        isMultiParcelQuery(typedQuery) ? typedQuery : undefined,
+      );
       // 이미 다른 검색이 이 요청을 밀어냈으면 옛 결과를 버린다.
       if (siteParcelRunRef.current !== runId) return;
       // 대표 필지만 쓰던 것을 응답 필지 전부로 넓힌다(#9 다필지 합집합).

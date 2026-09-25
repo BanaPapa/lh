@@ -49,6 +49,9 @@ export interface BatchRowStatus {
   extras: Record<string, string>;
   status: BatchRowState;
   message: string;
+  /** 진행률(0~100)과 지금 도는 단계. */
+  progress: number;
+  stage: string;
   error: string;
   screening_id: string | null;
   site_address: string;
@@ -74,6 +77,8 @@ export interface BatchStatus {
   application_type: HazardApplicationType;
   total: number;
   done: number;
+  /** 전체 진행률(0~100) — 건이 끝나기 전에도 움직인다. */
+  progress: number;
   rows: BatchRowStatus[];
 }
 
