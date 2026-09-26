@@ -909,6 +909,14 @@ export function MapPanel({
   const [openRailRules, setOpenRailRules] = useState<Set<string>>(new Set());
   // 시설군 레일의 1차·2차 섹션 접기. 머리글을 누르면 그 섹션만 접힌다.
   const [railSectionsOpen, setRailSectionsOpen] = useState({ stage1: true, stage2: true });
+  // 레일에서 고른 1차 세부 종류. 고르면 그 규칙의 시설 중 이 유형만 지도에 거리선으로 펼친다.
+  const [railCategory, setRailCategory] = useState<{ findingId: string; key: string; types: string[] } | null>(null);
+  useEffect(() => {
+    // 규칙 선택이 바뀌거나 풀리면 종류 선택도 같이 푼다.
+    if (!selectedHazardFindingId || (railCategory && railCategory.findingId !== selectedHazardFindingId)) {
+      setRailCategory(null);
+    }
+  }, [selectedHazardFindingId, railCategory]);
   const toggleRailRule = useCallback((ruleId: string) => {
     setOpenRailRules((current) => {
       const next = new Set(current);
@@ -933,22 +941,16 @@ export function MapPanel({
           .map((category) => {
             const types = new Set(category.facility_types ?? []);
             // 지도에 보이는 시설(판정 후보 + 참고 시설) 중 이 종류의 것 — 위 대분류 개수와 같은 셈법.
-            const shown = [...finding.facilities, ...finding.nearby_facilities]
-              .filter((facility) => types.has(facility.facility_type))
-              .sort((a, b) => a.distance_m - b.distance_m);
+            const shown = [...finding.facilities, ...finding.nearby_facilities].filter(
+              (facility) => types.has(facility.facility_type),
+            ).length;
             return {
               key: category.key,
               label: category.label,
-              count: shown.length,
+              count: shown,
               status: category.status,
-              // 2차처럼 시설마다 거리를 보인다(가까운 순, 8곳까지).
-              facilities: shown.slice(0, 8).map((facility) => ({
-                id: facility.facility_id,
-                name: facility.name,
-                distance: facility.distance_m,
-                inside:
-                  finding.threshold_m !== null && facility.distance_m <= finding.threshold_m,
-              })),
+              // 이 종류를 고르면 지도에 이 유형의 시설만 거리선으로 펼친다.
+              types: [...types],
             };
           })
           .sort((a, b) => categoryOrderKey(a.label) - categoryOrderKey(b.label)),
@@ -1899,10 +1901,56 @@ export function MapPanel({
       overlaysRef.current.push(marker);
     });
 
+    // 규칙을 고르면 그 규칙의 판정창 안 시설 전부(세부 종류를 골랐으면 그 유형만)에
+    // 2차처럼 거리선과 거리 라벨을 단다. 이름은 핀에 마우스를 올렸을 때 카드로 뜬다.
+    if (selectedHazardFinding) {
+      const typeFilter =
+        railCategory && railCategory.findingId === selectedHazardFinding.finding_id
+          ? new Set(railCategory.types)
+          : null;
+      selectedHazardFinding.facilities
+        .filter((facility) => !typeFilter || typeFilter.has(facility.facility_type))
+        .filter((facility) => facility.facility_id !== selectedHazardFacilityId)
+        .forEach((facility) => {
+          const origin = facility.nearest_boundary_point;
+          const originPosition = origin ? toMapPosition(runtime, origin.lat, origin.lng) : center;
+          const end = facility.nearest_facility_point;
+          const endPosition = end
+            ? toMapPosition(runtime, end.lat, end.lng)
+            : toMapPosition(runtime, facility.coordinates.lat, facility.coordinates.lng);
+          const line = new runtime.sdk.maps.Polyline({
+            map,
+            path: [originPosition, endPosition],
+            strokeWeight: 2,
+            strokeColor: "#ef4444",
+            strokeOpacity: 0.75,
+            strokeStyle: "shortdash",
+          });
+          overlaysRef.current.push(line);
+          const label = document.createElement("span");
+          label.className = "hazard-distance-label is-many";
+          label.textContent = `${Math.round(facility.distance_m).toLocaleString()}m`;
+          const originLat = origin ? origin.lat : site.coordinates.lat;
+          const originLng = origin ? origin.lng : site.coordinates.lng;
+          const endLat = end ? end.lat : facility.coordinates.lat;
+          const endLng = end ? end.lng : facility.coordinates.lng;
+          overlaysRef.current.push(
+            createHtmlOverlay(
+              runtime,
+              map,
+              toMapPosition(runtime, (originLat + endLat) / 2, (originLng + endLng) / 2),
+              label,
+              { yAnchor: 0.5, zIndex: 7 },
+            ),
+          );
+        });
+    }
+
+    // 핀이나 영역을 직접 누른 시설만 굵은 「대지경계간거리」 라벨로 강조한다.
     const selectedHazardFacility =
       hazardMarkers.find(
         ({ facility }) => facility.facility_id === selectedHazardFacilityId,
-      )?.facility ?? selectedHazardFinding?.facilities[0];
+      )?.facility ?? null;
     if (selectedHazardFacility) {
       const facilityPosition = toMapPosition(
         runtime,
@@ -2210,6 +2258,7 @@ export function MapPanel({
     selectedProviderConfigured,
     selectedHazardFinding,
     selectedHazardFindingId,
+    railCategory,
     site,
     visibleScreeningHitRefs,
     candidateHitRef,
@@ -2366,40 +2415,38 @@ export function MapPanel({
                       </button>
                       {open && (
                         <ul className="map-rail-sublist">
-                          {entry.categories.map((category) => (
-                            <li key={category.key} className={`is-${category.status}`}>
-                              <span>{category.label}</span>
-                              <small>{RAIL_STATUS_SHORT[category.status] ?? category.status}</small>
-                              <b>{category.count}</b>
-                              {category.facilities.length > 0 && (
-                                <ul className="map-rail-facilities">
-                                  {category.facilities.map((facility) => (
-                                    <li key={facility.id}>
-                                      <button
-                                        type="button"
-                                        className={`${facility.inside ? "is-inside" : ""}${
-                                          facility.id === selectedHazardFacilityId ? " is-active" : ""
-                                        }`}
-                                        title={`${facility.name} · ${Math.round(facility.distance)}m`}
-                                        onClick={() => {
-                                          onSelectHazardFinding?.(entry.id);
-                                          onSelectHazardFacility?.(
-                                            facility.id === selectedHazardFacilityId ? null : facility.id,
-                                          );
-                                        }}
-                                      >
-                                        <span>{facility.name}</span>
-                                        <b>{Math.round(facility.distance)}m</b>
-                                      </button>
-                                    </li>
-                                  ))}
-                                  {category.count > category.facilities.length && (
-                                    <li className="is-more">외 {category.count - category.facilities.length}곳</li>
-                                  )}
-                                </ul>
-                              )}
-                            </li>
-                          ))}
+                          {entry.categories.map((category) => {
+                            const categoryActive =
+                              railCategory?.findingId === entry.id && railCategory.key === category.key;
+                            return (
+                              <li key={category.key} className={`is-${category.status}`}>
+                                <button
+                                  type="button"
+                                  className={`map-rail-subitem${categoryActive ? " is-active" : ""}`}
+                                  disabled={category.count === 0}
+                                  aria-pressed={categoryActive}
+                                  title={
+                                    category.count === 0
+                                      ? `${category.label} · 시설 없음`
+                                      : `${category.label} · ${category.count}곳 — 누르면 지도에 이 종류만 거리와 함께 펼칩니다`
+                                  }
+                                  onClick={() => {
+                                    if (categoryActive) {
+                                      setRailCategory(null);
+                                      return;
+                                    }
+                                    onSelectHazardFinding?.(entry.id);
+                                    onSelectHazardFacility?.(null);
+                                    setRailCategory({ findingId: entry.id, key: category.key, types: category.types });
+                                  }}
+                                >
+                                  <span>{category.label}</span>
+                                  <small>{RAIL_STATUS_SHORT[category.status] ?? category.status}</small>
+                                  <b>{category.count}</b>
+                                </button>
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </div>

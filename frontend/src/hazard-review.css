@@ -645,7 +645,45 @@
   color: var(--blue);
 }
 
-/* 1차 세부 종류 아래 시설·거리 목록(2차 지도 표시와 같은 정보). */
+/* 1차 세부 종류 행 — 누르면 지도에 그 종류만 거리선으로 펼친다. */
+.map-rail-subitem {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-rail-subitem:disabled {
+  cursor: default;
+}
+
+.map-rail-subitem:hover:not(:disabled),
+.map-rail-subitem.is-active {
+  background: color-mix(in srgb, #dc2626 10%, transparent);
+  border-color: color-mix(in srgb, #dc2626 35%, transparent);
+}
+
+.map-rail-subitem > span {
+  min-width: 0;
+}
+
+/* 규칙 전체를 펼쳤을 때의 거리 라벨 — 굵은 선택 라벨보다 작고 연하다. */
+.hazard-distance-label.is-many {
+  padding: 2px 8px;
+  font-size: 12.5px;
+  background: color-mix(in srgb, #ef4444 82%, #fff);
+}
+
+/* (예전) 1차 세부 종류 아래 시설 목록 — 지도 펼치기로 대체. */
 .map-rail-facilities {
   grid-column: 1 / -1;
   width: 100%;
@@ -859,4 +897,19 @@
 .map-rail-sublist li.is-dataset_missing,
 .map-rail-sublist li.is-not_applicable {
   color: var(--muted-2);
+}
+
+/* 세부 종류 행이 버튼일 때는 li 여백을 버튼이 대신한다(이중 여백 방지). */
+.map-rail-sublist li:has(> .map-rail-subitem) {
+  padding: 0;
+}
+
+.map-rail-subitem > small {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.map-rail-subitem > b {
+  font-variant-numeric: tabular-nums;
 }
