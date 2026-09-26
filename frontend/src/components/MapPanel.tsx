@@ -1908,7 +1908,8 @@ export function MapPanel({
         railCategory && railCategory.findingId === selectedHazardFinding.finding_id
           ? new Set(railCategory.types)
           : null;
-      selectedHazardFinding.facilities
+      // 판정창 안 시설과 참고 반경 시설(기준 밖·통과)을 모두 편다 — 레일의 건수와 같은 범위.
+      [...selectedHazardFinding.facilities, ...(selectedHazardFinding.nearby_facilities ?? [])]
         .filter((facility) => !typeFilter || typeFilter.has(facility.facility_type))
         .filter((facility) => facility.facility_id !== selectedHazardFacilityId)
         .forEach((facility) => {

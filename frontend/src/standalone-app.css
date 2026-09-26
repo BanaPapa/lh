@@ -41,55 +41,37 @@
   position: relative;
   z-index: 40;
   flex: 0 0 auto;
-  /* 한 격자에 두 줄: 1행 브랜드 · 검색줄 · 설정, 2행 가운데 열에 유형. 검색창과 유형 줄이
-     같은 열에 있어 왼쪽 끝이 맞고, 검색창 폭은 유형 줄 폭에 맞춘다(TopSearchBar 가 잰다). */
+  /* 5열 × 2행. 1행: 앱 이름 · 주택유형 · 검색창 · 실행 · 설정 / 2행: 판정·점수 · 신청유형 ·
+     (비움) · 다시 검색 · 사업지 칩. 주택유형·신청유형은 같은 열이라 시작점이 같고, 검색창은
+     그 열이 끝난 뒤(신청유형 오른쪽 끝보다 오른쪽)에서 시작한다. */
   display: grid;
-  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+  grid-template-columns: max-content max-content minmax(240px, 1fr) max-content max-content;
+  grid-template-rows: auto auto;
   align-items: center;
-  column-gap: 16px;
-  row-gap: 4px;
+  column-gap: 18px;
+  row-gap: 6px;
   padding: 10px 18px 8px;
   background: var(--raise);
   border-bottom: 1px solid var(--border);
 }
 
-.solo-bar-primary,
-.solo-bar-secondary {
-  display: contents;
-}
+.solo-brand { grid-column: 1; grid-row: 1; }
+.solo-brand-slot { grid-column: 1; grid-row: 2; justify-self: start; min-height: 24px; }
+.solo-housing-slot { grid-column: 2; grid-row: 1; justify-self: start; }
+.solo-application-slot { grid-column: 2; grid-row: 2; justify-self: start; }
+.solo-search-shell { grid-column: 3; grid-row: 1; min-width: 0; }
+.solo-run-slot { grid-column: 4; grid-row: 1; }
+.solo-reset-slot { grid-column: 4; grid-row: 2; }
+.solo-bar-actions { grid-column: 5; grid-row: 1; justify-self: end; }
+.solo-site-slot { grid-column: 5; grid-row: 2; justify-self: end; min-width: 0; max-width: 100%; min-height: 24px; }
 
-.solo-brand {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-/* 2행 왼쪽(제목 아래): 판정·점수. 2행 오른쪽(설정 아이콘 아래): 사업지 칩. */
-.solo-brand-slot {
-  grid-column: 1;
-  grid-row: 2;
-  justify-self: start;
-  min-height: 24px;
-}
-
-.solo-site-slot {
-  grid-column: 3;
-  grid-row: 2;
-  justify-self: end;
-  min-width: 0;
-  max-width: 100%;
-  min-height: 24px;
-}
-
-.solo-bar-primary > .solo-search-shell {
-  grid-column: 2;
-  grid-row: 1;
-  justify-self: start;
-}
-
-.solo-bar-actions {
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: end;
+/* 실행(또는 검색·결과 상세)과 다시 검색은 같은 열에서 같은 크기다. */
+.solo-run-slot > button,
+.solo-reset-slot > button {
+  width: 100%;
+  min-width: 128px;
+  height: 42px;
+  justify-content: center;
 }
 
 .solo-type-measure {
@@ -99,11 +81,6 @@
 }
 
 /* ── 1행: 브랜드 · 검색 · 화면 설정 ───────────────────────── */
-
-.solo-bar-primary > .solo-search-shell {
-  min-width: 0;
-  max-width: 100%;
-}
 
 .solo-search-row {
   min-width: 0;
@@ -115,10 +92,6 @@
 
 /* ── 2행: 주택유형·신청유형 — 검색창 바로 아래 가운데 ─────────── */
 
-
-.solo-type-measure {
-  display: inline-flex;
-}
 
 
 
@@ -274,10 +247,10 @@
   gap: 8px;
 }
 
-/* 검색창은 늘거나 줄지 않는다 — 폭은 아래 유형 줄에 맞춰 인라인으로 준다(기본 420px). */
+/* 검색창은 자기 열을 가득 채운다. */
 .solo-search-row > .solo-search-form {
-  flex: 0 0 420px;
-  min-width: 260px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .solo-search-row > button {
@@ -1900,4 +1873,15 @@
   font-size: 11px;
   font-style: normal;
   font-weight: 800;
+}
+
+
+/* 주택유형·신청유형을 따로 그릴 때(상단 바 두 줄). 팝오버는 묶음 왼쪽에 맞춘다. */
+.solo-type-bar.is-single {
+  justify-content: flex-start;
+}
+
+.solo-type-bar.is-single .solo-type-popover {
+  right: auto;
+  left: 0;
 }

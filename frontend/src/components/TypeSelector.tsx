@@ -12,6 +12,8 @@ interface TypeSelectorProps {
   onHousingTypeChange: (value: HazardHousingType) => void;
   onApplicationTypeChange: (value: HazardApplicationType) => void;
   disabled?: boolean;
+  /** 주택유형·신청유형 중 하나만 그린다(상단 바에서 두 줄에 나눠 놓을 때). */
+  only?: "housing" | "application";
 }
 
 type Hover =
@@ -31,6 +33,7 @@ export function TypeSelector({
   onHousingTypeChange,
   onApplicationTypeChange,
   disabled = false,
+  only,
 }: TypeSelectorProps) {
   const [hover, setHover] = useState<Hover>(null);
 
@@ -57,7 +60,8 @@ export function TypeSelector({
     ) ?? null;
 
   return (
-    <div className="solo-type-bar" onMouseLeave={() => setHover(null)}>
+    <div className={`solo-type-bar${only ? " is-single" : ""}`} onMouseLeave={() => setHover(null)}>
+      {only !== "application" && (
       <div className="solo-type-group" role="group" aria-label="주택유형">
         <span className="solo-type-label">주택유형</span>
         {housingEntries.map(([value, label]) => (
@@ -74,6 +78,8 @@ export function TypeSelector({
           </button>
         ))}
       </div>
+      )}
+      {only !== "housing" && (
       <div className="solo-type-group" role="group" aria-label="신청유형">
         <span className="solo-type-label">신청유형</span>
         {applicationEntries.map(([value, label]) => (
@@ -90,6 +96,7 @@ export function TypeSelector({
           </button>
         ))}
       </div>
+      )}
 
       {hover && combo && (
         <div className="solo-type-popover" role="tooltip">
