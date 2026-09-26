@@ -644,6 +644,11 @@ interface HoverArea {
 
 // 호버 중 이름표가 거리 라벨(zIndex 10·11) 위에 서도록 올리는 값.
 const HOVER_Z_INDEX = 30;
+/** 2차 근거 시설 색. 지도 타일(항상 밝음) 위라 테마와 무관한 고정 hex.
+ *  점수를 결정한 항목별 최근접 시설(자동)은 보라, 시설군을 펼쳐 본 시설(수동)은 파랑.
+ *  hazard-review.css 의 .is-basis 와 같은 값이어야 한다. */
+const SCREENING_BASIS_TONE = "#7c3aed";
+const SCREENING_GROUP_TONE = "#2563eb";
 
 /**
  * 포인터 위치로 호버 상태를 다시 계산한다. SDK 의 폴리곤 mouseout 은 커스텀
@@ -2016,10 +2021,15 @@ export function MapPanel({
 
     // ── 2차 배점 근거 시설(교통·주거·교육·가점) ────────────────────────
     // 각 핀에 사업지 대지경계 최단점 ↔ 시설 기준점 최단거리선 + 거리 라벨을 얹는다.
-    // 1차 유해요소 선과 형태는 같되(점선) 색만 파랑으로 달리해 판정 거리와 구분한다.
+    // 1차 유해요소 선과 형태는 같되(점선) 색만 달리해 판정 거리와 구분한다.
+    // 색은 두 가지다. 평가항목별 점수를 결정한 최근접 시설(자동, 항상 표시)은
+    // 보라, 사용자가 시설군을 펼쳐서 본 나머지 시설(수동)은 파랑. 같은 파랑이면
+    // "왜 안 사라지느냐"는 혼동이 생긴다 — 자동 근거 시설은 무엇을 눌러도 남는다.
     visibleScreeningHitRefs.forEach((ref) => {
       const hit = ref.hit;
       if (!hit.coordinates) return;
+      const isBasis = ref.isCriterionNearest;
+      const tone = isBasis ? SCREENING_BASIS_TONE : SCREENING_GROUP_TONE;
       // 점으로 재는 시설(버스정류장·역 출입구·대학 정문 좌표)은 측정에 쓴 점에
       // 마커를 세운다 — 시설 대표점이 아니라 실제로 거리를 잰 자리가 보여야 한다.
       const pointBased =
@@ -2056,10 +2066,10 @@ export function MapPanel({
           map,
           ...(runtime.provider === "kakao" ? { path: hitPath } : { paths: hitPath }),
           strokeWeight: selected ? 2.5 : 1.5,
-          strokeColor: "#2563eb",
+          strokeColor: tone,
           strokeOpacity: 0.9,
           strokeStyle: "solid",
-          fillColor: "#2563eb",
+          fillColor: tone,
           fillOpacity: selected ? 0.3 : 0.18,
           clickable: true,
           zIndex: 2,
@@ -2078,8 +2088,8 @@ export function MapPanel({
       const markerNode = document.createElement("button");
       markerNode.type = "button";
       markerNode.className = `hazard-map-marker is-screening${
-        hitHasArea ? " is-area" : ""
-      }${selected ? " is-selected" : ""}`;
+        isBasis ? " is-basis" : ""
+      }${hitHasArea ? " is-area" : ""}${selected ? " is-selected" : ""}`;
       markerNode.setAttribute(
         "aria-label",
         `${ref.criterionLabel} · ${hit.name || "이름 미확보"} · ${distanceText}`,
@@ -2130,13 +2140,15 @@ export function MapPanel({
         map,
         path: [originPosition, endPosition],
         strokeWeight: selected ? 3 : 2,
-        strokeColor: "#2563eb",
+        strokeColor: tone,
         strokeOpacity: selected ? 0.95 : 0.7,
         strokeStyle: "shortdash",
       });
       overlaysRef.current.push(line);
       const lineLabel = document.createElement("span");
-      lineLabel.className = "hazard-distance-label is-amenity";
+      lineLabel.className = `hazard-distance-label is-amenity${
+        isBasis ? " is-basis" : ""
+      }`;
       lineLabel.textContent = distanceText;
       const originLat = origin ? origin.lat : site.coordinates.lat;
       const originLng = origin ? origin.lng : site.coordinates.lng;
@@ -2538,7 +2550,7 @@ export function MapPanel({
               .filter(Boolean)
               .join(" ")}
           >
-            {/* 읽는 순서대로: 1차(빨강) → 2차(파랑) → 기준 밖(회색) → 거리 밴드. 설명은 도움말로. */}
+            {/* 읽는 순서대로: 1차(빨강) → 2차 점수 근거(보라) → 2차 펼친 시설군(파랑) → 기준 밖(회색) → 거리 밴드. 설명은 도움말로. */}
             <strong>
               지도 범례 <Info size={13} aria-hidden="true" />
             </strong>
@@ -2549,7 +2561,12 @@ export function MapPanel({
             )}
             {screeningHitRefs.length > 0 && (
               <span>
-                <i className="marker-screening" /> 2차 근거 시설
+                <i className="marker-screening is-basis" /> 2차 점수 근거
+              </span>
+            )}
+            {visibleScreeningHitRefs.some((ref) => !ref.isCriterionNearest) && (
+              <span>
+                <i className="marker-screening" /> 2차 펼친 시설군
               </span>
             )}
             {hazardMarkers.some((marker) => marker.nearby) && (
