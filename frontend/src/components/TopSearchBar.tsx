@@ -50,7 +50,10 @@ interface TopSearchBarProps {
   siteSummary?: {
     parcelCount: number;
     areaM2: number;
-    note: string;
+    /** 선택된 필지 지번(대표가 첫 항목). 칩에 그대로 나열한다. */
+    parcels: { pnu: string; label: string; areaM2: number | null }[];
+    /** 「외 N필지」 지번을 다 풀지 못했을 때만 채운다. */
+    unresolvedNote: string;
     locked: boolean;
     onReset: () => void;
   } | null;
@@ -163,33 +166,6 @@ export function TopSearchBar({
               </button>
             )}
           </div>
-          {hasSite && siteSummary && (
-            <div
-              className="solo-site-chip"
-              title={
-                siteSummary.locked
-                  ? "심사 결과가 있는 동안에는 필지를 바꿀 수 없습니다. 필지를 다시 고르려면 주소를 새로 검색하세요."
-                  : `지도에서 필지를 누르면 사업지에 더하고, 선택된 필지를 다시 누르면 뺍니다.${
-                      siteSummary.note ? ` ${siteSummary.note}` : ""
-                    }`
-              }
-            >
-              {siteSummary.parcelCount > 0 ? (
-                <>
-                  <b>{siteSummary.parcelCount}필지</b>
-                  <span>합계 {formatArea(siteSummary.areaM2)}</span>
-                  {siteSummary.note && <em>외 N필지 일부 미확정</em>}
-                  {!siteSummary.locked && (
-                    <button type="button" onClick={siteSummary.onReset}>
-                      초기화
-                    </button>
-                  )}
-                </>
-              ) : (
-                <span className="is-warning">필지 없음 — 지도에서 필지를 고르세요</span>
-              )}
-            </div>
-          )}
           {searchError && (
             <p className="solo-search-error" role="alert">
               {searchError}
@@ -201,15 +177,6 @@ export function TopSearchBar({
             </p>
           )}
         </div>
-
-        <TypeSelector
-          applicationTypes={applicationTypes}
-          housingType={housingType}
-          applicationType={applicationType}
-          onHousingTypeChange={onHousingTypeChange}
-          onApplicationTypeChange={onApplicationTypeChange}
-          disabled={running}
-        />
 
         <div className="solo-bar-actions">
           <button
@@ -278,6 +245,64 @@ export function TopSearchBar({
             <Printer size={18} />
           </button>
         </div>
+      </div>
+      {/* 2행: 왼쪽에 사업지(선택 필지) 요약, 오른쪽에 주택유형·신청유형. 한 줄에 둔다. */}
+      <div className="solo-bar-secondary">
+        <div className="solo-site-summary">
+          {hasSite && siteSummary ? (
+            <div
+              className="solo-site-chip"
+              title={
+                siteSummary.locked
+                  ? "심사 결과가 있는 동안에는 필지를 바꿀 수 없습니다. 필지를 다시 고르려면 주소를 새로 검색하세요."
+                  : "지도에서 필지를 누르면 사업지에 더하고, 선택된 필지를 다시 누르면 뺍니다."
+              }
+            >
+              {siteSummary.parcelCount > 0 ? (
+                <>
+                  <b>{siteSummary.parcelCount}필지</b>
+                  <span>합계 {formatArea(siteSummary.areaM2)}</span>
+                  <ul className="solo-site-parcels" aria-label="선택된 필지">
+                    {siteSummary.parcels.map((parcel, index) => (
+                      <li
+                        key={parcel.pnu || `${parcel.label}-${index}`}
+                        className={index === 0 ? "is-representative" : ""}
+                        title={
+                          parcel.areaM2 === null
+                            ? parcel.label
+                            : `${parcel.label} · ${formatArea(parcel.areaM2)}`
+                        }
+                      >
+                        {parcel.label}
+                        {index === 0 && <i>대표</i>}
+                      </li>
+                    ))}
+                  </ul>
+                  {siteSummary.unresolvedNote && (
+                    <em title={siteSummary.unresolvedNote}>외 N필지 일부 미확정</em>
+                  )}
+                  {!siteSummary.locked && (
+                    <button type="button" onClick={siteSummary.onReset}>
+                      초기화
+                    </button>
+                  )}
+                </>
+              ) : (
+                <span className="is-warning">필지 없음 — 지도에서 필지를 고르세요</span>
+              )}
+            </div>
+          ) : (
+            <span className="solo-site-empty">사업지를 검색하면 선택된 필지가 여기에 나옵니다.</span>
+          )}
+        </div>
+        <TypeSelector
+          applicationTypes={applicationTypes}
+          housingType={housingType}
+          applicationType={applicationType}
+          onHousingTypeChange={onHousingTypeChange}
+          onApplicationTypeChange={onApplicationTypeChange}
+          disabled={running}
+        />
       </div>
       <ApiKeysPanel open={apiOpen} onClose={() => setApiOpen(false)} />
       <RulebookModal open={rulebookOpen} onClose={() => setRulebookOpen(false)} rulePack={rulePack} />

@@ -50,12 +50,34 @@
 /* ── 1행: 브랜드 · 검색 · 화면 설정 ───────────────────────── */
 
 .solo-bar-primary {
-  /* 브랜드 · 검색(왼쪽) · 유형 선택(남는 폭) · 화면 설정 */
+  /* 브랜드 · 검색(왼쪽) · 빈 공간 · 화면 설정 */
   display: grid;
-  grid-template-columns: auto minmax(360px, 560px) minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(360px, 640px) minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
-  padding: 12px 18px;
+  padding: 10px 18px 6px;
+}
+
+/* ── 2행: 사업지(선택 필지) 요약 · 주택유형·신청유형 — 한 줄 ───── */
+
+.solo-bar-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 18px 10px;
+}
+
+.solo-site-summary {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+}
+
+.solo-site-empty {
+  color: var(--muted-2);
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .solo-brand {
@@ -622,9 +644,8 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
-.solo-type-bar {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
+.solo-bar-secondary {
+    flex-wrap: wrap;
   }
 }
 
@@ -1500,10 +1521,6 @@
 /* ── 상단 바: 사업지 요약 칩(주소 옆) ───────────────────────── */
 
 .solo-site-chip {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1560,8 +1577,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 6px 14px;
+  flex: none;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -1681,4 +1698,44 @@
   font-size: 12.5px;
   font-style: normal;
   font-weight: 700;
+}
+
+
+/* 칩 안 선택 필지 지번 목록. 대표는 배지, 나머지는 순서대로. */
+.solo-site-parcels {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.solo-site-parcels > li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  color: var(--fg-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.solo-site-parcels > li.is-representative {
+  color: var(--blue);
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--border));
+}
+
+.solo-site-parcels > li > i {
+  padding: 0 5px;
+  color: #fff;
+  background: var(--blue);
+  border-radius: 999px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
 }

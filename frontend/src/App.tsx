@@ -68,6 +68,20 @@ function isJobLostError(error: unknown): boolean {
  * LH 서류심사 앱.
  * 상단 검색 바 + 전체 지도 + 우측 결과 레일 한 화면으로 구성한다.
  */
+// 유형 기본값. 새로 검색하거나 되돌릴 때마다 여기로 돌아온다.
+const DEFAULT_HOUSING_TYPE: HazardHousingType = "house";
+const DEFAULT_APPLICATION_TYPE: HazardApplicationType = "general";
+
+/** 「전북특별자치도 전주시 덕진구 금암동 473-6」 → 「금암동 473-6」(동 + 지번, 산 지번은 「산 10」). */
+function shortJibun(address: string): string {
+  const tokens = address.trim().split(/\s+/);
+  if (tokens.length <= 2) return address;
+  const last = tokens[tokens.length - 1];
+  const prev = tokens[tokens.length - 2];
+  if (prev === "산") return `${tokens[tokens.length - 3] ?? ""} 산 ${last}`.trim();
+  return `${prev} ${last}`;
+}
+
 function App() {
   const { theme, toggleTheme } = useTheme();
   const [query, setQuery] = useState("");
@@ -375,6 +389,9 @@ function App() {
         // 상태는 아래 siteChanged 분기에서만 지운다.
         setViewportRequest((seq) => seq + 1);
         if (siteChanged) {
+          // 사업지가 바뀌면 유형은 기본값(주택 · 일반)에서 다시 고른다.
+          setHazardHousingType(DEFAULT_HOUSING_TYPE);
+          setHazardApplicationType(DEFAULT_APPLICATION_TYPE);
           setHazardParcels([]);
           setParcelNote("");
           void loadSiteParcel(nextCandidate, query);
@@ -620,6 +637,8 @@ function App() {
     screeningRunRef.current += 1;
     siteParcelRunRef.current += 1;
     setSelectedCandidate(null);
+    setHazardHousingType(DEFAULT_HOUSING_TYPE);
+    setHazardApplicationType(DEFAULT_APPLICATION_TYPE);
     setHazardParcels([]);
     setParcelNote("");
     setScreeningResult(null);
@@ -730,7 +749,13 @@ function App() {
     ? {
         parcelCount: hazardParcels.length,
         areaM2: hazardParcels.reduce((sum, parcel) => sum + (parcel.area_m2 ?? 0), 0),
-        note: parcelNote,
+        parcels: hazardParcels.map((parcel) => ({
+          pnu: parcel.pnu,
+          label: shortJibun(parcel.address || parcel.pnu),
+          areaM2: parcel.area_m2,
+        })),
+        // 연속지적도 고지는 늘 붙으므로 「외 N필지」를 다 풀지 못한 경우만 경고한다.
+        unresolvedNote: /외 N필지|찾지 못했습니다/.test(parcelNote) ? parcelNote : "",
         locked: parcelsLocked,
         onReset: () => {
           setHazardParcels([]);
