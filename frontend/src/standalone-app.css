@@ -41,32 +41,55 @@
   position: relative;
   z-index: 40;
   flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
+  /* 한 격자에 두 줄: 1행 브랜드 · 검색줄 · 설정, 2행 가운데 열에 유형. 검색창과 유형 줄이
+     같은 열에 있어 왼쪽 끝이 맞고, 검색창 폭은 유형 줄 폭에 맞춘다(TopSearchBar 가 잰다). */
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 4px;
+  padding: 10px 18px 8px;
   background: var(--raise);
   border-bottom: 1px solid var(--border);
 }
 
-/* ── 1행: 브랜드 · 검색 · 화면 설정 ───────────────────────── */
+.solo-bar-primary,
+.solo-bar-secondary {
+  display: contents;
+}
 
-.solo-bar-primary {
-  /* 1행: 브랜드(왼쪽) · 검색·실행·사업지 요약/결과 상세(가운데) · 화면 설정(오른쪽) */
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 16px;
-  padding: 10px 18px 4px;
+.solo-brand-block {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .solo-bar-primary > .solo-search-shell {
-  justify-self: center;
-  max-width: min(1100px, 100%);
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
 }
 
-/* 검색창은 절반 길이. 오른쪽 같은 줄에 실행·다시 검색·사업지 칩(또는 결과 상세)이 온다. */
-.solo-search-row > .solo-search-form {
-  flex: 0 0 420px;
-  min-width: 260px;
+.solo-bar-actions {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.solo-type-measure {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: start;
+}
+
+/* ── 1행: 브랜드 · 검색 · 화면 설정 ───────────────────────── */
+
+.solo-bar-primary > .solo-search-shell {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.solo-search-row {
+  min-width: 0;
 }
 
 .solo-search-row {
@@ -75,16 +98,14 @@
 
 /* ── 2행: 주택유형·신청유형 — 검색창 바로 아래 가운데 ─────────── */
 
-.solo-bar-secondary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 2px 18px 8px;
+
+.solo-type-measure {
+  display: inline-flex;
 }
 
-.solo-bar-secondary > .solo-type-bar {
-  justify-content: center;
+/* 주택유형 묶음과 신청유형 묶음 사이는 확실히 띈다. */
+.solo-type-bar {
+  gap: 28px;
 }
 
 /* 다시 검색 — 실행 버튼 옆 글자 버튼. 심사 전·후 모두 같은 모양이다. */
@@ -165,6 +186,14 @@
   font-weight: 600;
 }
 
+.solo-brand-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
 .solo-brand {
   display: inline-flex;
   align-items: center;
@@ -174,6 +203,51 @@
   font-weight: 800;
   letter-spacing: 0.09em;
   white-space: nowrap;
+}
+
+/* 제목 아래 판정·점수. 누르면 심사 결과 상세가 열린다. */
+.solo-brand-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.solo-brand-result > em {
+  padding: 2px 9px;
+  border-radius: 7px;
+  font-style: normal;
+  font-weight: 800;
+  color: var(--muted);
+  background: var(--surface-3);
+}
+
+.solo-brand-result.tone-success > em {
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
+}
+
+.solo-brand-result.tone-warning > em {
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+}
+
+.solo-brand-result.tone-danger > em {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+}
+
+.solo-brand-result:hover > span {
+  color: var(--fg);
+  text-decoration: underline;
 }
 
 .solo-brand > svg {
@@ -194,9 +268,10 @@
   gap: 8px;
 }
 
+/* 검색창은 늘거나 줄지 않는다 — 폭은 아래 유형 줄에 맞춰 인라인으로 준다(기본 420px). */
 .solo-search-row > .solo-search-form {
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 420px;
+  min-width: 260px;
 }
 
 .solo-search-row > button {
@@ -1598,6 +1673,9 @@
 /* ── 상단 바: 사업지 요약 칩(주소 옆) ───────────────────────── */
 
 .solo-site-chip {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow-x: auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
