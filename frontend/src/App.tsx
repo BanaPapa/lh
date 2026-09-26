@@ -723,7 +723,21 @@ function App() {
     setViewportRequest((seq) => seq + 1);
   };
 
-  const showRail = Boolean(selectedCandidate) && railVisible;
+  // 결과 레일은 심사가 돌기 시작한 뒤에만 뜬다. 그 전에는 지도가 화면을 다 쓴다.
+  const hasScreeningActivity = Boolean(screeningResult) || screeningRunning;
+  const showRail = Boolean(selectedCandidate) && railVisible && hasScreeningActivity;
+  const siteSummary = selectedCandidate
+    ? {
+        parcelCount: hazardParcels.length,
+        areaM2: hazardParcels.reduce((sum, parcel) => sum + (parcel.area_m2 ?? 0), 0),
+        note: parcelNote,
+        locked: parcelsLocked,
+        onReset: () => {
+          setHazardParcels([]);
+          setParcelNote("");
+        },
+      }
+    : null;
 
   return (
     <main className="screening-app solo-app" data-module-view="solo">
@@ -750,6 +764,13 @@ function App() {
         runAttention={runAttention}
         canPrint={Boolean(screeningResult)}
         onOpenBatch={() => setBatchOpen(true)}
+        siteSummary={siteSummary}
+        applicationTypes={hazardApplicationTypes}
+        housingType={hazardHousingType}
+        applicationType={hazardApplicationType}
+        onHousingTypeChange={setHazardHousingType}
+        onApplicationTypeChange={setHazardApplicationType}
+        rulePack={rulePack}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
@@ -794,7 +815,7 @@ function App() {
             </div>
           )}
 
-          {selectedCandidate && !railVisible && (
+          {selectedCandidate && !railVisible && hasScreeningActivity && (
             <button
               type="button"
               className="rail-reopen-button"
@@ -808,23 +829,10 @@ function App() {
           {showRail && selectedCandidate && (
             <ResultRail
               site={selectedCandidate}
-              siteParcels={hazardParcels}
-              parcelNote={parcelNote}
-              parcelsLocked={parcelsLocked}
-              onResetParcels={() => {
-                setHazardParcels([]);
-                setParcelNote("");
-              }}
               onCollapse={() => setRailVisible(false)}
               screeningResult={screeningResult}
               screeningRunning={screeningRunning}
               screeningError={screeningError}
-              hazardApplicationTypes={hazardApplicationTypes}
-              hazardRulePack={rulePack}
-              hazardHousingType={hazardHousingType}
-              hazardApplicationType={hazardApplicationType}
-              onHazardHousingTypeChange={setHazardHousingType}
-              onHazardApplicationTypeChange={setHazardApplicationType}
               onOpenSheet={() => setSheetOpen(true)}
               onRerun={handleRun}
             />

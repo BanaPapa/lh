@@ -1,4 +1,4 @@
-import { BookOpen, X } from "lucide-react";
+import { BookOpen, ShieldCheck, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -7,11 +7,14 @@ import {
   type RulebookItem,
   type RulebookParagraph,
 } from "./rulebookContent";
+import type { HazardRulePack } from "../hazard-review/types";
 import "../rulebook.css";
 
 interface RulebookModalProps {
   open: boolean;
   onClose: () => void;
+  /** 지금 판정에 쓰는 규칙팩. 머리글에 버전·적용일을 보인다. */
+  rulePack?: HazardRulePack | null;
 }
 
 const FIRST_ITEM_ID = RULEBOOK_GROUPS[0].items[0].id;
@@ -77,7 +80,7 @@ function findItem(id: string): RulebookItem {
  * 룰북 모달 — 왼쪽은 LH 가 판단하는 항목 목록, 오른쪽은 고른 항목의
  * ① LH 기준 ② 이 앱의 적용 ③ 데이터 원천. 문단마다 행간을 넓혀 구분한다.
  */
-export function RulebookModal({ open, onClose }: RulebookModalProps) {
+export function RulebookModal({ open, onClose, rulePack = null }: RulebookModalProps) {
   const [selectedId, setSelectedId] = useState(FIRST_ITEM_ID);
   const [groupId, setGroupId] = useState(RULEBOOK_GROUPS[0].id);
   const group =
@@ -122,6 +125,16 @@ export function RulebookModal({ open, onClose }: RulebookModalProps) {
               <BookOpen size={18} aria-hidden="true" /> 심사 룰북
             </h2>
             <p>LH 가 판단하는 항목마다 LH 기준 · 이 앱의 적용 · 데이터 원천을 적었습니다.</p>
+            {rulePack && (
+              <p className="rulebook-pack">
+                <ShieldCheck size={14} aria-hidden="true" />
+                <strong>{rulePack.title}</strong>
+                <span>v{rulePack.version}</span>
+                <span>{rulePack.effective_from} 적용</span>
+                <span>{rulePack.status === "approved" ? "승인본" : rulePack.status}</span>
+                <em>현재 규칙팩</em>
+              </p>
+            )}
           </div>
           <button
             type="button"

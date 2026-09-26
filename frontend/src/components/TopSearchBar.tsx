@@ -12,6 +12,13 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { MapProvider } from "../types";
+import type {
+  HazardApplicationType,
+  HazardApplicationTypesResponse,
+  HazardHousingType,
+  HazardRulePack,
+} from "../hazard-review/types";
+import { TypeSelector } from "./TypeSelector";
 import type { ThemeMode } from "../theme";
 import { ApiKeysPanel } from "./ApiKeysPanel";
 import { SettingsMenu } from "./SettingsMenu";
@@ -39,6 +46,24 @@ interface TopSearchBarProps {
   onToggleTheme: () => void;
   /** 일괄 심사(신청자 엑셀 올리기) 모달을 연다. */
   onOpenBatch: () => void;
+  /** 검색 뒤 주소 옆에 보이는 사업지 요약(필지 수·면적). */
+  siteSummary?: {
+    parcelCount: number;
+    areaM2: number;
+    note: string;
+    locked: boolean;
+    onReset: () => void;
+  } | null;
+  applicationTypes: HazardApplicationTypesResponse | null;
+  housingType: HazardHousingType;
+  applicationType: HazardApplicationType;
+  onHousingTypeChange: (value: HazardHousingType) => void;
+  onApplicationTypeChange: (value: HazardApplicationType) => void;
+  rulePack: HazardRulePack | null;
+}
+
+function formatArea(areaM2: number): string {
+  return `${Math.round(areaM2).toLocaleString("ko-KR")}㎡`;
 }
 
 /**
@@ -64,6 +89,13 @@ export function TopSearchBar({
   theme,
   onToggleTheme,
   onOpenBatch,
+  siteSummary = null,
+  applicationTypes,
+  housingType,
+  applicationType,
+  onHousingTypeChange,
+  onApplicationTypeChange,
+  rulePack,
 }: TopSearchBarProps) {
   // API 연결 패널(상단 바 전용 버튼이 연다).
   const [apiOpen, setApiOpen] = useState(false);
@@ -131,6 +163,33 @@ export function TopSearchBar({
               </button>
             )}
           </div>
+          {hasSite && siteSummary && (
+            <div
+              className="solo-site-chip"
+              title={
+                siteSummary.locked
+                  ? "심사 결과가 있는 동안에는 필지를 바꿀 수 없습니다. 필지를 다시 고르려면 주소를 새로 검색하세요."
+                  : `지도에서 필지를 누르면 사업지에 더하고, 선택된 필지를 다시 누르면 뺍니다.${
+                      siteSummary.note ? ` ${siteSummary.note}` : ""
+                    }`
+              }
+            >
+              {siteSummary.parcelCount > 0 ? (
+                <>
+                  <b>{siteSummary.parcelCount}필지</b>
+                  <span>합계 {formatArea(siteSummary.areaM2)}</span>
+                  {siteSummary.note && <em>외 N필지 일부 미확정</em>}
+                  {!siteSummary.locked && (
+                    <button type="button" onClick={siteSummary.onReset}>
+                      초기화
+                    </button>
+                  )}
+                </>
+              ) : (
+                <span className="is-warning">필지 없음 — 지도에서 필지를 고르세요</span>
+              )}
+            </div>
+          )}
           {searchError && (
             <p className="solo-search-error" role="alert">
               {searchError}
@@ -142,6 +201,15 @@ export function TopSearchBar({
             </p>
           )}
         </div>
+
+        <TypeSelector
+          applicationTypes={applicationTypes}
+          housingType={housingType}
+          applicationType={applicationType}
+          onHousingTypeChange={onHousingTypeChange}
+          onApplicationTypeChange={onApplicationTypeChange}
+          disabled={running}
+        />
 
         <div className="solo-bar-actions">
           <button
@@ -212,7 +280,7 @@ export function TopSearchBar({
         </div>
       </div>
       <ApiKeysPanel open={apiOpen} onClose={() => setApiOpen(false)} />
-      <RulebookModal open={rulebookOpen} onClose={() => setRulebookOpen(false)} />
+      <RulebookModal open={rulebookOpen} onClose={() => setRulebookOpen(false)} rulePack={rulePack} />
       <RulesPanel open={rulesOpen} onClose={() => setRulesOpen(false)} />
     </header>
   );

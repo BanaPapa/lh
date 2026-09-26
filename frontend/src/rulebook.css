@@ -278,3 +278,33 @@
     border-bottom: 1px solid var(--border);
   }
 }
+
+
+/* 머리글의 현재 규칙팩(제목 · 버전 · 적용일). 우측 레일에서 옮겨 왔다. */
+.rulebook-pack {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.rulebook-pack > svg {
+  color: var(--teal);
+}
+
+.rulebook-pack > strong {
+  color: var(--fg);
+}
+
+.rulebook-pack > em {
+  padding: 1px 8px;
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-style: normal;
+  font-weight: 800;
+}

@@ -50,8 +50,9 @@
 /* ── 1행: 브랜드 · 검색 · 화면 설정 ───────────────────────── */
 
 .solo-bar-primary {
+  /* 브랜드 · 검색(왼쪽) · 유형 선택(남는 폭) · 화면 설정 */
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+  grid-template-columns: auto minmax(360px, 560px) minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
   padding: 12px 18px;
@@ -74,9 +75,8 @@
 
 .solo-search-shell {
   position: relative;
-  width: min(660px, 56vw);
   min-width: 260px;
-  justify-self: center;
+  justify-self: stretch;
 }
 
 /* 검색과 분석 실행은 한 흐름이라 같은 줄에 붙여 놓는다. */
@@ -622,9 +622,9 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
-.solo-search-shell {
-    width: auto;
-    justify-self: stretch;
+.solo-type-bar {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 }
 
@@ -1494,4 +1494,191 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: var(--shadow);
+}
+
+
+/* ── 상단 바: 사업지 요약 칩(주소 옆) ───────────────────────── */
+
+.solo-site-chip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  color: var(--fg);
+  background: var(--raise);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.solo-site-chip > b {
+  color: var(--blue);
+  font-weight: 800;
+}
+
+.solo-site-chip > span {
+  color: var(--muted);
+}
+
+.solo-site-chip > em {
+  color: var(--amber);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.solo-site-chip > .is-warning {
+  color: var(--amber);
+}
+
+.solo-site-chip > button {
+  padding: 2px 8px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.solo-site-chip > button:hover {
+  color: var(--fg);
+}
+
+/* ── 상단 바: 주택유형·신청유형 선택 + 임계거리 팝오버 ─────────── */
+
+.solo-type-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  min-width: 0;
+}
+
+.solo-type-bar.is-loading {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.solo-type-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.solo-type-label {
+  padding: 0 6px 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.solo-type-pill {
+  height: 30px;
+  padding: 0 12px;
+  color: var(--fg-2);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.solo-type-pill:hover:not(:disabled) {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+}
+
+.solo-type-pill.is-active {
+  color: #fff;
+  background: var(--blue);
+}
+
+.solo-type-pill:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.solo-type-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  padding: 12px 14px;
+  background: var(--raise);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.solo-type-popover > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.solo-type-popover > header strong {
+  font-size: 15px;
+}
+
+.solo-type-popover > header small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.solo-type-popover > ul {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  list-style: none;
+}
+
+.solo-type-popover > ul > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 9px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  font-size: 14.5px;
+}
+
+.solo-type-popover > ul > li > b {
+  font-size: 15px;
+}
+
+.solo-type-popover > ul > li.is-not-applicable {
+  color: var(--muted);
+}
+
+.solo-type-popover > ul > li > em {
+  color: var(--muted-2);
+  font-size: 12.5px;
+  font-style: normal;
+  font-weight: 700;
 }
