@@ -130,6 +130,14 @@ class ScreeningService:
             "STAGE1_COLLECT", "1차 유해시설 조회", "completed", 100, facility_count,
             f"항목 {len(stage_one.items)}종에서 시설 {facility_count}곳을 확인했습니다.",
         )
+        # 규칙(대분류)마다 판정 결과를 하위 단계로 올린다 — 진행 화면이 규칙별로 펼쳐 보인다.
+        await report(
+            "STAGE1_JUDGE", "1차 매입제외 판정", "running", 10, None, "규칙별로 판정합니다.",
+        )
+        for rule_id, rule_label, outcome_label, inside in _judge_steps(stage_one):
+            await report(
+                f"STAGE1_JUDGE/{rule_id}", rule_label, "completed", 100, inside, outcome_label,
+            )
         await report(
             "STAGE1_JUDGE", "1차 매입제외 판정", "completed", 100,
             len(stage_one.items), stage_one.summary,
@@ -141,7 +149,25 @@ class ScreeningService:
             "시설군을 병렬 조회합니다.",
         )
         rings = _site_rings(site.parcels)
-        collections = await self.amenities.collect(rings, site.coordinates, MAX_RADIUS_M)
+        feed_done = 0
+
+        async def on_feed(name: str, label: str, count: int | None, ok: bool) -> None:
+            # 시설군 원천 하나가 끝날 때마다 하위 단계로 올리고 부모 막대를 올린다.
+            nonlocal feed_done
+            feed_done += 1
+            await report(
+                f"STAGE2_COLLECT/{name}", label, "completed", 100, count,
+                "조회 완료" if ok else "조회 실패 — 대체 원천",
+            )
+            await report(
+                "STAGE2_COLLECT", "2차 생활편의시설 조회", "running",
+                min(95, 20 + round(75 * feed_done / max(self.amenities.feed_count(), 1))),
+                None, f"{label} 조회 완료",
+            )
+
+        collections = await self.amenities.collect(
+            rings, site.coordinates, MAX_RADIUS_M, progress=on_feed
+        )
         collected = sum(1 for item in collections.values() if item.state != "missing")
         await report(
             "STAGE2_COLLECT", "2차 생활편의시설 조회", "completed", 100, collected,
@@ -158,6 +184,17 @@ class ScreeningService:
             measurement=BOUNDARY_MEASUREMENT if rings else POINT_MEASUREMENT,
             reference_only=stage_one.verdict == "fail",
         )
+        # 평가항목마다 채택 등급을 하위 단계로 올린다.
+        for criterion in [*stage_two.criteria, *([stage_two.bonus] if stage_two.bonus else [])]:
+            points = (
+                f"{criterion.awarded}/{criterion.maximum}점"
+                if criterion.awarded is not None
+                else f"{criterion.awarded_min}~{criterion.awarded_max}점"
+            )
+            await report(
+                f"STAGE2_SCORE/{criterion.key}", criterion.label, "completed", 100,
+                criterion.awarded, f"{points} · {criterion.tier_condition}",
+            )
         await report(
             "STAGE2_SCORE", "2차 생활편의성 배점", "completed", 100,
             stage_two.living_score_max, _score_message(stage_two),
@@ -713,6 +750,24 @@ def _subject_particle(word: str) -> str:
     if not "가" <= last <= "힣":
         return "이"
     return "이" if (ord(last) - 0xAC00) % 28 else "가"
+
+
+def _judge_steps(stage_one: ScreeningStageOne) -> list[tuple[str, str, str, int | None]]:
+    """규칙(대분류)별 판정 요약 — (rule_id, 규칙 이름, 결과, 기준 안 시설 수)."""
+
+    order = ("fail", "review", "pass", "not_applicable")
+    steps: list[tuple[str, str, str, int | None]] = []
+    seen: list[str] = []
+    for item in stage_one.items:
+        if item.rule_id in seen:
+            continue
+        seen.append(item.rule_id)
+        siblings = [i for i in stage_one.items if i.rule_id == item.rule_id]
+        worst = min(siblings, key=lambda i: order.index(i.outcome) if i.outcome in order else 9)
+        inside = sum(i.inside_threshold_count for i in siblings)
+        applicable = any(i.outcome != "not_applicable" for i in siblings)
+        steps.append((item.rule_id, item.rule_label, worst.outcome_label, inside if applicable else None))
+    return steps
 
 
 def _progress_reporter(

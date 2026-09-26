@@ -154,6 +154,17 @@ TRANSFER_CATEGORY_LEAVES: frozenset[str] = frozenset(
 )
 
 
+# 진행 화면용 원천 이름. 시설군 키와 같으면 심사표 라벨을 쓰고, 조회 단위가 다른 것만 따로 적는다.
+FEED_LABELS: dict[str, str] = {
+    **{group.key: group.label for group in FACILITY_GROUPS},
+    "school": "초·중·고등학교",
+    "bus_stop": "버스정류장",
+}
+
+# (원천 이름, 표시 이름, 건수 또는 None, 성공 여부)
+FeedProgressCallback = Callable[[str, str, int | None, bool], Awaitable[None]]
+
+
 class SourceMissing(RuntimeError):
     """조회 장애가 아니라 쓸 원천이 아예 없을 때. 시설군 note 에 문구 그대로 싣는다."""
 
@@ -673,20 +684,43 @@ class AmenityCollector:
         self._cache: dict[str, tuple[float, dict[str, GroupCollection]]] = {}
 
     # -- 공개 API ----------------------------------------------------------
+    def feed_count(self) -> int:
+        """한 번의 수집에서 조회하는 원천(feed) 수. 진행률 분모로 쓴다."""
+
+        return len(self._feed_results(Coordinates(lat=0.0, lng=0.0), MAX_RADIUS_M))
+
     async def collect(
         self,
         rings: Sequence[Sequence[Coordinates]],
         center: Coordinates,
         radius_m: int = MAX_RADIUS_M,
+        progress: FeedProgressCallback | None = None,
     ) -> dict[str, GroupCollection]:
         key = self._cache_key(rings, center, radius_m)
         cached = self._cache_get(key)
         if cached is not None:
+            if progress is not None:
+                for name in self._feed_results(center, radius_m):
+                    await progress(name, FEED_LABELS.get(name, name), None, True)
             return cached
 
         feeds = self._feed_results(center, radius_m)
         names = tuple(feeds)
-        outcomes = await asyncio.gather(*feeds.values(), return_exceptions=True)
+
+        async def tracked(name: str, coro: Awaitable[FeedResult]) -> FeedResult | BaseException:
+            # 원천 하나가 끝나는 즉시 보고한다(gather 결과 순서는 그대로다).
+            try:
+                outcome: FeedResult | BaseException = await coro
+            except BaseException as exc:  # noqa: BLE001 — 실패도 결과로 넘긴다(return_exceptions 와 같다)
+                outcome = exc
+            if progress is not None:
+                ok = isinstance(outcome, FeedResult)
+                await progress(
+                    name, FEED_LABELS.get(name, name), len(outcome.places) if ok else None, ok
+                )
+            return outcome
+
+        outcomes = await asyncio.gather(*(tracked(n, c) for n, c in feeds.items()))
         results: dict[str, FeedResult | BaseException] = dict(zip(names, outcomes))
 
         await self._prefetch_front_doors(results)

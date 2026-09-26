@@ -136,28 +136,9 @@ export function TopSearchBar({
     <header className="solo-topbar">
       {/* 1행: 브랜드(왼쪽) · 검색·실행·사업지 요약/결과 상세(가운데) · 화면 설정(오른쪽) */}
       <div className="solo-bar-primary">
-        <div className="solo-brand-block">
-          <div className="solo-brand">
-            <ClipboardCheck size={19} aria-hidden="true" />
-            <span>LH 매입약정 서류심사</span>
-          </div>
-          {/* 심사가 끝나면 제목 아래 빈 자리에 판정과 생활편의성 점수를 적는다. */}
-          {screeningResult && !running && (
-            <button
-              type="button"
-              className={`solo-brand-result ${VERDICT_TONE[screeningResult.verdict] ?? ""}`}
-              onClick={onOpenSheet}
-              title="심사 결과 상세를 엽니다."
-            >
-              <em>{screeningResult.verdict_label}</em>
-              <span>
-                생활편의성{" "}
-                {screeningResult.stage_two.determined
-                  ? `${screeningResult.stage_two.living_score ?? "—"}/${screeningResult.stage_two.living_maximum}점`
-                  : `${screeningResult.stage_two.living_score_min}~${screeningResult.stage_two.living_score_max}점`}
-              </span>
-            </button>
-          )}
+        <div className="solo-brand">
+          <ClipboardCheck size={19} aria-hidden="true" />
+          <span>LH 매입약정 서류심사</span>
         </div>
 
         <div className="solo-search-shell">
@@ -212,50 +193,6 @@ export function TopSearchBar({
                   <RotateCcw size={15} aria-hidden="true" />
                   다시 검색
                 </button>
-                {/* 사업지(선택 필지) 요약. 결과가 나온 뒤에도 남고, 필지 초기화만 잠긴다. */}
-                {siteSummary && (
-            <div
-              className="solo-site-chip"
-              title={
-                siteSummary.locked
-                  ? "심사 결과가 있는 동안에는 필지를 바꿀 수 없습니다. 필지를 다시 고르려면 주소를 새로 검색하세요."
-                  : "지도에서 필지를 누르면 사업지에 더하고, 선택된 필지를 다시 누르면 뺍니다."
-              }
-            >
-              {siteSummary.parcelCount > 0 ? (
-                <>
-                  <b>{siteSummary.parcelCount}필지</b>
-                  <span>합계 {formatArea(siteSummary.areaM2)}</span>
-                  <ul className="solo-site-parcels" aria-label="선택된 필지">
-                    {siteSummary.parcels.map((parcel, index) => (
-                      <li
-                        key={parcel.pnu || `${parcel.label}-${index}`}
-                        className={index === 0 ? "is-representative" : ""}
-                        title={
-                          parcel.areaM2 === null
-                            ? parcel.label
-                            : `${parcel.label} · ${formatArea(parcel.areaM2)}`
-                        }
-                      >
-                        {parcel.label}
-                        {index === 0 && <i>대표</i>}
-                      </li>
-                    ))}
-                  </ul>
-                  {siteSummary.unresolvedNote && (
-                    <em title={siteSummary.unresolvedNote}>외 N필지 일부 미확정</em>
-                  )}
-                  {!siteSummary.locked && (
-                    <button type="button" onClick={siteSummary.onReset} title="고른 필지를 비우고 대표 필지부터 다시 고릅니다.">
-                      필지 초기화
-                    </button>
-                  )}
-                </>
-              ) : (
-                <span className="is-warning">필지 없음 — 지도에서 필지를 고르세요</span>
-              )}
-            </div>
-                )}
               </>
             ) : (
               <button
@@ -356,6 +293,25 @@ export function TopSearchBar({
 
       {/* 2행: 주택유형·신청유형 — 검색창 바로 아래 가운데 */}
       <div className="solo-bar-secondary">
+        <div className="solo-brand-slot">
+          {/* 심사가 끝나면 제목 아래 빈 자리에 판정과 생활편의성 점수를 적는다. */}
+          {screeningResult && !running && (
+            <button
+              type="button"
+              className={`solo-brand-result ${VERDICT_TONE[screeningResult.verdict] ?? ""}`}
+              onClick={onOpenSheet}
+              title="심사 결과 상세를 엽니다."
+            >
+              <em>{screeningResult.verdict_label}</em>
+              <span>
+                생활편의성{" "}
+                {screeningResult.stage_two.determined
+                  ? `${screeningResult.stage_two.living_score ?? "—"}/${screeningResult.stage_two.living_maximum}점`
+                  : `${screeningResult.stage_two.living_score_min}~${screeningResult.stage_two.living_score_max}점`}
+              </span>
+            </button>
+          )}
+        </div>
         <div className="solo-type-measure" ref={typeBarRef}>
           <TypeSelector
             applicationTypes={applicationTypes}
@@ -365,6 +321,52 @@ export function TopSearchBar({
             onApplicationTypeChange={onApplicationTypeChange}
             disabled={running}
           />
+        </div>
+        {/* 사업지(선택 필지) 요약 — 설정 아이콘 아래 빈 자리. 검색 뒤에 나타나고 실행해도 자리를 지킨다. */}
+        <div className="solo-site-slot">
+          {hasSite && siteSummary && (
+            <div
+              className="solo-site-chip"
+              title={
+                siteSummary.locked
+                  ? "심사 결과가 있는 동안에는 필지를 바꿀 수 없습니다. 필지를 다시 고르려면 주소를 새로 검색하세요."
+                  : "지도에서 필지를 누르면 사업지에 더하고, 선택된 필지를 다시 누르면 뺍니다."
+              }
+            >
+              {siteSummary.parcelCount > 0 ? (
+                <>
+                  <b>{siteSummary.parcelCount}필지</b>
+                  <span>합계 {formatArea(siteSummary.areaM2)}</span>
+                  <ul className="solo-site-parcels" aria-label="선택된 필지">
+                    {siteSummary.parcels.map((parcel, index) => (
+                      <li
+                        key={parcel.pnu || `${parcel.label}-${index}`}
+                        className={index === 0 ? "is-representative" : ""}
+                        title={
+                          parcel.areaM2 === null
+                            ? parcel.label
+                            : `${parcel.label} · ${formatArea(parcel.areaM2)}`
+                        }
+                      >
+                        {parcel.label}
+                        {index === 0 && <i>대표</i>}
+                      </li>
+                    ))}
+                  </ul>
+                  {siteSummary.unresolvedNote && (
+                    <em title={siteSummary.unresolvedNote}>외 N필지 일부 미확정</em>
+                  )}
+                  {!siteSummary.locked && (
+                    <button type="button" onClick={siteSummary.onReset} title="고른 필지를 비우고 대표 필지부터 다시 고릅니다.">
+                      필지 초기화
+                    </button>
+                  )}
+                </>
+              ) : (
+                <span className="is-warning">필지 없음 — 지도에서 필지를 고르세요</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -413,8 +413,29 @@ function App() {
     }
   };
 
+  // 1차(유해시설)와 2차(편의시설) 선택은 서로 배타다 — 한쪽을 고르면 다른 쪽은 풀린다.
   const handleSelectHazardFinding = useCallback((findingId: string | null) => {
     setSelectedHazardFindingId(findingId);
+    if (findingId) {
+      setExpandedScreeningGroupKey(null);
+      setSelectedScreeningHitName(null);
+    }
+  }, []);
+
+  const handleSelectHazardFacility = useCallback((facilityId: string | null) => {
+    setSelectedHazardFacilityId(facilityId);
+    if (facilityId) {
+      setExpandedScreeningGroupKey(null);
+      setSelectedScreeningHitName(null);
+    }
+  }, []);
+
+  const handleSelectScreeningHit = useCallback((hitName: string | null) => {
+    setSelectedScreeningHitName(hitName);
+    if (hitName) {
+      setSelectedHazardFindingId(null);
+      setSelectedHazardFacilityId(null);
+    }
   }, []);
 
   /**
@@ -625,6 +646,8 @@ function App() {
     setExpandedScreeningGroupKey((current) =>
       current === groupKey ? null : groupKey,
     );
+    setSelectedHazardFindingId(null);
+    setSelectedHazardFacilityId(null);
   }, []);
 
   /** 사업지·필지·결과를 비우고 검색 상태로 되돌린다(상단 바의 되돌리기). */
@@ -803,14 +826,14 @@ function App() {
             onToggleParcelAt={handleToggleParcelAt}
             onToggleParcel={handleToggleParcel}
             selectedHazardFacilityId={selectedHazardFacilityId}
-            onSelectHazardFacility={setSelectedHazardFacilityId}
+            onSelectHazardFacility={handleSelectHazardFacility}
             selectedHazardFindingId={selectedHazardFindingId}
             onSelectHazardFinding={handleSelectHazardFinding}
             screeningResult={screeningResult}
             expandedScreeningGroupKey={expandedScreeningGroupKey}
             onToggleScreeningGroup={handleToggleScreeningGroup}
             selectedScreeningHitName={selectedScreeningHitName}
-            onSelectScreeningHit={setSelectedScreeningHitName}
+            onSelectScreeningHit={handleSelectScreeningHit}
             onSelectCandidate={handleSelectCandidate}
             designationTarget={designationTarget}
             onCancelDesignation={() => setDesignationTarget(null)}

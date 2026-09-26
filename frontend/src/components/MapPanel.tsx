@@ -933,14 +933,22 @@ export function MapPanel({
           .map((category) => {
             const types = new Set(category.facility_types ?? []);
             // 지도에 보이는 시설(판정 후보 + 참고 시설) 중 이 종류의 것 — 위 대분류 개수와 같은 셈법.
-            const shown = [...finding.facilities, ...finding.nearby_facilities].filter(
-              (facility) => types.has(facility.facility_type),
-            ).length;
+            const shown = [...finding.facilities, ...finding.nearby_facilities]
+              .filter((facility) => types.has(facility.facility_type))
+              .sort((a, b) => a.distance_m - b.distance_m);
             return {
               key: category.key,
               label: category.label,
-              count: shown,
+              count: shown.length,
               status: category.status,
+              // 2차처럼 시설마다 거리를 보인다(가까운 순, 8곳까지).
+              facilities: shown.slice(0, 8).map((facility) => ({
+                id: facility.facility_id,
+                name: facility.name,
+                distance: facility.distance_m,
+                inside:
+                  finding.threshold_m !== null && facility.distance_m <= finding.threshold_m,
+              })),
             };
           })
           .sort((a, b) => categoryOrderKey(a.label) - categoryOrderKey(b.label)),
@@ -2316,7 +2324,7 @@ export function MapPanel({
               <div className="map-rail-section">
                 <button
                   type="button"
-                  className="map-rail-fold"
+                  className="map-rail-fold is-stage1"
                   aria-expanded={railSectionsOpen.stage1}
                   onClick={() => setRailSectionsOpen((v) => ({ ...v, stage1: !v.stage1 }))}
                 >
@@ -2363,6 +2371,33 @@ export function MapPanel({
                               <span>{category.label}</span>
                               <small>{RAIL_STATUS_SHORT[category.status] ?? category.status}</small>
                               <b>{category.count}</b>
+                              {category.facilities.length > 0 && (
+                                <ul className="map-rail-facilities">
+                                  {category.facilities.map((facility) => (
+                                    <li key={facility.id}>
+                                      <button
+                                        type="button"
+                                        className={`${facility.inside ? "is-inside" : ""}${
+                                          facility.id === selectedHazardFacilityId ? " is-active" : ""
+                                        }`}
+                                        title={`${facility.name} · ${Math.round(facility.distance)}m`}
+                                        onClick={() => {
+                                          onSelectHazardFinding?.(entry.id);
+                                          onSelectHazardFacility?.(
+                                            facility.id === selectedHazardFacilityId ? null : facility.id,
+                                          );
+                                        }}
+                                      >
+                                        <span>{facility.name}</span>
+                                        <b>{Math.round(facility.distance)}m</b>
+                                      </button>
+                                    </li>
+                                  ))}
+                                  {category.count > category.facilities.length && (
+                                    <li className="is-more">외 {category.count - category.facilities.length}곳</li>
+                                  )}
+                                </ul>
+                              )}
                             </li>
                           ))}
                         </ul>
@@ -2376,7 +2411,7 @@ export function MapPanel({
               <div className="map-rail-section">
                 <button
                   type="button"
-                  className="map-rail-fold"
+                  className="map-rail-fold is-stage2"
                   aria-expanded={railSectionsOpen.stage2}
                   onClick={() => setRailSectionsOpen((v) => ({ ...v, stage2: !v.stage2 }))}
                 >

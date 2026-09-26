@@ -336,7 +336,13 @@ class FakeAmenityCollector:
     def __init__(self, items: dict[str, GroupCollection]) -> None:
         self.items = items
 
-    async def collect(self, rings, center, radius_m=3000):
+    def feed_count(self) -> int:
+        return len(self.items)
+
+    async def collect(self, rings, center, radius_m=3000, progress=None):
+        if progress is not None:
+            for key in self.items:
+                await progress(key, key, len(self.items[key].facilities), True)
         return self.items
 
 

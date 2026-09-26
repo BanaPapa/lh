@@ -58,9 +58,26 @@
   display: contents;
 }
 
-.solo-brand-block {
+.solo-brand {
   grid-column: 1;
   grid-row: 1;
+}
+
+/* 2행 왼쪽(제목 아래): 판정·점수. 2행 오른쪽(설정 아이콘 아래): 사업지 칩. */
+.solo-brand-slot {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
+  min-height: 24px;
+}
+
+.solo-site-slot {
+  grid-column: 3;
+  grid-row: 2;
+  justify-self: end;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 24px;
 }
 
 .solo-bar-primary > .solo-search-shell {
@@ -103,10 +120,7 @@
   display: inline-flex;
 }
 
-/* 주택유형 묶음과 신청유형 묶음 사이는 확실히 띈다. */
-.solo-type-bar {
-  gap: 28px;
-}
+
 
 /* 다시 검색 — 실행 버튼 옆 글자 버튼. 심사 전·후 모두 같은 모양이다. */
 .solo-reset-button {
@@ -184,14 +198,6 @@
 .solo-detail-button > span {
   color: var(--muted);
   font-weight: 600;
-}
-
-.solo-brand-block {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  min-width: 0;
 }
 
 .solo-brand {
@@ -1733,7 +1739,8 @@
   align-items: center;
   justify-content: flex-end;
   flex: none;
-  gap: 10px;
+  /* 주택유형 묶음과 신청유형 묶음은 확실히 떨어뜨린다(버튼 서너 개 폭). */
+  gap: 72px;
   min-width: 0;
 }
 
