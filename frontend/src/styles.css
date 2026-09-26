@@ -2207,12 +2207,10 @@ button {
 }
 
 .map-zoom-control {
-  position: absolute;
-  right: 16px;
-  bottom: 34px;
-  z-index: 14;
   display: grid;
-  grid-template-columns: 38px minmax(116px, auto) 38px;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  border-radius: 12px;
+  overflow: hidden;
   align-items: stretch;
   color: #fff;
   background: #17222d;
@@ -6921,18 +6919,15 @@ button {
   }
 }
 
-/* Map workspace controls: stacked launchers + vertical zoom */
+/* 지도 축척 조절 — 좌측 도크(레이어 → 범례 → 축척)의 맨 아래, 도크 폭 전체를 쓰는 가로 막대. */
 
 .screening-app .map-zoom-control {
-  top: 18px;
-  right: 18px;
-  bottom: auto;
-  width: 44px;
-  height: 132px;
+  position: static;
+  width: 100%;
+  height: 44px;
   display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: 42px 46px 42px;
-  grid-auto-flow: row;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  grid-template-rows: 1fr;
   overflow: hidden;
   border: 1px solid var(--border-2, rgba(255, 255, 255, 0.14));
   border-radius: 11px;
@@ -6942,7 +6937,7 @@ button {
 
 .screening-app .map-zoom-control button {
   width: 100%;
-  height: 42px;
+  height: 100%;
   border: 0;
   border-radius: 0;
 }
@@ -6950,29 +6945,29 @@ button {
 .screening-app .map-zoom-control button:first-child {
   grid-row: 1;
   grid-column: 1;
-  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-right: 1px solid var(--border, rgba(255, 255, 255, 0.08));
 }
 
 .screening-app .map-zoom-control button:last-child {
-  grid-row: 3;
-  grid-column: 1;
-  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  grid-row: 1;
+  grid-column: 3;
+  border-left: 1px solid var(--border, rgba(255, 255, 255, 0.08));
 }
 
 .screening-app .map-zoom-control > span {
-  grid-row: 2;
-  grid-column: 1;
+  grid-row: 1;
+  grid-column: 2;
   min-width: 0;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 1px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
   padding: 0;
 }
 
 .screening-app .map-zoom-control > span small {
   color: var(--muted, #9aa4b8);
-  font-size: 8.8px;
+  font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.06em;
 }
@@ -6983,8 +6978,4 @@ button {
   font-size: 15px;
 }
 
-@media (max-width: 720px) {.screening-app .map-zoom-control {
-    top: 12px;
-    right: 12px;
-  }
-}
+

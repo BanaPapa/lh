@@ -1,9 +1,8 @@
-import { MapPin, PanelRightOpen } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { searchAddress } from "./api";
 import { useTheme } from "./theme";
 import { MapPanel } from "./components/MapPanel";
-import { ResultRail } from "./components/ResultRail";
 import { TopSearchBar } from "./components/TopSearchBar";
 import {
   getHazardApplicationTypes,
@@ -94,7 +93,6 @@ function App() {
     const timer = window.setTimeout(() => setRunAttention(false), 4000);
     return () => window.clearTimeout(timer);
   }, [runAttention]);
-  const [railVisible, setRailVisible] = useState(true);
   const [selectedCandidate, setSelectedCandidate] =
     useState<GeocodeCandidate | null>(null);
   const [mapProvider, setMapProvider] = useState<MapProvider>(() =>
@@ -398,7 +396,6 @@ function App() {
           setScreeningResult(null);
           setScreeningProgress(null);
           setScreeningError("");
-          setRailVisible(true);
           setSelectedHazardFindingId(null);
           setDesignationTarget(null);
           setDesignationError("");
@@ -418,7 +415,6 @@ function App() {
 
   const handleSelectHazardFinding = useCallback((findingId: string | null) => {
     setSelectedHazardFindingId(findingId);
-    if (findingId) setRailVisible(true);
   }, []);
 
   /**
@@ -623,7 +619,6 @@ function App() {
   const enterDesignationMode = (facility: string) => {
     setDesignationError("");
     setDesignationTarget(facility);
-    setRailVisible(true);
   };
 
   const handleToggleScreeningGroup = useCallback((groupKey: string) => {
@@ -646,7 +641,6 @@ function App() {
     setScreeningRunning(false);
     setScreeningError("");
     setSheetOpen(false);
-    setRailVisible(true);
     setSelectedHazardFindingId(null);
     setSelectedHazardFacilityId(null);
     setDesignationTarget(null);
@@ -684,7 +678,6 @@ function App() {
   const handleRun = async () => {
     if (!selectedCandidate) return;
     setRunAttention(false);
-    setRailVisible(true);
     setSheetOpen(false);
     await runScreening();
   };
@@ -736,15 +729,11 @@ function App() {
     setDesignationError("");
     setSearchError("");
     setSearchNotice("");
-    setRailVisible(true);
     setSheetOpen(true);
     setBatchOpen(false);
     setViewportRequest((seq) => seq + 1);
   };
 
-  // 결과 레일은 심사가 돌기 시작한 뒤에만 뜬다. 그 전에는 지도가 화면을 다 쓴다.
-  const hasScreeningActivity = Boolean(screeningResult) || screeningRunning;
-  const showRail = Boolean(selectedCandidate) && railVisible && hasScreeningActivity;
   const siteSummary = selectedCandidate
     ? {
         parcelCount: hazardParcels.length,
@@ -796,15 +785,15 @@ function App() {
         onHousingTypeChange={setHazardHousingType}
         onApplicationTypeChange={setHazardApplicationType}
         rulePack={rulePack}
+        screeningResult={screeningResult}
+        screeningError={screeningError}
+        onOpenSheet={() => setSheetOpen(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
 
       <div className="solo-body">
-        <div
-          className="solo-map-stage"
-          data-rail={showRail ? "open" : "closed"}
-        >
+        <div className="solo-map-stage">
           <MapPanel
             site={selectedCandidate}
             mapProvider={mapProvider}
@@ -838,29 +827,6 @@ function App() {
                 이 화면 위에 뜹니다.
               </p>
             </div>
-          )}
-
-          {selectedCandidate && !railVisible && hasScreeningActivity && (
-            <button
-              type="button"
-              className="rail-reopen-button"
-              onClick={() => setRailVisible(true)}
-            >
-              <PanelRightOpen size={16} />
-              결과 패널 열기
-            </button>
-          )}
-
-          {showRail && selectedCandidate && (
-            <ResultRail
-              site={selectedCandidate}
-              onCollapse={() => setRailVisible(false)}
-              screeningResult={screeningResult}
-              screeningRunning={screeningRunning}
-              screeningError={screeningError}
-              onOpenSheet={() => setSheetOpen(true)}
-              onRerun={handleRun}
-            />
           )}
         </div>
 

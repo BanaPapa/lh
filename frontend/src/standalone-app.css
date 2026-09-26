@@ -50,34 +50,85 @@
 /* ── 1행: 브랜드 · 검색 · 화면 설정 ───────────────────────── */
 
 .solo-bar-primary {
-  /* 브랜드 · 검색(왼쪽) · 빈 공간 · 화면 설정 */
+  /* 1행: 브랜드(왼쪽) · 화면 설정(오른쪽) */
   display: grid;
-  grid-template-columns: auto minmax(360px, 640px) minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
-  padding: 10px 18px 6px;
+  padding: 8px 18px 4px;
 }
 
-/* ── 2행: 사업지(선택 필지) 요약 · 주택유형·신청유형 — 한 줄 ───── */
+/* ── 2행: 검색·실행·결과 상세(왼쪽) · 주택유형·신청유형(오른쪽) ───── */
 
 .solo-bar-secondary {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 18px 10px;
+  padding: 2px 18px 8px;
 }
 
-.solo-site-summary {
-  min-width: 0;
+.solo-bar-secondary > .solo-search-shell {
   flex: 1 1 auto;
+  max-width: 900px;
+}
+
+/* ── 3행: 사업지(선택 필지) 요약 — 검색 뒤에만 ───────────────── */
+
+.solo-bar-tertiary {
+  padding: 0 18px 8px;
   overflow-x: auto;
 }
 
-.solo-site-empty {
-  color: var(--muted-2);
-  font-size: 14px;
+/* 심사 결과 상세 — 실행 버튼 오른쪽. 판정 색을 왼쪽 배지에 싣는다. */
+.solo-detail-button {
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 0 6px;
+  color: var(--fg);
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.solo-detail-button:hover {
+  border-color: var(--blue);
+}
+
+.solo-detail-button > em {
+  padding: 4px 9px;
+  border-radius: 7px;
+  font-style: normal;
+  font-weight: 800;
+  color: var(--muted);
+  background: var(--surface-3);
+}
+
+.solo-detail-button.tone-success > em {
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
+}
+
+.solo-detail-button.tone-warning > em {
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+}
+
+.solo-detail-button.tone-danger > em {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+}
+
+.solo-detail-button > span {
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .solo-brand {
@@ -638,10 +689,6 @@
 
 @media (max-width: 1100px) {.solo-app {
     --rail-w: min(440px, calc(100vw - 28px));
-  }
-
-.solo-bar-primary {
-    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
 .solo-bar-secondary {

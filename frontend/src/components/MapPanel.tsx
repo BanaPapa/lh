@@ -2249,6 +2249,63 @@ export function MapPanel({
           </div>
         )}
 
+        {/* 좌측 도크 — 레이어 스위치 · 지도 범례 · 축척을 같은 폭으로 세로로 쌓는다.
+            손잡이를 끌면 도크 전체가 옮겨진다. */}
+        <div
+          className="map-left-dock"
+          style={{ transform: `translate(${switchOffset.x}px, ${switchOffset.y}px)` }}
+        >
+        {hazardMode && (
+          <div className="map-zoning-control">
+            <button
+              type="button"
+              className="map-switch-handle"
+              aria-label="레이어 스위치 패널 옮기기"
+              title="끌어서 옮기기"
+              onPointerDown={startSwitchDrag}
+            >
+              <GripVertical size={14} aria-hidden="true" />
+              <span>레이어</span>
+            </button>
+            <button
+              type="button"
+              className={`map-zoning-toggle${cadastralAutoOn ? " is-on" : ""}`}
+              role="switch"
+              aria-checked={cadastralAutoOn}
+              title="지적도(필지 경계) 레이어 켜기/끄기 — 받아 둔 필지를 보이거나 숨긴다"
+              onClick={() => {
+                const next = !cadastralAutoOn;
+                setCadastralAutoOn(next);
+                cadastralAutoRef.current = next;
+                if (next) cadastralRefreshRef.current();
+                else setCadastralParcels([]);
+              }}
+            >
+              <Layers size={16} aria-hidden="true" />
+              <span>지적도</span>
+              <em>{cadastralAutoOn ? "ON" : "OFF"}</em>
+            </button>
+            <button
+              type="button"
+              className={`map-zoning-toggle${zoningLayerOn ? " is-on" : ""}`}
+              role="switch"
+              aria-checked={zoningLayerOn}
+              disabled={!zoningLayerSupported}
+              title={
+                zoningLayerSupported
+                  ? "지적편집도 용도지역 레이어 켜기/끄기"
+                  : mapProvider === "naver"
+                    ? "카카오 지도에서만 제공됩니다"
+                    : "지도 키를 설정하면 사용할 수 있습니다"
+              }
+              onClick={toggleZoningLayer}
+            >
+              <Layers size={16} aria-hidden="true" />
+              <span>용도지역</span>
+              <em>{zoningLayerOn ? "ON" : "OFF"}</em>
+            </button>
+          </div>
+        )}
         {hazardMode && (
           <div className="hazard-map-legend">
             {/* 읽는 순서대로: 1차(빨강) → 2차(파랑) → 기준 밖(회색) → 거리 밴드. */}
@@ -2327,6 +2384,7 @@ export function MapPanel({
           >
             <Minus size={18} />
           </button>
+        </div>
         </div>
 
         {hazardMode && (railFindings.length > 0 || railGroups.length > 0) && (
@@ -2414,62 +2472,7 @@ export function MapPanel({
           </nav>
         )}
 
-        {hazardMode && (
-          <div
-            className="map-zoning-control"
-            style={{
-              transform: `translate(${switchOffset.x}px, ${switchOffset.y}px)`,
-            }}
-          >
-            <button
-              type="button"
-              className="map-switch-handle"
-              aria-label="레이어 스위치 패널 옮기기"
-              title="끌어서 옮기기"
-              onPointerDown={startSwitchDrag}
-            >
-              <GripVertical size={14} aria-hidden="true" />
-              <span>레이어</span>
-            </button>
-            <button
-              type="button"
-              className={`map-zoning-toggle${cadastralAutoOn ? " is-on" : ""}`}
-              role="switch"
-              aria-checked={cadastralAutoOn}
-              title="지적도(필지 경계) 레이어 켜기/끄기 — 받아 둔 필지를 보이거나 숨긴다"
-              onClick={() => {
-                const next = !cadastralAutoOn;
-                setCadastralAutoOn(next);
-                cadastralAutoRef.current = next;
-                if (next) cadastralRefreshRef.current();
-                else setCadastralParcels([]);
-              }}
-            >
-              <Layers size={16} aria-hidden="true" />
-              <span>지적도</span>
-              <em>{cadastralAutoOn ? "ON" : "OFF"}</em>
-            </button>
-            <button
-              type="button"
-              className={`map-zoning-toggle${zoningLayerOn ? " is-on" : ""}`}
-              role="switch"
-              aria-checked={zoningLayerOn}
-              disabled={!zoningLayerSupported}
-              title={
-                zoningLayerSupported
-                  ? "지적편집도 용도지역 레이어 켜기/끄기"
-                  : mapProvider === "naver"
-                    ? "카카오 지도에서만 제공됩니다"
-                    : "지도 키를 설정하면 사용할 수 있습니다"
-              }
-              onClick={toggleZoningLayer}
-            >
-              <Layers size={16} aria-hidden="true" />
-              <span>용도지역</span>
-              <em>{zoningLayerOn ? "ON" : "OFF"}</em>
-            </button>
-          </div>
-        )}
+
 
         {!selectedProviderConfigured && (
           <div className="map-fallback">

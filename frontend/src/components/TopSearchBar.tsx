@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { MapProvider } from "../types";
+import type { ScreeningResult } from "../screening/types";
 import type {
   HazardApplicationType,
   HazardApplicationTypesResponse,
@@ -63,7 +64,17 @@ interface TopSearchBarProps {
   onHousingTypeChange: (value: HazardHousingType) => void;
   onApplicationTypeChange: (value: HazardApplicationType) => void;
   rulePack: HazardRulePack | null;
+  /** 심사가 끝났으면 실행 버튼 오른쪽에 「심사 결과 상세」 버튼을 보인다. */
+  screeningResult: ScreeningResult | null;
+  screeningError: string;
+  onOpenSheet: () => void;
 }
+
+const VERDICT_TONE: Record<string, string> = {
+  pass: "tone-success",
+  review: "tone-warning",
+  fail: "tone-danger",
+};
 
 function formatArea(areaM2: number): string {
   return `${Math.round(areaM2).toLocaleString("ko-KR")}㎡`;
@@ -99,6 +110,9 @@ export function TopSearchBar({
   onHousingTypeChange,
   onApplicationTypeChange,
   rulePack,
+  screeningResult,
+  screeningError,
+  onOpenSheet,
 }: TopSearchBarProps) {
   // API 연결 패널(상단 바 전용 버튼이 연다).
   const [apiOpen, setApiOpen] = useState(false);
@@ -108,74 +122,11 @@ export function TopSearchBar({
   const [rulesOpen, setRulesOpen] = useState(false);
   return (
     <header className="solo-topbar">
+      {/* 1행: 브랜드(왼쪽) · 화면 설정(오른쪽) */}
       <div className="solo-bar-primary">
         <div className="solo-brand">
           <ClipboardCheck size={19} aria-hidden="true" />
           <span>LH 매입약정 서류심사</span>
-        </div>
-
-        <div className="solo-search-shell">
-          <div className="solo-search-row">
-            <form
-              className="solo-search-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!searching && query.trim().length >= 2) onSearch();
-              }}
-            >
-              <Search size={17} aria-hidden="true" />
-              <input
-                aria-label="사업지 주소 또는 장소"
-                value={query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder="주소·건물명·역명 검색 — 여러 필지는 363-2, -4, 364-1 처럼 쉼표로"
-              />
-            </form>
-
-            {hasSite ? (
-              <>
-                <button
-                  type="button"
-                  className={`solo-run-button${runAttention ? " is-attention" : ""}`}
-                  disabled={running}
-                  onClick={onRun}
-                  title="1차 매입제외 판정과 2차 생활편의성 배점을 실행합니다."
-                >
-                  {running ? "심사 중" : "심사 실행"}
-                </button>
-                <button
-                  type="button"
-                  className="solo-icon-button solo-reset-button"
-                  disabled={running}
-                  onClick={onResetSite}
-                  aria-label="다시 검색"
-                  title="사업지를 비우고 다시 검색"
-                >
-                  <RotateCcw size={17} />
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="solo-run-button"
-                disabled={searching || query.trim().length < 2}
-                onClick={onSearch}
-                title="주소나 장소명으로 사업지를 찾습니다."
-              >
-                {searching ? "검색 중" : "검색"}
-              </button>
-            )}
-          </div>
-          {searchError && (
-            <p className="solo-search-error" role="alert">
-              {searchError}
-            </p>
-          )}
-          {!searchError && searchNotice && (
-            <p className="solo-search-notice" role="status">
-              {searchNotice}
-            </p>
-          )}
         </div>
 
         <div className="solo-bar-actions">
@@ -246,10 +197,106 @@ export function TopSearchBar({
           </button>
         </div>
       </div>
-      {/* 2행: 왼쪽에 사업지(선택 필지) 요약, 오른쪽에 주택유형·신청유형. 한 줄에 둔다. */}
+
+      {/* 2행: 검색·실행·결과 상세(왼쪽) · 주택유형·신청유형(오른쪽) */}
       <div className="solo-bar-secondary">
-        <div className="solo-site-summary">
-          {hasSite && siteSummary ? (
+        <div className="solo-search-shell">
+          <div className="solo-search-row">
+            <form
+              className="solo-search-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!searching && query.trim().length >= 2) onSearch();
+              }}
+            >
+              <Search size={17} aria-hidden="true" />
+              <input
+                aria-label="사업지 주소 또는 장소"
+                value={query}
+                onChange={(event) => onQueryChange(event.target.value)}
+                placeholder="주소·건물명·역명 검색 — 여러 필지는 363-2, -4, 364-1 처럼 쉼표로"
+              />
+            </form>
+
+            {hasSite ? (
+              <>
+                <button
+                  type="button"
+                  className={`solo-run-button${runAttention ? " is-attention" : ""}`}
+                  disabled={running}
+                  onClick={onRun}
+                  title="1차 매입제외 판정과 2차 생활편의성 배점을 실행합니다."
+                >
+                  {running ? "심사 중" : "심사 실행"}
+                </button>
+                <button
+                  type="button"
+                  className="solo-icon-button solo-reset-button"
+                  disabled={running}
+                  onClick={onResetSite}
+                  aria-label="다시 검색"
+                  title="사업지를 비우고 다시 검색"
+                >
+                  <RotateCcw size={17} />
+                </button>
+                {screeningResult && !running && (
+                  <button
+                    type="button"
+                    className={`solo-detail-button ${VERDICT_TONE[screeningResult.verdict] ?? ""}`}
+                    onClick={onOpenSheet}
+                    title="1차 매입제외 판정과 2차 배점 근거를 심사표로 봅니다."
+                  >
+                    <em>{screeningResult.verdict_label}</em>
+                    <span>
+                      {screeningResult.stage_two.determined
+                        ? `${screeningResult.stage_two.living_score ?? "—"}/${screeningResult.stage_two.living_maximum}점`
+                        : `${screeningResult.stage_two.living_score_min}~${screeningResult.stage_two.living_score_max}점`}
+                    </span>
+                    심사 결과 상세
+                  </button>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                className="solo-run-button"
+                disabled={searching || query.trim().length < 2}
+                onClick={onSearch}
+                title="주소나 장소명으로 사업지를 찾습니다."
+              >
+                {searching ? "검색 중" : "검색"}
+              </button>
+            )}
+          </div>
+          {searchError && (
+            <p className="solo-search-error" role="alert">
+              {searchError}
+            </p>
+          )}
+          {!searchError && searchNotice && (
+            <p className="solo-search-notice" role="status">
+              {searchNotice}
+            </p>
+          )}
+          {!searchError && !searchNotice && screeningError && (
+            <p className="solo-search-error" role="alert">
+              {screeningError}
+            </p>
+          )}
+        </div>
+        <TypeSelector
+          applicationTypes={applicationTypes}
+          housingType={housingType}
+          applicationType={applicationType}
+          onHousingTypeChange={onHousingTypeChange}
+          onApplicationTypeChange={onApplicationTypeChange}
+          disabled={running}
+        />
+      </div>
+
+      {/* 3행: 사업지(선택 필지) 요약 — 검색 뒤에만 */}
+      {hasSite && siteSummary && (
+        <div className="solo-bar-tertiary">
             <div
               className="solo-site-chip"
               title={
@@ -291,19 +338,8 @@ export function TopSearchBar({
                 <span className="is-warning">필지 없음 — 지도에서 필지를 고르세요</span>
               )}
             </div>
-          ) : (
-            <span className="solo-site-empty">사업지를 검색하면 선택된 필지가 여기에 나옵니다.</span>
-          )}
         </div>
-        <TypeSelector
-          applicationTypes={applicationTypes}
-          housingType={housingType}
-          applicationType={applicationType}
-          onHousingTypeChange={onHousingTypeChange}
-          onApplicationTypeChange={onApplicationTypeChange}
-          disabled={running}
-        />
-      </div>
+      )}
       <ApiKeysPanel open={apiOpen} onClose={() => setApiOpen(false)} />
       <RulebookModal open={rulebookOpen} onClose={() => setRulebookOpen(false)} rulePack={rulePack} />
       <RulesPanel open={rulesOpen} onClose={() => setRulesOpen(false)} />
