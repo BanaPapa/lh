@@ -122,13 +122,144 @@ export function TopSearchBar({
   const [rulesOpen, setRulesOpen] = useState(false);
   return (
     <header className="solo-topbar">
-      {/* 1행: 브랜드(왼쪽) · 화면 설정(오른쪽) */}
+      {/* 1행: 브랜드(왼쪽) · 검색·실행·사업지 요약/결과 상세(가운데) · 화면 설정(오른쪽) */}
       <div className="solo-bar-primary">
         <div className="solo-brand">
           <ClipboardCheck size={19} aria-hidden="true" />
           <span>LH 매입약정 서류심사</span>
         </div>
 
+        <div className="solo-search-shell">
+          <div className="solo-search-row">
+            <form
+              className="solo-search-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!searching && query.trim().length >= 2) onSearch();
+              }}
+            >
+              <Search size={17} aria-hidden="true" />
+              <input
+                aria-label="사업지 주소 또는 장소"
+                value={query}
+                onChange={(event) => onQueryChange(event.target.value)}
+                placeholder="주소·건물명·역명 검색 — 여러 필지는 363-2, -4, 364-1 처럼 쉼표로"
+              />
+            </form>
+
+            {hasSite ? (
+              <>
+                {/* 결과가 나오면 실행 버튼은 「심사 결과 상세」로 바뀐다. 다시 돌리려면 되돌리기로 새로 검색한다. */}
+                {!(screeningResult && !running) && (
+                  <button
+                    type="button"
+                    className={`solo-run-button${runAttention ? " is-attention" : ""}`}
+                    disabled={running}
+                    onClick={onRun}
+                    title="1차 매입제외 판정과 2차 생활편의성 배점을 실행합니다."
+                  >
+                    {running ? "심사 중" : "심사 실행"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="solo-reset-button"
+                  disabled={running}
+                  onClick={onResetSite}
+                  title="사업지를 비우고 다시 검색"
+                >
+                  <RotateCcw size={15} aria-hidden="true" />
+                  다시 검색
+                </button>
+                {screeningResult && !running && (
+                  <button
+                    type="button"
+                    className={`solo-detail-button ${VERDICT_TONE[screeningResult.verdict] ?? ""}`}
+                    onClick={onOpenSheet}
+                    title="1차 매입제외 판정과 2차 배점 근거를 심사표로 봅니다."
+                  >
+                    <em>{screeningResult.verdict_label}</em>
+                    <span>
+                      {screeningResult.stage_two.determined
+                        ? `${screeningResult.stage_two.living_score ?? "—"}/${screeningResult.stage_two.living_maximum}점`
+                        : `${screeningResult.stage_two.living_score_min}~${screeningResult.stage_two.living_score_max}점`}
+                    </span>
+                    심사 결과 상세
+                  </button>
+                )}
+                {/* 결과 상세가 없을 때만 그 자리에 사업지(선택 필지) 요약을 보인다. */}
+                {!(screeningResult && !running) && siteSummary && (
+            <div
+              className="solo-site-chip"
+              title={
+                siteSummary.locked
+                  ? "심사 결과가 있는 동안에는 필지를 바꿀 수 없습니다. 필지를 다시 고르려면 주소를 새로 검색하세요."
+                  : "지도에서 필지를 누르면 사업지에 더하고, 선택된 필지를 다시 누르면 뺍니다."
+              }
+            >
+              {siteSummary.parcelCount > 0 ? (
+                <>
+                  <b>{siteSummary.parcelCount}필지</b>
+                  <span>합계 {formatArea(siteSummary.areaM2)}</span>
+                  <ul className="solo-site-parcels" aria-label="선택된 필지">
+                    {siteSummary.parcels.map((parcel, index) => (
+                      <li
+                        key={parcel.pnu || `${parcel.label}-${index}`}
+                        className={index === 0 ? "is-representative" : ""}
+                        title={
+                          parcel.areaM2 === null
+                            ? parcel.label
+                            : `${parcel.label} · ${formatArea(parcel.areaM2)}`
+                        }
+                      >
+                        {parcel.label}
+                        {index === 0 && <i>대표</i>}
+                      </li>
+                    ))}
+                  </ul>
+                  {siteSummary.unresolvedNote && (
+                    <em title={siteSummary.unresolvedNote}>외 N필지 일부 미확정</em>
+                  )}
+                  {!siteSummary.locked && (
+                    <button type="button" onClick={siteSummary.onReset} title="고른 필지를 비우고 대표 필지부터 다시 고릅니다.">
+                      필지 초기화
+                    </button>
+                  )}
+                </>
+              ) : (
+                <span className="is-warning">필지 없음 — 지도에서 필지를 고르세요</span>
+              )}
+            </div>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                className="solo-run-button"
+                disabled={searching || query.trim().length < 2}
+                onClick={onSearch}
+                title="주소나 장소명으로 사업지를 찾습니다."
+              >
+                {searching ? "검색 중" : "검색"}
+              </button>
+            )}
+          </div>
+          {searchError && (
+            <p className="solo-search-error" role="alert">
+              {searchError}
+            </p>
+          )}
+          {!searchError && searchNotice && (
+            <p className="solo-search-notice" role="status">
+              {searchNotice}
+            </p>
+          )}
+          {!searchError && !searchNotice && screeningError && (
+            <p className="solo-search-error" role="alert">
+              {screeningError}
+            </p>
+          )}
+        </div>
         <div className="solo-bar-actions">
           <button
             type="button"
@@ -198,139 +329,8 @@ export function TopSearchBar({
         </div>
       </div>
 
-      {/* 2행: 검색·실행·결과 상세(왼쪽) · 주택유형·신청유형(오른쪽) */}
+      {/* 2행: 주택유형·신청유형 — 검색창 바로 아래 가운데 */}
       <div className="solo-bar-secondary">
-        <div className="solo-search-shell">
-          <div className="solo-search-row">
-            <form
-              className="solo-search-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!searching && query.trim().length >= 2) onSearch();
-              }}
-            >
-              <Search size={17} aria-hidden="true" />
-              <input
-                aria-label="사업지 주소 또는 장소"
-                value={query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder="주소·건물명·역명 검색 — 여러 필지는 363-2, -4, 364-1 처럼 쉼표로"
-              />
-            </form>
-
-            {hasSite ? (
-              <>
-                {/* 결과가 나오면 실행 버튼은 「심사 결과 상세」로 바뀐다. 다시 돌리려면 되돌리기로 새로 검색한다. */}
-                {!(screeningResult && !running) && (
-                  <button
-                    type="button"
-                    className={`solo-run-button${runAttention ? " is-attention" : ""}`}
-                    disabled={running}
-                    onClick={onRun}
-                    title="1차 매입제외 판정과 2차 생활편의성 배점을 실행합니다."
-                  >
-                    {running ? "심사 중" : "심사 실행"}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="solo-icon-button solo-reset-button"
-                  disabled={running}
-                  onClick={onResetSite}
-                  aria-label="다시 검색"
-                  title="사업지를 비우고 다시 검색"
-                >
-                  <RotateCcw size={17} />
-                </button>
-                {screeningResult && !running && (
-                  <button
-                    type="button"
-                    className={`solo-detail-button ${VERDICT_TONE[screeningResult.verdict] ?? ""}`}
-                    onClick={onOpenSheet}
-                    title="1차 매입제외 판정과 2차 배점 근거를 심사표로 봅니다."
-                  >
-                    <em>{screeningResult.verdict_label}</em>
-                    <span>
-                      {screeningResult.stage_two.determined
-                        ? `${screeningResult.stage_two.living_score ?? "—"}/${screeningResult.stage_two.living_maximum}점`
-                        : `${screeningResult.stage_two.living_score_min}~${screeningResult.stage_two.living_score_max}점`}
-                    </span>
-                    심사 결과 상세
-                  </button>
-                )}
-                {/* 결과 상세가 없을 때만 그 자리에 사업지(선택 필지) 요약을 보인다. */}
-                {!(screeningResult && !running) && siteSummary && (
-            <div
-              className="solo-site-chip"
-              title={
-                siteSummary.locked
-                  ? "심사 결과가 있는 동안에는 필지를 바꿀 수 없습니다. 필지를 다시 고르려면 주소를 새로 검색하세요."
-                  : "지도에서 필지를 누르면 사업지에 더하고, 선택된 필지를 다시 누르면 뺍니다."
-              }
-            >
-              {siteSummary.parcelCount > 0 ? (
-                <>
-                  <b>{siteSummary.parcelCount}필지</b>
-                  <span>합계 {formatArea(siteSummary.areaM2)}</span>
-                  <ul className="solo-site-parcels" aria-label="선택된 필지">
-                    {siteSummary.parcels.map((parcel, index) => (
-                      <li
-                        key={parcel.pnu || `${parcel.label}-${index}`}
-                        className={index === 0 ? "is-representative" : ""}
-                        title={
-                          parcel.areaM2 === null
-                            ? parcel.label
-                            : `${parcel.label} · ${formatArea(parcel.areaM2)}`
-                        }
-                      >
-                        {parcel.label}
-                        {index === 0 && <i>대표</i>}
-                      </li>
-                    ))}
-                  </ul>
-                  {siteSummary.unresolvedNote && (
-                    <em title={siteSummary.unresolvedNote}>외 N필지 일부 미확정</em>
-                  )}
-                  {!siteSummary.locked && (
-                    <button type="button" onClick={siteSummary.onReset}>
-                      초기화
-                    </button>
-                  )}
-                </>
-              ) : (
-                <span className="is-warning">필지 없음 — 지도에서 필지를 고르세요</span>
-              )}
-            </div>
-                )}
-              </>
-            ) : (
-              <button
-                type="button"
-                className="solo-run-button"
-                disabled={searching || query.trim().length < 2}
-                onClick={onSearch}
-                title="주소나 장소명으로 사업지를 찾습니다."
-              >
-                {searching ? "검색 중" : "검색"}
-              </button>
-            )}
-          </div>
-          {searchError && (
-            <p className="solo-search-error" role="alert">
-              {searchError}
-            </p>
-          )}
-          {!searchError && searchNotice && (
-            <p className="solo-search-notice" role="status">
-              {searchNotice}
-            </p>
-          )}
-          {!searchError && !searchNotice && screeningError && (
-            <p className="solo-search-error" role="alert">
-              {screeningError}
-            </p>
-          )}
-        </div>
         <TypeSelector
           applicationTypes={applicationTypes}
           housingType={housingType}

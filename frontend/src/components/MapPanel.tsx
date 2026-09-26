@@ -907,6 +907,8 @@ export function MapPanel({
   }, [screeningResult]);
   // 레일에서 펼친 1차 규칙(세부 종류를 보인다).
   const [openRailRules, setOpenRailRules] = useState<Set<string>>(new Set());
+  // 시설군 레일의 1차·2차 섹션 접기. 머리글을 누르면 그 섹션만 접힌다.
+  const [railSectionsOpen, setRailSectionsOpen] = useState({ stage1: true, stage2: true });
   const toggleRailRule = useCallback((ruleId: string) => {
     setOpenRailRules((current) => {
       const next = new Set(current);
@@ -2307,62 +2309,21 @@ export function MapPanel({
             </button>
           </div>
         )}
-        {hazardMode && (
-          <div
-            className="hazard-map-legend"
-            title={[
-              "점 마커는 공식 경계가 아닌 시설 후보입니다.",
-              cadastralNote,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            {/* 읽는 순서대로: 1차(빨강) → 2차(파랑) → 기준 밖(회색) → 거리 밴드. 설명은 도움말로. */}
-            <strong>
-              지도 범례 <Info size={13} aria-hidden="true" />
-            </strong>
-            {hazardMarkers.some((marker) => !marker.nearby) && (
-              <span>
-                <i className="marker-primary" /> 1차 유해시설
-              </span>
-            )}
-            {screeningHitRefs.length > 0 && (
-              <span>
-                <i className="marker-screening" /> 2차 근거 시설
-              </span>
-            )}
-            {hazardMarkers.some((marker) => marker.nearby) && (
-              <span>
-                <i className="marker-nearby" /> 기준거리 밖 (통과)
-              </span>
-            )}
-            <span>
-              <i className="buffer-25" /> 25m
-            </span>
-            <span>
-              <i className="buffer-50" /> 50m
-            </span>
-            <span>
-              <i className="buffer-500" /> 500m
-            </span>
-            {candidateHitRef && (
-              <span>
-                <i className="marker-door" /> 문·출구 후보
-              </span>
-            )}
-            {zoningLayerOn && (
-              <span>
-                <i className="marker-zoning" /> 용도지역 레이어 켜짐
-              </span>
-            )}
-          </div>
-        )}
+
         {hazardMode && (railFindings.length > 0 || railGroups.length > 0) && (
           <nav className="map-facility-rail" aria-label="판정·배점 시설군">
             {railFindings.length > 0 && (
               <div className="map-rail-section">
-                <h4>1차 유해시설</h4>
-                {railFindings.map((entry) => {
+                <button
+                  type="button"
+                  className="map-rail-fold"
+                  aria-expanded={railSectionsOpen.stage1}
+                  onClick={() => setRailSectionsOpen((v) => ({ ...v, stage1: !v.stage1 }))}
+                >
+                  <h4>1차 유해시설</h4>
+                  <ChevronDown size={14} className={railSectionsOpen.stage1 ? "is-open" : ""} />
+                </button>
+                {railSectionsOpen.stage1 && railFindings.map((entry) => {
                   const active = entry.id === selectedHazardFindingId;
                   const notApplicable = entry.status === "not_applicable";
                   const empty = entry.count === 0;
@@ -2413,8 +2374,16 @@ export function MapPanel({
             )}
             {railGroups.length > 0 && (
               <div className="map-rail-section">
-                <h4>2차 편의시설</h4>
-                {railGroups.map((group) => {
+                <button
+                  type="button"
+                  className="map-rail-fold"
+                  aria-expanded={railSectionsOpen.stage2}
+                  onClick={() => setRailSectionsOpen((v) => ({ ...v, stage2: !v.stage2 }))}
+                >
+                  <h4>2차 편의시설</h4>
+                  <ChevronDown size={14} className={railSectionsOpen.stage2 ? "is-open" : ""} />
+                </button>
+                {railSectionsOpen.stage2 && railGroups.map((group) => {
                   const active = group.key === expandedScreeningGroupKey;
                   const empty = group.count === 0;
                   return (
@@ -2475,6 +2444,57 @@ export function MapPanel({
             <Minus size={18} />
           </button>
         </div>
+
+        {hazardMode && (
+          <div
+            className="hazard-map-legend"
+            title={[
+              "점 마커는 공식 경계가 아닌 시설 후보입니다.",
+              cadastralNote,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {/* 읽는 순서대로: 1차(빨강) → 2차(파랑) → 기준 밖(회색) → 거리 밴드. 설명은 도움말로. */}
+            <strong>
+              지도 범례 <Info size={13} aria-hidden="true" />
+            </strong>
+            {hazardMarkers.some((marker) => !marker.nearby) && (
+              <span>
+                <i className="marker-primary" /> 1차 유해시설
+              </span>
+            )}
+            {screeningHitRefs.length > 0 && (
+              <span>
+                <i className="marker-screening" /> 2차 근거 시설
+              </span>
+            )}
+            {hazardMarkers.some((marker) => marker.nearby) && (
+              <span>
+                <i className="marker-nearby" /> 기준거리 밖 (통과)
+              </span>
+            )}
+            <span>
+              <i className="buffer-25" /> 25m
+            </span>
+            <span>
+              <i className="buffer-50" /> 50m
+            </span>
+            <span>
+              <i className="buffer-500" /> 500m
+            </span>
+            {candidateHitRef && (
+              <span>
+                <i className="marker-door" /> 문·출구 후보
+              </span>
+            )}
+            {zoningLayerOn && (
+              <span>
+                <i className="marker-zoning" /> 용도지역 레이어 켜짐
+              </span>
+            )}
+          </div>
+        )}
 
 
 

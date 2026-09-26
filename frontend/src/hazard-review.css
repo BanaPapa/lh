@@ -4,13 +4,19 @@
 
 /* ── 룰 그룹핑 / data_state / 근거 (검토 드로어) ─────────────── */
 
-/* 지도 범례 — 좌측 도크에서 레이어 패널 아래, 같은 폭의 카드. 항목은 한 줄에 하나. */
+/* 지도 범례 — 화면 우측 하단 가로 막대. 설명은 도움말(마우스 올림)로만. */
 .hazard-map-legend {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 9;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 5px;
-  padding: 8px 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 12px;
+  max-width: calc(100% - 36px);
+  padding: 8px 12px;
   cursor: help;
   color: var(--fg-2);
   background: color-mix(in srgb, var(--raise) 93%, transparent);
@@ -29,9 +35,9 @@
 }
 
 .hazard-map-legend > span {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 14.2px;
   white-space: nowrap;
 }
@@ -605,12 +611,33 @@
 }
 
 .map-rail-section h4 {
-  margin: 0 0 2px;
-  padding: 0 4px;
+  margin: 0;
+  padding: 0;
   color: var(--muted);
   font-size: 12.5px;
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+/* 섹션 머리글 — 누르면 접힌다. */
+.map-rail-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 4px 2px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.map-rail-fold > svg {
+  transition: transform 140ms ease;
+}
+
+.map-rail-fold > svg.is-open {
+  transform: rotate(180deg);
 }
 
 .map-rail-item {
