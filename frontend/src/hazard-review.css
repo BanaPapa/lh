@@ -326,15 +326,15 @@
   border: 2px solid #fff;
 }
 
-/* 평가항목별 점수를 결정한 최근접 시설(자동, 항상 표시)은 보라로 갈라 둔다.
+/* 평가항목별 점수를 결정한 최근접 시설(자동, 항상 표시)은 초록으로 갈라 둔다.
    사용자가 시설군을 펼쳐 본 시설(파랑)과 같은 색이면 "왜 안 사라지느냐"는
    혼동이 생긴다. MapPanel 의 SCREENING_BASIS_TONE 과 같은 값. */
 
 .hazard-map-marker.is-screening.is-basis {
-  --hazard-tone: #7c3aed;
+  --hazard-tone: #059669;
 }
 
-/* 파랑·보라 채움만으로 1차와 구분되므로 글리프는 두지 않는다. */
+/* 파랑·초록 채움만으로 1차와 구분되므로 글리프는 두지 않는다. */
 
 .hazard-map-marker.is-screening .hazard-map-pin::before {
   content: "";
@@ -347,7 +347,7 @@
 }
 
 .hazard-distance-label.is-amenity.is-basis {
-  background: #7c3aed;
+  background: #059669;
 }
 
 /* 문·출구 후보 핀. 작은 알약 버튼으로, selected 는 채워 강조한다. */
@@ -395,8 +395,8 @@
 }
 
 .hazard-map-legend .marker-screening.is-basis {
-  background: rgba(124, 58, 237, 0.22);
-  border-color: #7c3aed;
+  background: rgba(5, 150, 105, 0.22);
+  border-color: #059669;
 }
 
 .hazard-map-legend .marker-door {

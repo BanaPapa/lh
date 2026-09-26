@@ -47,7 +47,7 @@ interface TopSearchBarProps {
   onToggleTheme: () => void;
   /** 일괄 심사(신청자 엑셀 올리기) 모달을 연다. */
   onOpenBatch: () => void;
-  /** 검색 뒤 주소 옆에 보이는 사업지 요약(필지 수·면적). */
+  /** 검색 뒤 검색창 바로 아래에 보이는 사업지 요약(필지 수·면적·지번). */
   siteSummary?: {
     parcelCount: number;
     areaM2: number;
@@ -123,7 +123,7 @@ export function TopSearchBar({
   return (
     <header className="solo-topbar">
       {/* 5열 × 2행 — 1행: 앱 이름 · 주택유형 · 검색창 · 실행 · 설정
-                      2행: 판정·점수 · 신청유형 · (비움) · 다시 검색 · 사업지 칩 */}
+                      2행: 판정·점수 · 신청유형 · 사업지 칩(검색창 아래) · 다시 검색 · (비움) */}
       <div className="solo-brand">
         <ClipboardCheck size={19} aria-hidden="true" />
         <span>LH 매입약정 서류심사</span>

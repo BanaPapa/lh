@@ -645,9 +645,9 @@ interface HoverArea {
 // 호버 중 이름표가 거리 라벨(zIndex 10·11) 위에 서도록 올리는 값.
 const HOVER_Z_INDEX = 30;
 /** 2차 근거 시설 색. 지도 타일(항상 밝음) 위라 테마와 무관한 고정 hex.
- *  점수를 결정한 항목별 최근접 시설(자동)은 보라, 시설군을 펼쳐 본 시설(수동)은 파랑.
+ *  점수를 결정한 항목별 최근접 시설(자동)은 초록, 시설군을 펼쳐 본 시설(수동)은 파랑.
  *  hazard-review.css 의 .is-basis 와 같은 값이어야 한다. */
-const SCREENING_BASIS_TONE = "#7c3aed";
+const SCREENING_BASIS_TONE = "#059669";
 const SCREENING_GROUP_TONE = "#2563eb";
 
 /**
@@ -2023,7 +2023,7 @@ export function MapPanel({
     // 각 핀에 사업지 대지경계 최단점 ↔ 시설 기준점 최단거리선 + 거리 라벨을 얹는다.
     // 1차 유해요소 선과 형태는 같되(점선) 색만 달리해 판정 거리와 구분한다.
     // 색은 두 가지다. 평가항목별 점수를 결정한 최근접 시설(자동, 항상 표시)은
-    // 보라, 사용자가 시설군을 펼쳐서 본 나머지 시설(수동)은 파랑. 같은 파랑이면
+    // 초록, 사용자가 시설군을 펼쳐서 본 나머지 시설(수동)은 파랑. 같은 파랑이면
     // "왜 안 사라지느냐"는 혼동이 생긴다 — 자동 근거 시설은 무엇을 눌러도 남는다.
     visibleScreeningHitRefs.forEach((ref) => {
       const hit = ref.hit;
@@ -2550,7 +2550,7 @@ export function MapPanel({
               .filter(Boolean)
               .join(" ")}
           >
-            {/* 읽는 순서대로: 1차(빨강) → 2차 점수 근거(보라) → 2차 펼친 시설군(파랑) → 기준 밖(회색) → 거리 밴드. 설명은 도움말로. */}
+            {/* 읽는 순서대로: 1차(빨강) → 2차 점수 근거(초록) → 2차 펼친 시설군(파랑) → 기준 밖(회색) → 거리 밴드. 설명은 도움말로. */}
             <strong>
               지도 범례 <Info size={13} aria-hidden="true" />
             </strong>
