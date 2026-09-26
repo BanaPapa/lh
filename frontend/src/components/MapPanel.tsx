@@ -1,4 +1,5 @@
 import {
+  Info,
   AlertCircle,
   ChevronRight,
   ArrowLeftRight,
@@ -2307,9 +2308,19 @@ export function MapPanel({
           </div>
         )}
         {hazardMode && (
-          <div className="hazard-map-legend">
-            {/* 읽는 순서대로: 1차(빨강) → 2차(파랑) → 기준 밖(회색) → 거리 밴드. */}
-            <strong>지도 범례</strong>
+          <div
+            className="hazard-map-legend"
+            title={[
+              "점 마커는 공식 경계가 아닌 시설 후보입니다.",
+              cadastralNote,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {/* 읽는 순서대로: 1차(빨강) → 2차(파랑) → 기준 밖(회색) → 거리 밴드. 설명은 도움말로. */}
+            <strong>
+              지도 범례 <Info size={13} aria-hidden="true" />
+            </strong>
             {hazardMarkers.some((marker) => !marker.nearby) && (
               <span>
                 <i className="marker-primary" /> 1차 유해시설
@@ -2344,49 +2355,8 @@ export function MapPanel({
                 <i className="marker-zoning" /> 용도지역 레이어 켜짐
               </span>
             )}
-            {/* 지적편집도 타일 로딩·게이트·3km·일부표시 안내. 같은 범례 자리에 둔다. */}
-            {cadastralNote && (
-              <small className="cadastral-note">{cadastralNote}</small>
-            )}
-            <small>점 마커는 공식 경계가 아닌 시설 후보입니다.</small>
           </div>
         )}
-
-
-        <div className="map-zoom-control" aria-label="지도 축척 조절">
-          <button
-            type="button"
-            aria-label="지도 확대"
-            title="지도 확대"
-            disabled={mapLevel <= ZOOM_MIN_LEVEL}
-            onClick={() => changeZoom("in")}
-          >
-            <Plus size={18} />
-          </button>
-          <span
-            title={
-              mapLevel === ZOOM_MIN_LEVEL
-                ? "최대 확대"
-                : "0.5레벨 단위이며 숫자가 작을수록 확대됩니다."
-            }
-          >
-            <small>LEVEL</small>
-            <strong>
-              L{Number.isInteger(mapLevel) ? mapLevel : mapLevel.toFixed(1)}
-            </strong>
-          </span>
-          <button
-            type="button"
-            aria-label="지도 축소"
-            title="지도 축소"
-            disabled={mapLevel >= ZOOM_MAX_LEVEL}
-            onClick={() => changeZoom("out")}
-          >
-            <Minus size={18} />
-          </button>
-        </div>
-        </div>
-
         {hazardMode && (railFindings.length > 0 || railGroups.length > 0) && (
           <nav className="map-facility-rail" aria-label="판정·배점 시설군">
             {railFindings.length > 0 && (
@@ -2471,6 +2441,42 @@ export function MapPanel({
             )}
           </nav>
         )}
+        </div>
+
+        <div className="map-zoom-control" aria-label="지도 축척 조절">
+          <button
+            type="button"
+            aria-label="지도 확대"
+            title="지도 확대"
+            disabled={mapLevel <= ZOOM_MIN_LEVEL}
+            onClick={() => changeZoom("in")}
+          >
+            <Plus size={18} />
+          </button>
+          <span
+            title={
+              mapLevel === ZOOM_MIN_LEVEL
+                ? "최대 확대"
+                : "0.5레벨 단위이며 숫자가 작을수록 확대됩니다."
+            }
+          >
+            <small>LEVEL</small>
+            <strong>
+              L{Number.isInteger(mapLevel) ? mapLevel : mapLevel.toFixed(1)}
+            </strong>
+          </span>
+          <button
+            type="button"
+            aria-label="지도 축소"
+            title="지도 축소"
+            disabled={mapLevel >= ZOOM_MAX_LEVEL}
+            onClick={() => changeZoom("out")}
+          >
+            <Minus size={18} />
+          </button>
+        </div>
+
+
 
 
 

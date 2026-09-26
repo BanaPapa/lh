@@ -70,13 +70,17 @@
 
 .solo-bar-secondary > .solo-search-shell {
   flex: 1 1 auto;
-  max-width: 900px;
+  min-width: 0;
 }
 
-/* ── 3행: 사업지(선택 필지) 요약 — 검색 뒤에만 ───────────────── */
+/* 검색창은 절반 길이. 남는 자리에 실행·결과 상세·사업지 칩이 같은 줄로 온다. */
+.solo-bar-secondary .solo-search-row > .solo-search-form {
+  flex: 0 1 420px;
+  min-width: 260px;
+}
 
-.solo-bar-tertiary {
-  padding: 0 18px 8px;
+.solo-bar-secondary .solo-search-row {
+  flex-wrap: nowrap;
   overflow-x: auto;
 }
 

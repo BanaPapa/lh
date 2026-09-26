@@ -220,15 +220,18 @@ export function TopSearchBar({
 
             {hasSite ? (
               <>
-                <button
-                  type="button"
-                  className={`solo-run-button${runAttention ? " is-attention" : ""}`}
-                  disabled={running}
-                  onClick={onRun}
-                  title="1차 매입제외 판정과 2차 생활편의성 배점을 실행합니다."
-                >
-                  {running ? "심사 중" : "심사 실행"}
-                </button>
+                {/* 결과가 나오면 실행 버튼은 「심사 결과 상세」로 바뀐다. 다시 돌리려면 되돌리기로 새로 검색한다. */}
+                {!(screeningResult && !running) && (
+                  <button
+                    type="button"
+                    className={`solo-run-button${runAttention ? " is-attention" : ""}`}
+                    disabled={running}
+                    onClick={onRun}
+                    title="1차 매입제외 판정과 2차 생활편의성 배점을 실행합니다."
+                  >
+                    {running ? "심사 중" : "심사 실행"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="solo-icon-button solo-reset-button"
@@ -255,48 +258,8 @@ export function TopSearchBar({
                     심사 결과 상세
                   </button>
                 )}
-              </>
-            ) : (
-              <button
-                type="button"
-                className="solo-run-button"
-                disabled={searching || query.trim().length < 2}
-                onClick={onSearch}
-                title="주소나 장소명으로 사업지를 찾습니다."
-              >
-                {searching ? "검색 중" : "검색"}
-              </button>
-            )}
-          </div>
-          {searchError && (
-            <p className="solo-search-error" role="alert">
-              {searchError}
-            </p>
-          )}
-          {!searchError && searchNotice && (
-            <p className="solo-search-notice" role="status">
-              {searchNotice}
-            </p>
-          )}
-          {!searchError && !searchNotice && screeningError && (
-            <p className="solo-search-error" role="alert">
-              {screeningError}
-            </p>
-          )}
-        </div>
-        <TypeSelector
-          applicationTypes={applicationTypes}
-          housingType={housingType}
-          applicationType={applicationType}
-          onHousingTypeChange={onHousingTypeChange}
-          onApplicationTypeChange={onApplicationTypeChange}
-          disabled={running}
-        />
-      </div>
-
-      {/* 3행: 사업지(선택 필지) 요약 — 검색 뒤에만 */}
-      {hasSite && siteSummary && (
-        <div className="solo-bar-tertiary">
+                {/* 결과 상세가 없을 때만 그 자리에 사업지(선택 필지) 요약을 보인다. */}
+                {!(screeningResult && !running) && siteSummary && (
             <div
               className="solo-site-chip"
               title={
@@ -338,8 +301,46 @@ export function TopSearchBar({
                 <span className="is-warning">필지 없음 — 지도에서 필지를 고르세요</span>
               )}
             </div>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                className="solo-run-button"
+                disabled={searching || query.trim().length < 2}
+                onClick={onSearch}
+                title="주소나 장소명으로 사업지를 찾습니다."
+              >
+                {searching ? "검색 중" : "검색"}
+              </button>
+            )}
+          </div>
+          {searchError && (
+            <p className="solo-search-error" role="alert">
+              {searchError}
+            </p>
+          )}
+          {!searchError && searchNotice && (
+            <p className="solo-search-notice" role="status">
+              {searchNotice}
+            </p>
+          )}
+          {!searchError && !searchNotice && screeningError && (
+            <p className="solo-search-error" role="alert">
+              {screeningError}
+            </p>
+          )}
         </div>
-      )}
+        <TypeSelector
+          applicationTypes={applicationTypes}
+          housingType={housingType}
+          applicationType={applicationType}
+          onHousingTypeChange={onHousingTypeChange}
+          onApplicationTypeChange={onApplicationTypeChange}
+          disabled={running}
+        />
+      </div>
+
       <ApiKeysPanel open={apiOpen} onClose={() => setApiOpen(false)} />
       <RulebookModal open={rulebookOpen} onClose={() => setRulebookOpen(false)} rulePack={rulePack} />
       <RulesPanel open={rulesOpen} onClose={() => setRulesOpen(false)} />

@@ -4,13 +4,14 @@
 
 /* ── 룰 그룹핑 / data_state / 근거 (검토 드로어) ─────────────── */
 
-/* 지도 범례 — 좌측 도크에서 레이어 패널 아래, 같은 폭의 카드. */
+/* 지도 범례 — 좌측 도크에서 레이어 패널 아래, 같은 폭의 카드. 항목은 한 줄에 하나. */
 .hazard-map-legend {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
   padding: 8px 10px;
+  cursor: help;
   color: var(--fg-2);
   background: color-mix(in srgb, var(--raise) 93%, transparent);
   border: 1px solid var(--border-2);
@@ -20,15 +21,17 @@
 }
 
 .hazard-map-legend strong {
-  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 14px;
   color: var(--muted);
 }
 
 .hazard-map-legend > span {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   font-size: 14.2px;
   white-space: nowrap;
 }
@@ -401,7 +404,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 230px;
+  width: 250px;
+  max-height: calc(100% - 36px);
 }
 
 .map-zoning-control {
@@ -576,16 +580,15 @@
 }
 
 /* ── 왼쪽 시설군 레일 — 레이어 패널 아래. 누르면 그 시설군 전부가 지도에 펼쳐진다. */
+/* 시설군 레일 — 도크 맨 아래. 남는 높이 안에서 스크롤한다. */
 .map-facility-rail {
-  position: absolute;
-  top: 18px;
-  left: 262px;
-  z-index: 13;
+  flex: 0 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 300px;
-  max-height: calc(100% - 36px);
+  width: 100%;
+  box-sizing: border-box;
   overflow-y: auto;
   padding: 10px;
   background: color-mix(in srgb, var(--raise, #fff) 92%, transparent);
