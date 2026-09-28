@@ -14,7 +14,7 @@ export interface ScreeningHitRef {
   groupKey: string;
   groupLabel: string;
   hit: ScreeningFacilityHit;
-  /** 이 평가항목에서 점수를 결정한 최근접 시설인지. 기본 지도 표시 대상이다. */
+  /** 이 평가항목의 받은 등급 근거에 적힌 시설인지. 기본 지도 표시(초록) 대상이다. */
   isCriterionNearest: boolean;
   /** 안정 식별자: criterionKey|groupKey|index. */
   key: string;
@@ -48,18 +48,40 @@ export function flattenScreeningHits(
         });
       });
     }
-    // 좌표가 있는 시설 중 최근접 1곳을 기본 표시로 올린다. 점수를 결정한 시설이다.
-    let nearest: ScreeningHitRef | null = null;
+    // 받은 등급의 근거 문구에 적힌 시설 전부를 기본 표시(초록)로 올린다. 주거여건처럼
+    // 요건이 여럿이면 근거 시설도 여럿이다(상업·의료·공원·문화·공공 각각). 항목 전체
+    // 최근접 1곳만 올리면 근거에 적힌 공원이 지도에 안 나온다(금암동 473-6 검수).
+    const evidence = criterion.tiers
+      .filter((tier) => tier.selected)
+      .flatMap((tier) => tier.requirements.map((req) => req.evidence))
+      .join(" | ");
+    let marked = false;
     for (const ref of criterionRefs) {
-      if (!ref.hit.coordinates) continue;
-      if (!nearest || ref.hit.distance_m < nearest.hit.distance_m) {
-        nearest = ref;
+      if (!ref.hit.coordinates || !ref.hit.name) continue;
+      if (evidence.includes(`${ref.hit.name} ${formatMeters(ref.hit.distance_m)}`)) {
+        ref.isCriterionNearest = true;
+        marked = true;
       }
     }
-    if (nearest) nearest.isCriterionNearest = true;
+    // 근거 문구로 못 찾으면(등급 미확정 등) 좌표가 있는 최근접 1곳으로 물러선다.
+    if (!marked) {
+      let nearest: ScreeningHitRef | null = null;
+      for (const ref of criterionRefs) {
+        if (!ref.hit.coordinates) continue;
+        if (!nearest || ref.hit.distance_m < nearest.hit.distance_m) {
+          nearest = ref;
+        }
+      }
+      if (nearest) nearest.isCriterionNearest = true;
+    }
     refs.push(...criterionRefs);
   }
   return refs;
+}
+
+/** 근거 문구의 거리 표기(「1,045m」)와 같은 꼴. */
+function formatMeters(distance: number): string {
+  return `${Math.round(distance).toLocaleString("en-US")}m`;
 }
 
 /**

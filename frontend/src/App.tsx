@@ -14,6 +14,7 @@ import {
 import { BatchPanel } from "./screening/BatchPanel";
 import { ScreeningProgressModal } from "./screening/ScreeningProgressModal";
 import { ringCentroid } from "./hazard-review/mapViewport";
+import { isNonFacilityParcel } from "./hazard-review/cadastralTiles";
 import type {
   CadastralParcel,
   HazardApplicationType,
@@ -313,6 +314,8 @@ function App() {
         return;
       }
       if (parcelsLockedRef.current) return;
+      // 도로·하천 등은 사업지가 될 수 없다.
+      if (isNonFacilityParcel(parcel)) return;
       applyParcelToggle({
         parcel_id: `cadastral:${parcel.pnu}`,
         pnu: parcel.pnu,
@@ -387,9 +390,8 @@ function App() {
         // 상태는 아래 siteChanged 분기에서만 지운다.
         setViewportRequest((seq) => seq + 1);
         if (siteChanged) {
-          // 사업지가 바뀌면 유형은 기본값(주택 · 일반)에서 다시 고른다.
-          setHazardHousingType(DEFAULT_HOUSING_TYPE);
-          setHazardApplicationType(DEFAULT_APPLICATION_TYPE);
+          // 미리 골라 둔 주택유형·신청유형은 그대로 둔다. 유형이 기본값으로 돌아가는
+          // 건 「다시 검색」(handleResetSite)뿐이다(사용자 규칙 2026-09-28).
           setHazardParcels([]);
           setParcelNote("");
           void loadSiteParcel(nextCandidate, query);

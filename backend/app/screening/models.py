@@ -256,6 +256,19 @@ class ScreeningStageTwo(BaseModel):
 # ---------------------------------------------------------------------------
 # 종합
 # ---------------------------------------------------------------------------
+class ScreeningSourceAlert(BaseModel):
+    """이번 심사에서 응답하지 않았거나 대체 원천으로 넘어간 공공 원천 하나.
+
+    TAGO·생활안전지도 같은 공공 API 는 가끔 먹통이다. 그때 결과를 조용히 대체해
+    내면 담당자가 틀린 점수를 사실로 읽는다. 결과 상단에 경고로 올려 재심사를
+    판단하게 한다.
+    """
+
+    stage: Literal["stage_one", "stage_two"]
+    source: str
+    message: str
+
+
 class ScreeningResult(BaseModel):
     screening_id: str
     created_at: datetime
@@ -277,6 +290,8 @@ class ScreeningResult(BaseModel):
     hazard_review: HazardReviewResult
     calculation_note: str = ""
     disclaimer: str = ""
+    # 원천 장애·대체 경고. 비어 있지 않으면 화면이 「잠시 후 재심사」를 권한다.
+    source_alerts: list[ScreeningSourceAlert] = Field(default_factory=list)
 
 
 class ScreeningRequest(BaseModel):

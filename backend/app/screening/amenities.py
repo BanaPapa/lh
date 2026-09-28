@@ -20,15 +20,18 @@ from typing import Any, NamedTuple
 from app.models import Coordinates
 from app.screening.front_door import (
     _AUTO_EXCLUDE_TOKENS,
-    CAMPUS_PARCEL_MAX_AREA_M2,
     FACILITY_DOOR_TOKENS,
     HOSPITAL_EXCLUDE_TOKENS,
     STATION_DOOR_TOKENS,
+    DATASET_GATE_SOURCE,
+    DatasetGate,
     FrontDoorRef,
     FrontDoorStore,
     _university_tokens,
     auto_front_door,
     collect_door_candidates,
+    dataset_gate_for,
+    load_dataset_gates,
     normalize_key,
     university_base,
 )
@@ -43,7 +46,9 @@ from app.services.geo import (
     haversine_meters,
     nearest_boundary_point_multi,
     offset_coordinates,
+    polygon_contains,
 )
+from app.services.institutions import is_public_office
 from app.services.kakao import KakaoClient
 from app.services.naver_search import NaverSearchClient
 from app.services.seoul_bus import SeoulBusStopClient
@@ -165,6 +170,27 @@ FEED_LABELS: dict[str, str] = {
 FeedProgressCallback = Callable[[str, str, int | None, bool], Awaitable[None]]
 
 
+BUS_TAGO_ALERT = (
+    "국토교통부 TAGO 정류소 조회가 응답하지 않아 카카오 지도 검색으로 버스정류장을 "
+    "대체했습니다. 운행주기(15분) 판정을 하지 못했고 정류장이 빠졌을 수 있습니다."
+)
+BUS_HEADWAY_ALERT = (
+    "국토교통부 TAGO 노선·배차 조회가 응답하지 않아 운행주기(15분) 판정 없이 "
+    "정류장을 모두 셌습니다."
+)
+BUS_EMPTY_ALERT = (
+    "반경 안에서 버스정류장을 한 곳도 찾지 못했습니다. 도심에서는 드문 일이라 "
+    "TAGO·지도 검색 응답 이상일 수 있습니다."
+)
+
+
+def _layer_alert(layer: str, fallback: str) -> str:
+    return (
+        f"생활안전지도 {layer} 레이어가 응답하지 않아 {fallback}로 대체했습니다. "
+        "지정 원천과 결과가 다를 수 있습니다."
+    )
+
+
 class SourceMissing(RuntimeError):
     """조회 장애가 아니라 쓸 원천이 아예 없을 때. 시설군 note 에 문구 그대로 싣는다."""
 
@@ -208,10 +234,10 @@ SAFEMAP_OFFICE_SOURCE = "행정안전부 민원행정기관 전자지도(생활�
 SAFEMAP_FIRE_SOURCE = "소방청 소방서·119안전센터(생활안전지도 IF_0038)"
 SAFEMAP_HOSPITAL_SOURCE = "국립중앙의료원 종합병원(생활안전지도 IF_0022)"
 
-# 정문 미지정 대학 캠퍼스에 붙이는 지정 대기 고지(국장님 §3-3). 좌표 폴백을
-# 쓰되 그 사실을 감추지 않는다.
+# 정문을 어느 원천에서도 못 찾은 대학에 붙이는 지정 대기 고지(국장님 §3-3). 좌표
+# 폴백을 쓰되 그 사실을 감추지 않는다.
 FRONT_DOOR_PENDING_NOTICE = (
-    "대학 캠퍼스 통필지 — 정문 기준점 지정 대기(현재 좌표 기준 보수 폴백)"
+    "대학 정문 미확인 — 정문 기준점 지정 대기(현재 시설 좌표 기준 보수 폴백)"
 )
 
 
@@ -274,6 +300,13 @@ HOSPITAL_CATEGORIES: frozenset[str] = frozenset(
 
 SCHOOL_TOKENS: tuple[str, ...] = ("초등학교", "중학교", "고등학교")
 
+# 터미널 키워드 검색은 「G car zone 군산시외버스터미널 옆」(카셰어링)·「○○터미널
+# 공중화장실」·「○○터미널 소화물취급소」처럼 터미널 이름을 빌린 부속·인접 시설까지
+# 물어 온다(실측 2026-09-27 군산: 8건 중 진짜 터미널 2건). 분류 잎이 터미널로
+# 끝나는 것만 대중교통수단 터미널로 본다 — 카카오는 「고속,시외버스터미널」 한
+# 잎으로 시외·고속을 묶어 표기한다.
+TERMINAL_LEAF_SUFFIX = "터미널"
+
 # 고등교육기관으로 보는 카카오 「학교」 하위 분류.
 #
 # 「대학교」로 시작하는 것만 받으면 같은 성격의 학교가 원천 표기에 따라 갈린다.
@@ -313,6 +346,9 @@ class FeedResult(NamedTuple):
     # 지정 원천이 장애로 실패해 대체 원천으로 떨어졌는지. 이런 결과는 캐시하지 않는다 —
     # 일시 장애 한 번이 캐시 수명(10분) 내내 낮은 점수로 굳는다.
     degraded: bool = False
+    # 원천 장애·대체를 심사 결과에 경고로 올릴 문구. 비어 있으면 정상이다.
+    # 조용히 대체 원천으로 넘어가지 않고, 담당자가 재심사를 판단할 수 있게 한다.
+    alert: str = ""
 
 
 class MeasuredDoor(NamedTuple):
@@ -374,6 +410,8 @@ class GroupCollection(NamedTuple):
     # 시설군 차원의 정문 기준점 고지(대학교 전용). 정문 미지정·통필지 폴백 등을
     # 시설군 헤더에도 드러낸다. 조용히 좌표로 넘어가지 않기 위한 것이다(§3-3).
     front_door_notice: str = ""
+    # 이 시설군을 채운 원천의 장애·대체 경고(FeedResult.alert 모음). 결과 상단 경고로 올린다.
+    source_alert: str = ""
 
 
 class GroupSpec(NamedTuple):
@@ -417,6 +455,12 @@ def _is_general_hospital(place: RawPlace) -> bool:
 
 def _is_park(place: RawPlace) -> bool:
     return _category_leaf(place) in PARK_CATEGORIES
+
+
+def _is_terminal(place: RawPlace) -> bool:
+    """분류 잎이 「…터미널」인 것만. 이름에 터미널이 들어간 카셰어링·화장실은 거른다."""
+
+    return _category_leaf(place).endswith(TERMINAL_LEAF_SUFFIX)
 
 
 def _is_public(place: RawPlace) -> bool:
@@ -498,6 +542,7 @@ GROUP_SPECS: dict[str, GroupSpec] = {
         ("terminal", "express_terminal"),
         "substituted",
         "대중교통수단 터미널 정보 대신 지도 검색으로 근사했습니다.",
+        keep=_is_terminal,
     ),
     "transfer": GroupSpec(
         ("transfer",), "substituted", TRANSFER_SUBSTITUTED_NOTE, kakao_backed=False
@@ -631,8 +676,13 @@ class AmenityCollector:
         safemap_offices: SafemapFacilityFeed | None = None,
         safemap_hospitals: SafemapFacilityFeed | None = None,
         safemap_fire: SafemapFacilityFeed | None = None,
+        dataset_gates: tuple[DatasetGate, ...] | None = None,
     ) -> None:
         self.kakao = kakao
+        # 표준 데이터셋 대학 정문 좌표(수기 지정 다음 순위). None 이면 저장소 CSV 를 읽는다.
+        self.dataset_gates = (
+            load_dataset_gates() if dataset_gates is None else dataset_gates
+        )
         # 소방서·119안전센터(IF_0038). 관공서 레이어의 보강(같은 자리 40m 는 뺀다).
         self.safemap_fire = safemap_fire
         # 생활안전지도 시설 레이어(2026-09-17 승인). 초·중·고(IF_0035)·관공서(IF_0031)는
@@ -665,7 +715,7 @@ class AmenityCollector:
         self.hospital_client = hospital_client
         # 대학 정문 수기 지정 저장소. 없으면 자동 채택/좌표 폴백만 쓴다.
         self.front_door_store = front_door_store
-        # 정문 필지경계·통필지 면적을 조회할 로컬 지적도. 인덱스가 없으면 필지
+        # 정문 필지경계를 조회할 로컬 지적도. 인덱스가 없으면 필지
         # 기준을 못 쓰고 좌표 기준으로 폴백한다(그 사실을 고지한다).
         self.cadastral_store = cadastral_store
         # 대학 정문 좌표를 확보할 지역검색. 표준 데이터셋이 대학 정문·역 출구를
@@ -734,12 +784,16 @@ class AmenityCollector:
             for group in FACILITY_GROUPS
         }
         collections = await self._attach_boundaries(collections, valid_rings, center)
+        collections = {
+            key: _with_source_alert(collection, results)
+            for key, collection in collections.items()
+        }
         degraded = [
             name
             for name, outcome in results.items()
             if isinstance(outcome, BaseException)
             or (isinstance(outcome, FeedResult) and outcome.degraded)
-        ]
+        ] + [key for key, collection in collections.items() if collection.source_alert]
         if degraded:
             logger.warning("주변시설 원천 장애(%s): 이번 결과는 캐시하지 않음", ", ".join(degraded))
         else:
@@ -767,23 +821,48 @@ class AmenityCollector:
             if key not in BOUNDARY_GROUPS or not collection.facilities:
                 updated[key] = collection
                 continue
-            head = collection.facilities[:BOUNDARY_LOOKUP_PER_GROUP]
-            tail = collection.facilities[BOUNDARY_LOOKUP_PER_GROUP:]
+            head = list(collection.facilities[:BOUNDARY_LOOKUP_PER_GROUP])
+            tail = list(collection.facilities[BOUNDARY_LOOKUP_PER_GROUP:])
+            # 도청·시청 같은 공공기관 청사는 최근접 몇 곳 밖이어도 필지를 조회한다. 주변에
+            # 작은 주민센터·작은도서관이 많으면 청사가 늘 뒤로 밀려 부지 안 점으로 재였다
+            # (2026-09-28 전주 효자동2가: 전라북도청이 공공시설 6번째 밖).
+            institutional = [
+                f for f in tail if is_public_office(f.name)
+            ][:BOUNDARY_LOOKUP_PER_GROUP]
+            head += institutional
+            tail = [f for f in tail if f not in institutional]
             measured: list[CollectedFacility] = []
+            # 경계로 잰(채택된) 시설 필지. 뒤쪽 시설이 같은 필지 안이면 조회 없이 재사용한다.
+            accepted: list[ParcelFeature] = []
             for facility in head:
+                shared = _containing_parcel(accepted, facility.coordinates)
+                if shared is not None:
+                    measured.append(_measure_to_parcel(facility, shared, rings, center))
+                    continue
                 parcel = (
                     await self._facility_parcel(facility.coordinates, parcel_cache)
                     if can_fetch
                     else None
                 )
-                # 종합병원은 필지가 아무리 넓어도 경계로 잰다(LH 09/22 결정 2 — 전북대병원
-                # 같은 통필지가 핵심 사례다). 다른 시설군은 통필지 왜곡 방지 상한을 지킨다.
+                # 필지가 아무리 넓어도 경계로 잰다 — 대형 필지는 끝점(경계선) 기준이다
+                # (8-14 회의록 §2 · LH 09/22 결정 2). 통필지 상한(5만㎡)은 2026-09-28 사용자
+                # 결정으로 없앴다: 전북도청 101,019㎡ 필지가 좌표로 폴백돼 선이 부지 안
+                # 점까지 들어갔다. 대학교는 이 경로가 아니라 정문 점으로 잰다.
+                result = _measure_to_parcel(facility, parcel, rings, center)
+                if parcel is not None and result.measurement_tier == "site_boundary":
+                    accepted.append(parcel)
+                measured.append(result)
+            # 최근접 몇 곳 밖이어도 이미 경계로 잰 필지 안의 시설(도청 안 도서관·출장소
+            # 등)은 같은 필지 경계로 잰다. 같은 부지인데 하나는 경계, 하나는 부지 안 점으로
+            # 재면 선과 거리가 어긋난다.
+            for facility in tail:
+                parcel = _containing_parcel(accepted, facility.coordinates)
                 measured.append(
-                    _measure_to_parcel(
-                        facility, parcel, rings, center, large_parcel_ok=(key == "hospital")
-                    )
+                    _measure_to_parcel(facility, parcel, rings, center)
+                    if parcel is not None
+                    else facility
                 )
-            facilities = sorted(measured + list(tail), key=lambda f: f.distance_m)
+            facilities = sorted(measured, key=lambda f: f.distance_m)
             shown = len(collection.facilities)
             distances = sorted(
                 [f.distance_m for f in facilities]
@@ -1222,9 +1301,13 @@ class AmenityCollector:
                 SAFEMAP_SCHOOL_SOURCE,
             )
         except Exception:
+            logger.warning("생활안전지도 학교 레이어 실패: 지도 분류로 대체", exc_info=True)
             if not self.kakao.enabled:
                 raise
-            return await self._kakao_category("SC4", center, radius_m)
+            fallback = await self._kakao_category("SC4", center, radius_m)
+            return fallback._replace(
+                degraded=True, alert=_layer_alert("학교(초·중·고)", "카카오 지도 학교 분류")
+            )
 
     async def _layer_offices(self, center: Coordinates, radius_m: int) -> FeedResult:
         """관공서(IF_0031). 도서관 행은 도서관 분류로 두어 _is_public 이 남기게 한다."""
@@ -1233,9 +1316,13 @@ class AmenityCollector:
         try:
             rows = await self.safemap_offices.facilities_around(center, radius_m)
         except Exception:
+            logger.warning("생활안전지도 관공서 레이어 실패: 지도 분류로 대체", exc_info=True)
             if not self.kakao.enabled:
                 raise
-            return await self._kakao_category("PO3", center, radius_m)
+            fallback = await self._kakao_category("PO3", center, radius_m)
+            return fallback._replace(
+                degraded=True, alert=_layer_alert("관공서", "카카오 지도 공공기관 분류")
+            )
         places = list(
             _layer_places(
                 rows,
@@ -1243,13 +1330,19 @@ class AmenityCollector:
             )
         )
         sources = [SAFEMAP_OFFICE_SOURCE]
+        fire_alert = ""
         # 소방서·119안전센터 보강. 실패해도 관공서 결과는 그대로 쓴다(보강 원천).
         if _feed_enabled(self.safemap_fire):
             assert self.safemap_fire is not None
             try:
                 fire_rows = await self.safemap_fire.facilities_around(center, radius_m)
             except Exception:
+                logger.warning("생활안전지도 소방서 레이어 실패", exc_info=True)
                 fire_rows = []
+                fire_alert = (
+                    "생활안전지도 소방서 레이어가 응답하지 않아 소방서·119안전센터가 "
+                    "공공시설에서 빠졌을 수 있습니다."
+                )
             added = 0
             for row in fire_rows:
                 if row.kind not in FIRE_PUBLIC_KINDS:
@@ -1262,7 +1355,12 @@ class AmenityCollector:
                 added += 1
             if added:
                 sources.append(SAFEMAP_FIRE_SOURCE)
-        return FeedResult(tuple(places), " + ".join(sources))
+        return FeedResult(
+            tuple(places),
+            " + ".join(sources),
+            degraded=bool(fire_alert),
+            alert=fire_alert,
+        )
 
     async def _universities(
         self, query: str, center: Coordinates, radius_m: int
@@ -1278,7 +1376,14 @@ class AmenityCollector:
         try:
             rows = await self.safemap_universities.facilities_around(center, radius_m)
         except Exception:
-            return kakao_result
+            logger.warning("생활안전지도 대학교 레이어 실패: 지도 검색만 사용", exc_info=True)
+            return kakao_result._replace(
+                degraded=True,
+                alert=(
+                    "생활안전지도 대학교 위치 레이어가 응답하지 않아 카카오 지도 검색만으로 "
+                    "대학교를 찾았습니다. 지도에 없는 대학이 빠졌을 수 있습니다."
+                ),
+            )
         known = [
             (normalize_key(university_base(p.name)), p.coordinates)
             for p in kakao_result.places
@@ -1308,17 +1413,25 @@ class AmenityCollector:
 
         ncmc_ready = self.hospital_client is not None and self.hospital_client.enabled
         layer_ready = _feed_enabled(self.safemap_hospitals)
+        ncmc_alert = ""
         if ncmc_ready:
             try:
                 return await self._ncmc_hospitals(center, radius_m)
             except Exception:
+                logger.warning("국립중앙의료원 조회 실패: 생활안전지도 레이어로 대체", exc_info=True)
                 if not layer_ready:
                     raise
+                ncmc_alert = (
+                    "국립중앙의료원 병원 조회가 응답하지 않아 생활안전지도 병원 레이어로 "
+                    "대체했습니다."
+                )
         assert self.safemap_hospitals is not None
         rows = await self.safemap_hospitals.facilities_around(center, radius_m)
         return FeedResult(
             _layer_places(rows, lambda r: f"의료,건강 > 병원 > {r.kind}"),
             SAFEMAP_HOSPITAL_SOURCE,
+            degraded=bool(ncmc_alert),
+            alert=ncmc_alert,
         )
 
     async def _kakao_category(
@@ -1496,7 +1609,9 @@ class AmenityCollector:
                         headways = await self._stop_headways(places)
                     except Exception:
                         # 정류장은 받았으니 전체 정류장을 세되, 캐시하지 않고 다음 심사에서 다시 판정한다.
-                        return FeedResult(places, TAGO_SOURCE, degraded=True)
+                        return FeedResult(
+                            places, TAGO_SOURCE, degraded=True, alert=BUS_HEADWAY_ALERT
+                        )
                     if headways is None:
                         return FeedResult(places, TAGO_SOURCE)
                     return FeedResult(places, TAGO_HEADWAY_SOURCE, headways)
@@ -1518,14 +1633,17 @@ class AmenityCollector:
                         SEOUL_BUS_SOURCE,
                     )
             except Exception:
-                pass
+                logger.warning("서울시 정류소 조회 실패: 지도 검색으로 대체", exc_info=True)
         if not self.kakao.enabled:
             raise RuntimeError("TAGO·카카오 원천이 모두 설정되지 않았습니다.")
         documents = await self.kakao.search_keyword(
             "버스정류장", center.lat, center.lng, radius_m
         )
         return FeedResult(
-            _places(documents, _kakao_place), KAKAO_PLACE_SOURCE, degraded=tago_failed
+            _places(documents, _kakao_place),
+            KAKAO_PLACE_SOURCE,
+            degraded=tago_failed,
+            alert=BUS_TAGO_ALERT if tago_failed else "",
         )
 
     async def _transfer_centers(self, center: Coordinates, radius_m: int) -> FeedResult:
@@ -1614,7 +1732,11 @@ class AmenityCollector:
                 sources.append(outcome.source_label)
 
         keep = spec.keep
-        kept = [place for place in _dedupe(places) if keep is None or keep(place)]
+        kept = [
+            place
+            for place in _dedupe(places)
+            if not is_planned_facility(place.name) and (keep is None or keep(place))
+        ]
         if key in ("railway", "subway"):
             # 역은 대표점이 아니라 출입구에서 잰다(LH 과업내용서 예외기준).
             kept = [self._with_station_entrance(place, center) for place in kept]
@@ -1772,8 +1894,8 @@ class AmenityCollector:
     ) -> CollectedFacility:
         """대학교·종합병원 시설 한 곳을 시설 측 3단 기준으로 잰다(국장님 §3-2 · #8).
 
-        우선순위 — 담당자 수기 지정(정문 필지/좌표) > 네이버 문 후보(가장 가까운 문)
-        > 정류장 원장 자동 채택 > 좌표 폴백+고지. 문 후보는 전부 실어 담당자가 다른
+        우선순위 — 담당자 수기 지정(정문 좌표 > 정문 필지) > 표준 데이터셋 정문 좌표
+        (대학교) > 네이버 문 후보(가장 가까운 문) > 정류장 원장 자동 채택 > 좌표 폴백+고지. 문 후보는 전부 실어 담당자가 다른
         문을 고를 수 있게 한다(#7·#11). 배점에 쓰는 거리와 화면 표기가 같은 계산에서
         나오도록 여기서 잰 distance_m 을 그대로 담는다. 최단거리선(#5)도 함께 싣는다.
         """
@@ -1833,9 +1955,27 @@ class AmenityCollector:
             else None
         )
         if manual is not None:
-            return self._measure_from_ref(place, manual, rings, center, site_token, build)
+            return self._measure_from_ref(
+                place, manual, rings, center, site_token, build, prefer_point=True
+            )
 
-        # 2순위 — 네이버 문 후보. 기본은 사업지에 가장 가까운 문(#7·#11).
+        # 2순위(대학교) — 표준 데이터셋 정문 좌표. 대학알리미 + 수기 보완으로 정문을
+        # 특정해 둔 값이라 지역검색 문 후보(부설학교·주차장 정문이 섞인다)보다 앞선다.
+        # 캠퍼스 필지 경계를 정문 대용으로 쓰지 않으므로 통필지 상한도 필요 없다.
+        if use_university_base:
+            gate = dataset_gate_for(place.name, place.coordinates, self.dataset_gates)
+            if gate is not None:
+                return build(
+                    _distance_m(gate.coordinates, rings, center),
+                    "front_door_point",
+                    f"({site_token} ↔ 정문 좌표)",
+                    f"{DATASET_GATE_SOURCE} · {gate.label}",
+                    "",
+                    gate.coordinates,
+                    selected_point=gate.coordinates,
+                )
+
+        # 3순위 — 네이버 문 후보. 기본은 사업지에 가장 가까운 문(#7·#11).
         if candidates:
             nearest = min(candidates, key=lambda c: c.distance_m)
             return build(
@@ -1848,7 +1988,7 @@ class AmenityCollector:
                 selected_point=nearest.coordinates,
             )
 
-        # 3순위 — 정류장 원장 자동 채택.
+        # 4순위 — 정류장 원장 자동 채택.
         auto = auto_front_door(place.name, stop_points, exclude_tokens=exclude_tokens)
         if auto is not None and auto.coordinates is not None:
             return build(
@@ -1860,7 +2000,7 @@ class AmenityCollector:
                 auto.coordinates,
             )
 
-        # 4순위 — 정문 미확인: 좌표(대표점)로 보수 폴백하고 그 사실을 고지한다.
+        # 5순위 — 정문 미확인: 좌표(대표점)로 보수 폴백하고 그 사실을 고지한다.
         return build(
             _distance_m(place.coordinates, rings, center),
             "coordinate",
@@ -1878,24 +2018,32 @@ class AmenityCollector:
         center: Coordinates,
         site_token: str,
         build,
+        *,
+        prefer_point: bool = False,
     ) -> CollectedFacility:
-        """담당자 수기 지정(FrontDoorRef) 하나를 3단 기준으로 잰다."""
+        """담당자 수기 지정(FrontDoorRef) 하나를 잰다.
 
-        # 1순위 — 정문 필지(PNU) 지정. 통필지 안전장치를 통과하면 필지경계로 잰다.
+        prefer_point(대학교)면 정문 좌표가 있을 때 그 점으로 잰다 — LH 기준이 「대학교 =
+        정문(점)」이라, 필지까지 함께 지정돼도 캠퍼스 필지 경계(담장)로 재면 정문보다
+        가까워진다. 좌표 없이 필지만 지정됐으면 담당자가 고른 그 필지 경계로 잰다.
+        """
+
+        if prefer_point and ref.coordinates is not None:
+            return build(
+                _distance_m(ref.coordinates, rings, center),
+                "front_door_point",
+                f"({site_token} ↔ 정문 좌표)",
+                ref.source_label,
+                "",
+                ref.coordinates,
+                selected_point=ref.coordinates,
+            )
+
+        # 정문 필지(PNU) 지정 — 필지경계로 잰다. 면적 상한은 두지 않는다.
         if ref.has_parcel:
             measured = self._measure_front_door_parcel(ref, rings, center)
             if measured is not None:
                 distance, tier, label, notice, facility_point = measured
-                # 대형 통필지에 검증 정문 좌표가 없으면 확정하지 않고 좌표로 보수 폴백.
-                if distance is None or tier == "front_door_pending":
-                    return build(
-                        _distance_m(place.coordinates, rings, center),
-                        "coordinate",
-                        f"({site_token} ↔ 시설 좌표)",
-                        ref.source_label,
-                        notice,
-                        place.coordinates,
-                    )
                 return build(
                     distance, tier, label, ref.source_label, notice, facility_point
                 )
@@ -1933,16 +2081,12 @@ class AmenityCollector:
         ref: FrontDoorRef,
         rings: list[list[Coordinates]],
         center: Coordinates,
-    ) -> tuple[float | None, str, str, str, Coordinates | None] | None:
+    ) -> tuple[float, str, str, str, Coordinates | None] | None:
         """정문 필지경계 기준 측정. (거리, tier, 표기, 고지, 시설측 최단점) 또는 None.
 
-        캠퍼스 통필지(면적 임계 이상)는 검증된 정문 좌표가 있어야만 정문 기준으로
-        잰다. 좌표 없이 PNU 만 온 지정은 필지 내부 임의 대표점을 대신 쓰면 실제
-        정문이 캠퍼스 반대편일 때 그 점이 사업지에 더 가까워 거리가 짧아지고 접근성
-        점수가 후해진다(안전장치가 막으려던 바로 그 왜곡). 그래서 대표점 폴백을
-        제거하고, 검증 좌표가 없으면 거리를 확정하지 않고 대기(pending)로 돌려보낸다
-        (distance=None, tier="front_door_pending"). 호출부가 좌표 폴백으로 처리하되
-        그 사실을 화면에 드러낸다(국장님 §3-3).
+        면적 상한(구 통필지 5만㎡)은 없앴다(2026-09-28). 대학교 정문은 정문 좌표가
+        있으면 _measure_from_ref 가 점으로 먼저 재므로, 여기는 담당자가 필지만 고른
+        경우의 경계 측정이다.
         """
 
         store = self.cadastral_store
@@ -1953,32 +2097,6 @@ class AmenityCollector:
             return None
 
         site_token = "대지경계" if rings else "주소점"
-        if parcel.area_m2 >= CAMPUS_PARCEL_MAX_AREA_M2:
-            # 검증된 정문 좌표(정문 클릭점)가 있으면 그것으로 잰다 — 필지경계보다
-            # 보수적이고 실제 정문 위치라 왜곡이 없다.
-            if ref.coordinates is not None:
-                notice = (
-                    f"캠퍼스 통필지({parcel.area_m2:,.0f}㎡ ≥ "
-                    f"{CAMPUS_PARCEL_MAX_AREA_M2:,.0f}㎡) — 필지경계 축소 왜곡을 막기 "
-                    "위해 지정된 정문 좌표 기준으로 잽니다."
-                )
-                return (
-                    _distance_m(ref.coordinates, rings, center),
-                    "front_door_point",
-                    f"({site_token} ↔ 정문 좌표)",
-                    notice,
-                    ref.coordinates,
-                )
-            # 검증 좌표가 없다 — 대표점을 쓰면 거리가 짧아질 수 있으므로 확정하지
-            # 않고 대기로 돌려보낸다. 대형 통필지는 검증된 정문 좌표를 요구한다.
-            notice = (
-                f"캠퍼스 통필지({parcel.area_m2:,.0f}㎡ ≥ "
-                f"{CAMPUS_PARCEL_MAX_AREA_M2:,.0f}㎡)에는 검증된 정문 좌표가 필요합니다. "
-                "PNU 만 지정돼 필지 내부 대표점으로 거리를 짧게 만들지 않도록, 정문 "
-                "기준 거리를 확정하지 않고 대기로 남깁니다(정문 좌표 지정 필요)."
-            )
-            return (None, "front_door_pending", "", notice, None)
-
         # 정상 필지 — 사업지 대지경계 ↔ 정문 필지경계.
         facility_point: Coordinates | None = None
         if rings:
@@ -2093,6 +2211,44 @@ def _dedupe_doors(
     return kept
 
 
+def _with_source_alert(
+    collection: GroupCollection,
+    results: dict[str, "FeedResult | BaseException"],
+) -> GroupCollection:
+    """시설군을 채운 원천의 장애·대체 경고를 모아 싣는다(심사 결과 상단 경고용)."""
+
+    spec = GROUP_SPECS.get(collection.key)
+    messages: list[str] = []
+    for feed in spec.feeds if spec else ():
+        outcome = results.get(feed)
+        if isinstance(outcome, SourceMissing):
+            continue  # 원천이 아예 없는 것은 장애가 아니다. note 로 이미 드러난다.
+        if isinstance(outcome, BaseException):
+            label = FEED_LABELS.get(feed, feed)
+            messages.append(f"{label} 원천 조회가 실패했습니다({outcome}). 이 시설군은 산정하지 못했습니다.")
+        elif isinstance(outcome, FeedResult) and outcome.alert:
+            messages.append(outcome.alert)
+    if (
+        collection.key == "bus_stop"
+        and collection.state != "missing"
+        and not collection.distances_m
+    ):
+        messages.append(BUS_EMPTY_ALERT)
+    if not messages:
+        return collection
+    return collection._replace(source_alert=" ".join(dict.fromkeys(messages)))
+
+
+def is_planned_facility(name: str) -> bool:
+    """아직 짓지 않은 시설인가. 지도 POI 에는 「한국문화원형콘텐츠체험전시관 (2027년예정)」
+    처럼 개관 전 시설도 올라온다. 없는 시설로 등급을 올리면 안 되고, 내부망 앱 표준
+    데이터셋(공연장·미술관·박물관·영화상영관 원장)에도 없으므로 2차 편의시설에서 뺀다
+    (사용자 결정 2026-09-28).
+    """
+
+    return "예정" in (name or "")
+
+
 def _dedupe(places: Sequence[RawPlace]) -> list[RawPlace]:
     """이름+주소가 같으면 같은 시설로 본다. 키워드 검색을 겹쳐 쓰면 반드시 겹친다."""
 
@@ -2124,12 +2280,10 @@ def _measure_to_parcel(
     parcel: ParcelFeature | None,
     rings: Sequence[Sequence[Coordinates]],
     center: Coordinates,
-    *,
-    large_parcel_ok: bool = False,
 ) -> CollectedFacility:
     """시설 한 곳을 필지 경계 기준으로 바꾼 새 값. 못 바꾸면 사유만 적어 돌려준다.
 
-    large_parcel_ok 면 통필지 상한(CAMPUS_PARCEL_MAX_AREA_M2)을 적용하지 않는다.
+    필지 면적 상한은 두지 않는다 — 대형 필지도 끝점(경계선)으로 잰다.
     """
 
     if parcel is None:
@@ -2139,14 +2293,6 @@ def _measure_to_parcel(
         # 좌표가 도로·하천 필지 위에 떨어진 경우(지도 POI 가 시설 앞 도로에 찍힘).
         # 그 필지를 경계로 쓰면 도로망 전체가 시설이 된다. 좌표로 잰다.
         return facility._replace(front_door_notice=f"{rejection} — 시설 좌표로 쟀습니다.")
-    if parcel.area_m2 >= CAMPUS_PARCEL_MAX_AREA_M2 and not large_parcel_ok:
-        # 좌표가 떨어진 필지가 통필지(하천·단지 전체 등)면 경계가 시설 실체보다
-        # 훨씬 넓어 거리가 부당하게 줄어든다. 좌표 기준을 유지하고 사유를 적는다.
-        notice = (
-            f"통필지({parcel.area_m2:,.0f}㎡ ≥ {CAMPUS_PARCEL_MAX_AREA_M2:,.0f}㎡)라 "
-            "시설 경계로 재지 않고 시설 좌표로 쟀습니다."
-        )
-        return facility._replace(front_door_notice=notice)
     site_token = "대지경계" if rings else "주소점"
     if rings:
         measured = distance_polygons_to_polygon_m(rings, parcel.ring)
@@ -2169,6 +2315,20 @@ def _measure_to_parcel(
         nearest_boundary_point=boundary_point or facility.nearest_boundary_point,
         facility_ring=tuple(parcel.ring),
     )
+
+
+def _containing_parcel(
+    parcels: Sequence[ParcelFeature], point: Coordinates
+) -> ParcelFeature | None:
+    """이미 경계로 잰 필지 중 점을 품는 것. 도형 이상치는 없는 것으로 본다."""
+
+    for parcel in parcels:
+        try:
+            if polygon_contains(parcel.ring, point):
+                return parcel
+        except Exception:  # 지적 도형 이상치 방어 — 좌표 측정으로 남는다
+            continue
+    return None
 
 
 def _anchor_for(

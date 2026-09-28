@@ -47,6 +47,7 @@ from app.screening.models import (
     ScreeningRequest,
     ScreeningRequirement,
     ScreeningResult,
+    ScreeningSourceAlert,
     ScreeningStageOne,
     ScreeningStageTwo,
     ScreeningTier,
@@ -219,6 +220,7 @@ class ScreeningService:
             hazard_review=review,
             calculation_note=_calculation_note(bool(rings)),
             disclaimer=DISCLAIMER,
+            source_alerts=_source_alerts(review, collections),
         )
 
     async def _review(
@@ -786,3 +788,34 @@ def _progress_reporter(
         await progress(item_id, label, status, item_progress, count, message)
 
     return report
+
+
+def _source_alerts(
+    review: HazardReviewResult,
+    collections: dict[str, GroupCollection],
+) -> list[ScreeningSourceAlert]:
+    """1차 조회 실패 원천과 2차 시설군 원천 장애·대체를 경고 목록으로 모은다."""
+
+    alerts = [
+        ScreeningSourceAlert(
+            stage="stage_one",
+            source=source.label,
+            message=(
+                f"{source.label} 조회가 이번 심사에서 실패했습니다. 이 원천으로 찾는 "
+                "유해시설이 빠졌을 수 있습니다."
+            ),
+        )
+        for source in review.sources
+        if source.state == "failed"
+    ]
+    labels = {key: group.label for key, group in FACILITY_GROUP_BY_KEY.items()}
+    alerts.extend(
+        ScreeningSourceAlert(
+            stage="stage_two",
+            source=labels.get(key, key),
+            message=collection.source_alert,
+        )
+        for key, collection in collections.items()
+        if collection.source_alert
+    )
+    return alerts

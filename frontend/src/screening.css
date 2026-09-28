@@ -277,6 +277,18 @@
   line-height: 1.6;
 }
 
+/* 원천 장애 경고 — 검토 필요와 같은 호박색, 맨 아래 재심사 안내 줄. */
+.screening-source-alerts > p {
+  margin: 10px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--sh-small);
+  line-height: 1.5;
+}
+
 /* ── 섹션 공통 ──────────────────────────────────────────────── */
 
 .screening-section {

@@ -1,11 +1,11 @@
 import {
+  AlertTriangle,
   BookOpen,
   ClipboardCheck,
   FileSpreadsheet,
   Moon,
   Plug,
   Printer,
-  RotateCcw,
   Search,
   SlidersHorizontal,
   Sun,
@@ -64,7 +64,7 @@ interface TopSearchBarProps {
   onHousingTypeChange: (value: HazardHousingType) => void;
   onApplicationTypeChange: (value: HazardApplicationType) => void;
   rulePack: HazardRulePack | null;
-  /** 심사가 끝났으면 실행 버튼 오른쪽에 「심사 결과 상세」 버튼을 보인다. */
+  /** 심사가 끝났으면 실행 버튼 오른쪽에 「상세 결과」 버튼을 보인다. */
   screeningResult: ScreeningResult | null;
   screeningError: string;
   onOpenSheet: () => void;
@@ -134,8 +134,18 @@ export function TopSearchBar({
               type="button"
               className={`solo-brand-result ${VERDICT_TONE[screeningResult.verdict] ?? ""}`}
               onClick={onOpenSheet}
-              title="심사 결과 상세를 엽니다."
+              title={
+                screeningResult.source_alerts?.length
+                  ? `공공 데이터 ${screeningResult.source_alerts.length}건이 응답하지 않았습니다. 상세 결과에서 확인하고 재심사하세요.`
+                  : "상세 결과를 엽니다."
+              }
             >
+              {(screeningResult.source_alerts?.length ?? 0) > 0 && (
+                <strong className="solo-brand-alert">
+                  <AlertTriangle size={14} aria-hidden="true" />
+                  원천 장애
+                </strong>
+              )}
               <em>{screeningResult.verdict_label}</em>
               <span>
                 생활편의성{" "}
@@ -208,7 +218,7 @@ export function TopSearchBar({
       <div className="solo-run-slot">
         {hasSite ? (
           <>
-                {/* 결과가 나오면 같은 자리의 버튼이 「심사 결과 상세」가 된다. 다시 돌리려면 「다시 검색」. */}
+                {/* 결과가 나오면 같은 자리의 버튼이 「상세 결과」가 된다. 다시 돌리려면 「다시 검색」. */}
                 {screeningResult && !running ? (
                   <button
                     type="button"
@@ -216,7 +226,7 @@ export function TopSearchBar({
                     onClick={onOpenSheet}
                     title="1차 매입제외 판정과 2차 배점 근거를 심사표로 봅니다."
                   >
-                    심사 결과 상세
+                    상세 결과
                   </button>
                 ) : (
                   <button
@@ -251,7 +261,6 @@ export function TopSearchBar({
                   onClick={onResetSite}
                   title="사업지를 비우고 다시 검색"
                 >
-                  <RotateCcw size={15} aria-hidden="true" />
                   다시 검색
                 </button>
         )}

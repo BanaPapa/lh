@@ -125,6 +125,10 @@ export interface HazardFacility {
   zoning_name?: string;
   zoning_class?: "residential" | "non_residential" | "unknown" | "";
   zoning_source?: string;
+  /** 사업장명에 병원·소방서·대학교가 든 고압가스 시설이면 그 종류(가이드 H09·H10).
+   *  판정에서 빠지고 지도에 보라 영역으로 그린다. */
+  institution_kind?: "university" | "hospital" | "fire_station" | "";
+  institution_label?: string;
   metadata: Record<string, unknown>;
 }
 

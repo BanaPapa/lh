@@ -144,6 +144,11 @@ class HazardFacility(BaseModel):
     zoning_name: str = ""
     zoning_class: str = ""
     zoning_source: str = ""
+    # 병원·소방서·대학교 이름의 고압가스 시설이면 그 종류("hospital"/"fire_station"/
+    # "university"). 판정에서 빠져 nearby_facilities 로 가고, 지도는 보라 영역으로
+    # 그린다(가이드 H09·H10 · 사용자 결정 2026-09-28 A안).
+    institution_kind: str = ""
+    institution_label: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

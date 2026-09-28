@@ -205,19 +205,60 @@ export function pointInRing(point: LatLng, ring: LatLng[]): boolean {
 }
 
 /**
+ * 시설 경계로 쓰면 안 되는 지목(지번 끝 글자). 백엔드 parcel_sanity.NON_FACILITY_JIMOK 와 같다.
+ *   도=도로 · 천=하천 · 구=구거 · 제=제방 · 철=철도용지 · 유=유지 · 광=광천지
+ */
+export const NON_FACILITY_JIMOK: ReadonlySet<string> = new Set([
+  "도",
+  "천",
+  "구",
+  "제",
+  "철",
+  "유",
+  "광",
+]);
+
+/** 지번 끝의 지목 글자. 없으면 빈 문자열. */
+export function jimokOf(jibun: string): string {
+  const last = (jibun ?? "").trim().slice(-1);
+  return last >= "가" && last <= "힣" ? last : "";
+}
+
+/** 도로·하천 등 건축물이 설 수 없는 지목의 필지인지. 사업지·시설 경계로 쓰지 않는다. */
+export function isNonFacilityParcel(parcel: { jibun: string }): boolean {
+  return NON_FACILITY_JIMOK.has(jimokOf(parcel.jibun));
+}
+
+/**
+ * 좌표를 품은 필지 중 가장 작은 것. 필지는 바깥 링만 오므로 블록을 둘러싼 도로
+ * 필지(그물 모양)의 링은 그 안 블록의 점도 품는다. 가장 작은 필지를 골라야 점이
+ * 실제로 떨어진 필지가 나온다.
+ */
+export function smallestParcelContaining<T extends { geometry: LatLng[]; area_m2: number }>(
+  point: LatLng,
+  parcels: readonly T[],
+): T | null {
+  let best: T | null = null;
+  for (const parcel of parcels) {
+    if (parcel.geometry.length < 4 || !pointInRing(point, parcel.geometry)) continue;
+    if (!best || parcel.area_m2 < best.area_m2) best = parcel;
+  }
+  return best;
+}
+
+/**
  * 좌표를 품은 필지를 지적도 타일 목록에서 찾는다. 시설은 점 좌표만 있고 경계는
  * 없는 경우가 많다(참고 시설·2차 근거 시설). 화면에 이미 깔린 지적도 필지에서
  * 그 점이 든 필지를 찾아 "영역"으로 칠하면 별도 조회 없이 경계를 보여줄 수 있다.
  * 타일이 아직 안 깔린 축척(레벨 5 이상)이나 3km 밖에서는 null 이다.
+ *
+ * 좌표가 도로·하천 등 필지에 떨어지면 null 이다. 도로 필지는 블록을 둘러싼 그물
+ * 모양이라 바깥 링만 칠하면 여러 블록이 통째로 시설 영역처럼 보인다
+ * (2026-09-28 전주 금암동 473-6 검수). 백엔드 parcel_sanity 와 같은 기준이다.
  */
-export function parcelContaining<T extends { geometry: LatLng[] }>(
-  point: LatLng,
-  parcels: readonly T[],
-): T | null {
-  for (const parcel of parcels) {
-    if (parcel.geometry.length >= 4 && pointInRing(point, parcel.geometry)) {
-      return parcel;
-    }
-  }
-  return null;
+export function parcelContaining<
+  T extends { geometry: LatLng[]; jibun: string; area_m2: number },
+>(point: LatLng, parcels: readonly T[]): T | null {
+  const parcel = smallestParcelContaining(point, parcels);
+  return parcel && !isNonFacilityParcel(parcel) ? parcel : null;
 }

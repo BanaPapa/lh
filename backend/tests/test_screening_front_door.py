@@ -1,8 +1,9 @@
 """대학 캠퍼스 정문 기준점(국장님 「LOCUS 판정 로직 명세서 v1」 §3-2/§3-3) 회귀.
 
 여기서 지키는 것은 다섯 가지다.
-  1) 시설 측 3단 우선순위 — 정문 필지 > 정문 좌표 > 좌표 폴백.
-  2) 캠퍼스 통필지(5만㎡ 이상)는 필지경계가 아니라 좌표로 폴백한다(축소 왜곡 방지).
+  1) 시설 측 우선순위 — 수기 지정(정문 좌표 > 정문 필지) > 표준 데이터셋 정문 좌표
+     > 지역검색 문 후보 > 정류장 자동 채택 > 좌표 폴백.
+  2) 통필지 면적 상한은 없다 — 대학교는 캠퍼스 필지가 아니라 정문 좌표로 잰다.
   3) 정문 미지정 대학은 좌표로 폴백하되 그 사실을 결과에 남긴다.
   4) 자동 채택(정류장 근사)은 출처 라벨 없이 나가지 않는다.
   5) 수기 지정은 다음 검토(collect)부터 반영된다.
@@ -25,7 +26,6 @@ from app.screening.amenities import (
 )
 from app.services.naver_search import NaverLocalPlace
 from app.screening.front_door import (
-    CAMPUS_PARCEL_MAX_AREA_M2,
     FrontDoorStore,
     auto_front_door,
     normalize_key,
@@ -289,14 +289,20 @@ class TestThreeTierMeasurement:
         assert facility.front_door_source == "운영자 수기 지정"
 
 
-class TestCampusParcelSafeguard:
-    def test_large_parcel_falls_back_to_coordinate(self, tmp_path) -> None:
-        # 5만㎡ 이상 통필지는 필지경계가 아니라 좌표로 폴백한다(축소 왜곡 방지).
+class TestLargeParcelWithoutCap:
+    """통필지 면적 상한(5만㎡)은 2026-09-28 사용자 결정으로 없앴다.
+
+    대학교 정문은 캠퍼스 필지 경계가 아니라 정문 좌표로 특정한다(수기 지정 좌표 →
+    표준 데이터셋 정문 좌표 → 지역검색 → 정류장 → 좌표 폴백). 그래서 상한 없이도
+    담장(캠퍼스 경계)으로 재는 축소 왜곡이 생기지 않는다.
+    """
+
+    def test_designated_gate_coordinate_beats_campus_parcel(self, tmp_path) -> None:
+        # 필지와 정문 좌표가 함께 지정되면 정문 좌표(점)로 잰다 — 대학교 = 정문.
         gate_center = offset_coordinates(CENTER, 800, 0)
-        big = _parcel("BIG", gate_center, 150.0, area_m2=CAMPUS_PARCEL_MAX_AREA_M2 + 10_000)
+        big = _parcel("BIG", gate_center, 150.0, area_m2=160_000)
         cadastral = FakeCadastral({"BIG": big})
         store = FrontDoorStore(path=tmp_path / "fd.json")
-        # 정문 클릭 좌표를 함께 지정 → 폴백은 이 점을 쓴다.
         store.designate(
             UNIVERSITY_NAME, pnu="BIG", lat=gate_center.lat, lng=gate_center.lng
         )
@@ -309,24 +315,15 @@ class TestCampusParcelSafeguard:
         result = _collect(collector)
         facility = result["university"].facilities[0]
         assert facility.measurement_tier == "front_door_point"
-        assert "통필지" in facility.front_door_notice
+        assert facility.distance_m == _distance_m(gate_center, [SITE_RING], CENTER)
+        assert "통필지" not in facility.front_door_notice
 
-    def test_threshold_value_is_the_directors_50000(self) -> None:
-        # 국장님 §3-3 값(5만㎡)을 그대로 쓴다. 임의로 낮춰 판정을 느슨하게 하지 않는다.
-        assert CAMPUS_PARCEL_MAX_AREA_M2 == 50_000.0
-
-    def test_large_parcel_without_gate_coordinate_is_not_confirmed_via_representative_point(
-        self, tmp_path
-    ) -> None:
-        # 회귀: 5만㎡ 이상 통필지에 PNU 만 지정되고 검증된 정문 좌표가 없으면,
-        # 필지 내부 임의 대표점으로 거리를 확정해서는 안 된다(정문이 반대편이면
-        # 거리가 실제보다 짧아지는 왜곡이 재발한다). 시설 좌표로 보수적으로
-        # 폴백하고 대기 상태임을 고지해야 한다.
+    def test_parcel_only_designation_uses_that_parcel_boundary(self, tmp_path) -> None:
+        # 좌표 없이 필지만 지정하면 담당자가 고른 그 필지 경계로 잰다(면적 상한 없음).
         gate_center = offset_coordinates(CENTER, 800, 0)
-        big = _parcel("BIG", gate_center, 150.0, area_m2=CAMPUS_PARCEL_MAX_AREA_M2 + 10_000)
+        big = _parcel("BIG", gate_center, 150.0, area_m2=160_000)
         cadastral = FakeCadastral({"BIG": big})
         store = FrontDoorStore(path=tmp_path / "fd.json")
-        # 좌표 없이 PNU 만 지정 — 정문 클릭 좌표가 없다.
         store.designate(UNIVERSITY_NAME, pnu="BIG")
         collector = AmenityCollector(
             kakao=_university_kakao(),
@@ -336,17 +333,8 @@ class TestCampusParcelSafeguard:
         )
         result = _collect(collector)
         facility = result["university"].facilities[0]
-        # 정문 필지경계도, 필지 대표점(front_door_point)도 아니어야 한다.
-        assert facility.measurement_tier == "coordinate"
-        assert facility.measurement_tier != "front_door_parcel"
-        # 대기 상태와 사유가 화면에 드러나야 한다.
-        assert "정문 좌표" in facility.front_door_notice
-        assert "통필지" in facility.front_door_notice
-        # 거리는 대표점이 아니라 시설(카카오 place) 좌표 기준으로, 확정하지 않은
-        # 보수적 폴백이다.
-        place_coords = offset_coordinates(CENTER, UNI_POINT_OFFSET, 0)
-        assert facility.coordinates == place_coords
-        assert facility.distance_m == _distance_m(place_coords, [SITE_RING], CENTER)
+        assert facility.measurement_tier == "front_door_parcel"
+        assert "통필지" not in facility.front_door_notice
 
 
 class TestDesignationReflectedInNextReview:
@@ -539,7 +527,13 @@ class TestStationManualDesignation:
 
     def test_terminal_also_honours_manual_designation(self, tmp_path) -> None:
         # 터미널은 출구 후보가 없지만 수기 지정은 동일하게 반영된다.
-        kakao = FakeKakao(keywords={"버스터미널": [_place("전주시외버스터미널", 300.0, "")]})
+        kakao = FakeKakao(
+            keywords={
+                "버스터미널": [
+                    _place("전주시외버스터미널", 300.0, "교통,수송 > 교통시설 > 고속,시외버스터미널")
+                ]
+            }
+        )
         store = FrontDoorStore(path=tmp_path / "fd.json")
         gate = offset_coordinates(CENTER, 800.0, 0)
         store.designate(
@@ -581,3 +575,75 @@ class TestHospitalFrontDoorCacheKey:
         # 병원은 이름 그대로(정규화만) 찾으므로 후보가 없어 좌표로 폴백한다.
         assert facility.front_door_candidates == ()
         assert facility.measurement_tier == "coordinate"
+
+
+# ---------------------------------------------------------------------------
+# 표준 데이터셋 정문 좌표 — 수기 지정 다음, 지역검색 앞 (2026-09-28)
+# ---------------------------------------------------------------------------
+class TestDatasetGates:
+    def test_school_key_strips_gate_suffix_campus_and_digits(self) -> None:
+        from app.screening.front_door import school_key
+
+        assert school_key("전북대학교 전주캠퍼스정문") == "전북대학교"
+        assert school_key("전북대학교 공과대학") == "전북대학교"
+        assert school_key("전주기전대학정문") == "전주기전대학"
+        assert school_key("한국폴리텍5대학 익산캠퍼스정문") == "한국폴리텍대학"
+        assert school_key("원불교대학원대학교정문") == "원불교대학원대학교"
+        assert school_key("호원대학교동문") == "호원대학교"
+        assert school_key("국립한국농수산대학교") == "한국농수산대학교"
+
+    def test_bundled_csv_loads_the_21_jeonbuk_gates(self) -> None:
+        from app.screening.front_door import load_dataset_gates
+
+        gates = load_dataset_gates()
+        assert len(gates) == 21
+        assert any(g.label == "전주대학교정문" for g in gates)
+
+    def test_campus_is_chosen_by_distance(self) -> None:
+        from app.screening.front_door import dataset_gate_for, load_dataset_gates
+
+        gates = load_dataset_gates()
+        jeonju = dataset_gate_for(
+            "전북대학교", Coordinates(lat=35.8468, lng=127.1294), gates
+        )
+        iksan = dataset_gate_for(
+            "전북대학교 익산캠퍼스", Coordinates(lat=35.9420, lng=126.9630), gates
+        )
+        assert jeonju is not None and jeonju.label == "전북대학교 전주캠퍼스정문"
+        assert iksan is not None and iksan.label == "전북대학교 특성화캠퍼스정문"
+        # 3km 밖이면 같은 학교 이름이어도 정문으로 쓰지 않는다.
+        assert dataset_gate_for("전북대학교", CENTER, gates) is None
+
+    def test_dataset_gate_beats_naver_candidates(self) -> None:
+        from app.screening.front_door import DATASET_GATE_SOURCE, DatasetGate
+
+        gate_point = offset_coordinates(CENTER, 1_400.0, 0)
+        naver = FakeNaver({"전주대학교 정문": [_local("전주대학교 정문", 300.0)]})
+        collector = AmenityCollector(
+            kakao=_university_kakao(),
+            tago=FakeTago([]),
+            naver=naver,
+            dataset_gates=(DatasetGate("전주대학교", "전주대학교정문", gate_point),),
+        )
+        facility = _collect(collector)["university"].facilities[0]
+        assert facility.measurement_tier == "front_door_point"
+        assert DATASET_GATE_SOURCE in facility.front_door_source
+        assert facility.distance_m == _distance_m(gate_point, [SITE_RING], CENTER)
+
+    def test_manual_designation_still_beats_dataset_gate(self, tmp_path) -> None:
+        from app.screening.front_door import DatasetGate
+
+        manual_point = offset_coordinates(CENTER, 900.0, 0)
+        store = FrontDoorStore(path=tmp_path / "fd.json")
+        store.designate(UNIVERSITY_NAME, lat=manual_point.lat, lng=manual_point.lng)
+        collector = AmenityCollector(
+            kakao=_university_kakao(),
+            tago=FakeTago([]),
+            front_door_store=store,
+            dataset_gates=(
+                DatasetGate("전주대학교", "전주대학교정문", offset_coordinates(CENTER, 1_400.0, 0)),
+            ),
+        )
+        facility = _collect(collector)["university"].facilities[0]
+        assert facility.front_door_source == "운영자 수기 지정"
+        assert facility.distance_m == _distance_m(manual_point, [SITE_RING], CENTER)

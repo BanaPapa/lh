@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { categoryOrderKey } from "./screeningOverlays";
+import { isMultiParcelQuery } from "../hazard-review/api";
 import {
   SCREENING_GROUP_STATE_CONFIG,
   SCREENING_OUTCOME_CONFIG,
@@ -1087,8 +1088,18 @@ export function ScreeningSheet({
       <header className="screening-head" ref={setHeadEl}>
         <div className="screening-head-title">
           <small>LH 신축매입약정 서류심사</small>
-          <h2>{result.site.name}</h2>
-          <p>{result.site.address || "주소 미확보"}</p>
+          {/* 다필지면 제목에 필지 수를, 아래 줄에 필지 전부를 적는다. site.name 은
+              검색 후보(대표 지번 하나)라 그대로 두면 한 필지만 심사한 것처럼 읽힌다. */}
+          <h2>
+            {result.site.parcels.length > 1 && !isMultiParcelQuery(result.site.name)
+              ? `${result.site.name} 외 ${result.site.parcels.length - 1}필지`
+              : result.site.name}
+          </h2>
+          <p>
+            {result.site.parcels.length > 1
+              ? result.site.parcels.map((parcel) => parcel.address).join(" · ")
+              : result.site.address || "주소 미확보"}
+          </p>
         </div>
         <div className="screening-head-controls">
           <label className="screening-field">
@@ -1176,6 +1187,43 @@ export function ScreeningSheet({
             취소
           </button>
         </p>
+      )}
+
+      {/* 공공 API 가 먹통이었던 심사. 조용히 대체 원천으로 넘기지 않고 맨 위에 알린다. */}
+      {(result.source_alerts?.length ?? 0) > 0 && (
+        <section
+          className="screening-reasons is-review screening-source-alerts"
+          role="alert"
+          aria-label="원천 장애 경고"
+        >
+          <header>
+            <AlertTriangle size={15} />
+            <strong>일부 공공 데이터가 응답하지 않았습니다 — 잠시 후 재심사하세요</strong>
+            <b className="is-num">{result.source_alerts?.length}건</b>
+          </header>
+          <ol>
+            {result.source_alerts?.map((alert) => (
+              <li key={`${alert.stage}:${alert.source}`}>
+                <b>
+                  {alert.stage === "stage_one" ? "1차" : "2차"} · {alert.source}
+                </b>{" "}
+                {alert.message}
+              </li>
+            ))}
+          </ol>
+          <p>
+            이 결과의 판정·점수는 대체 자료로 낸 것이라 실제와 다를 수 있습니다. 확정
+            전에 다시 심사해 경고가 사라졌는지 확인해 주세요.
+            <button
+              type="button"
+              className="screening-notice-action"
+              disabled={running}
+              onClick={onRerun}
+            >
+              다시 심사
+            </button>
+          </p>
+        </section>
       )}
 
       {/* B. 종합 판정 */}

@@ -88,6 +88,7 @@ from app.services.safemap_facilities import SafemapFacilityFeed
 from app.services.factory_registry import FactoryRegistryClient
 from app.services.kgs import KgsLpgClient, PublicDataAPIError
 from app.services.parcel_sanity import parcel_rejection_reason
+from app.services.institutions import self_use_gas_institution
 from app.services.localdata import DATASET_BY_KEY
 from app.services.building_register import (
     BuildingRegisterAPIError,
@@ -130,6 +131,14 @@ SEARCH_SLACK_M = 150
 # 반경 이내인 시설을 nearby_facilities 로 실어 담당자가 "근처에 뭐가 있는지"를
 # 참고하게 한다. status·candidate_count·거리·심사표·CSV 는 이 값에 영향받지 않는다.
 HAZARD_CONTEXT_RADIUS_M = int(os.environ.get("HAZARD_CONTEXT_RADIUS_M", "1000"))
+
+# 병원·소방서·대학교 이름의 고압가스·특정고압가스 행은 기관 자가설비로 보고 판정에서
+# 뺀다(LH 09/22 결정 2 · 표준 데이터셋 가이드 붙임 2 H09·H10 — 사용자 결정 2026-09-28
+# A안: 납품 데이터셋과 같은 기준, 도청 등 다른 공공기관으로 넓히지 않는다). 지도에는
+# 보라 영역으로 남기고(nearby_facilities), status·candidate_count·심사표에는 넣지 않는다.
+INSTITUTION_GAS_DATASETS: frozenset[str] = frozenset(
+    {"high_pressure_gas", "specific_high_pressure_gas"}
+)
 
 SOURCE_STATE_SCORE: dict[str, int] = {
     "connected": 100,
@@ -291,8 +300,9 @@ ENDPOINT_UNVERIFIED_NOTE = "엔드포인트 미검증 — 적재 시 응답 확�
 
 # 고압가스 원장(라·바목) 자가설비·업태 필터 — H-02-라바 §7-1·§7-2. 제2호 공통 전제
 # 「자가난방·자가발전 등 목적의 저장시설은 제외」에 따라 제조구분 「냉동」(건물 냉방용
-# 냉동기)은 판정 미적용, 업태 「저장소·판매」만 확정 가능, 그 외는 검토. 수행팀 임시
-# 처리(조준환 엔진과 동일 기준)이며 LH 서면 확인 전이다.
+# 냉동기)은 유해시설이 아니다 — 인허가 원장 행은 후보 적재 단계(_is_refrigeration)에서
+# 빼고(LH앱과 같은 기준, 2026-09-28), 다른 경로로 들어온 행은 _classify_gas_facilities 가
+# 판정 미적용으로 거른다. 업태 「저장소·판매」만 확정 가능, 그 외는 검토.
 GAS_SELF_USE_KEYWORDS: tuple[str, ...] = ("냉동",)
 GAS_CONFIRMABLE_KEYWORDS: tuple[str, ...] = ("저장", "판매")
 GAS_SELF_USE_NOTE = (
@@ -307,57 +317,12 @@ SPECIFIC_GAS_REVIEW_NOTE = (
     "특정고압가스 사용신고 시설 — 목 배정·공통 전제 해당 여부 미확정 (H-02-라바 §7-3)"
 )
 
-# 고압가스 자가설비(기관 자체 사용) 제외 — LH 확정 2026-09-11 (2차 보고 회의 안건 ③).
-# 병원 저장소·소방서 공기충전 등 자체 사용 목적의 고압가스 시설은 유해시설에서 제외하고
-# 검토 표시도 하지 않는다(nearby 참고 핀에도 올리지 않는다). 냉동·냉방설비 미적용 규칙은
-# 기존 유지(_classify_gas_facilities 의 냉동 처리).
-#
-# 원장 실측(data/facilities.db, 2026-09-11):
-#   high_pressure_gas.category(=BZSTAT_SE_NM, 업태): 제조 / 저장소 / 판매
-#   high_pressure_gas.extra['MNFTR_SE_NM'](제조구분): 냉동 / 일반 / 충전 / 특정 / (공란)
-# 판별: 명칭이 기관 패턴이면서 업태가 「저장소」이거나 제조구분이 「충전」이면 자가설비로
-# 본다(병원 저장소 = 업태 저장소 · 소방서 공기충전 = 제조구분 충전).
-GAS_SELF_USE_STORAGE_KEYWORDS: tuple[str, ...] = ("저장",)
-GAS_SELF_USE_FILLING_KEYWORDS: tuple[str, ...] = ("충전",)
-# 특정고압가스 사용신고 원장(specific_high_pressure_gas)의 사용목적(USE_PRPS). 사용신고
-# 시설은 가스를 쓰는 곳이라 업태·제조구분 컬럼이 비어 있어 위 판별에 걸리지 않았다
-# (2026-09-14 건국대학교병원 사례: 사용목적 「의료용」이 50m 위험물로 표시). 사용목적이
-# 「의료」면 기관 명칭과 무관하게 자체 사용이고, 기관 명칭 패턴이면서 사용목적이 적혀
-# 있으면(= 사용신고 행) 역시 자체 사용으로 본다.
-GAS_SELF_USE_PURPOSE_KEYWORDS: tuple[str, ...] = ("의료",)
-GAS_INSTITUTION_NAME_KEYWORDS: tuple[str, ...] = (
-    "소방", "119", "병원", "의료원", "보건소", "요양", "대학교", "학교",
-    "연구소", "연구원", "수자원공사", "토지주택공사", "전기안전공사", "가스안전공사",
-    "농업과학원", "도서관", "시청", "군청", "경찰", "교육청", "공항", "철도",
-)
-
-
-def is_self_use_gas(
-    name: str,
-    business_category: str,
-    manufacture_type: str,
-    use_purpose: str = "",
-) -> bool:
-    """고압가스 자가설비(기관 자체 사용) 행인지 판별한다 (LH 확정 2026-09-11 안건 ③).
-
-    순수 함수. 명칭이 기관 패턴에 해당하면서, 업태가 「저장소」이거나 제조구분이
-    「충전」이거나 사용목적이 적혀 있으면(특정고압가스 사용신고 행) 자가 사용 목적으로
-    보아 유해시설 판정·검토·참고 핀에서 완전히 뺀다. 사용목적이 「의료」면 명칭과
-    무관하게 자가 사용이다. 냉동(냉방설비)은 여기서 다루지 않는다 — 기존
-    _classify_gas_facilities 의 판정 미적용 처리를 그대로 둔다.
-    """
-
-    purpose = use_purpose or ""
-    if any(word in purpose for word in GAS_SELF_USE_PURPOSE_KEYWORDS):
-        return True
-    name = name or ""
-    if not any(word in name for word in GAS_INSTITUTION_NAME_KEYWORDS):
-        return False
-    business = business_category or ""
-    manufacture = manufacture_type or ""
-    is_storage = any(word in business for word in GAS_SELF_USE_STORAGE_KEYWORDS)
-    is_filling = any(word in manufacture for word in GAS_SELF_USE_FILLING_KEYWORDS)
-    return is_storage or is_filling or bool(purpose.strip())
+# 고압가스 자가설비(기관 자체 사용) 제외 — LH 09/11 안건 ③ · 09/22 결정 2.
+# 예전에는 기관 낱말 22개(의료원·연구원·시청·공항 등) + 업태 저장소·제조구분 충전·
+# 사용목적 기재 조건으로 후보에서 아예 뺐다(is_self_use_gas). 2026-09-28 사용자 결정으로
+# 없앴다: 이 앱은 납품 앱(진용성 v6)과 같은 결과를 API 만으로 내는 것이 목적이므로,
+# 표준 데이터셋 가이드 H09·H10 처럼 사업장명에 병원·소방서·대학교가 있는 경우만 뺀다
+# (_split_institutional · INSTITUTION_GAS_DATASETS). 냉동(냉방설비) 판정 미적용은 유지.
 
 # 테마파크(다목) 건축물용도 필터 — H-04-다 §6-1. 원장 BLDG_USG_NM 이 「체육시설」이면
 # 운동시설 해당으로 즉시 제외, 「근린생활시설」은 제2종 여부 추가 확인(검토).
@@ -372,6 +337,62 @@ LIVING_ACCOMMODATION_KEYWORDS: tuple[str, ...] = ("생활",)
 # 무도장·무도학원 이중 등록 — H-04-마 §6-5. 한 사업장이 두 업종을 모두 등록한 경우
 # 좌표·주소가 완전히 같다. 그대로 두면 같은 시설이 두 번 걸리므로 한 줄로 묶는다.
 DANCE_DUPLICATE_M = 1.0
+
+
+def _is_refrigeration(row: Any) -> bool:
+    """고압가스 원장 행의 제조구분(MNFTR_SE_NM)이 「냉동」인가."""
+
+    extra = getattr(row, "extra", None) or {}
+    return any(
+        word in str(extra.get("MNFTR_SE_NM") or "") for word in GAS_SELF_USE_KEYWORDS
+    )
+
+
+def _split_institutional(
+    rule: Rule,
+    facilities: list[HazardFacility],
+    nearby: list[HazardFacility],
+) -> tuple[list[HazardFacility], list[HazardFacility], list[HazardFacility]]:
+    """병원·소방서·대학교 이름의 고압가스 시설을 판정 후보에서 참고 시설로 옮긴다.
+
+    위험물 Rule 의 고압가스·특정고압가스 행만 대상이다. 기관 시설에는 institution_kind·
+    institution_label 을 달아 지도가 보라 영역·「편의시설로 판단」 문구로 그리게 한다.
+    판정창 안이었던 기관 시설도 nearby 로 가므로 status·집계에 들어가지 않는다.
+    (판정 후보, 참고 시설, 판정창 안에서 빠진 기관 시설)을 돌려준다.
+    """
+
+    if rule.rule_id != "RB14-HAZMAT":
+        return facilities, nearby, []
+    judged: list[HazardFacility] = []
+    moved: list[HazardFacility] = []
+    for facility in facilities:
+        label = _institution_gas_label(facility)
+        if label:
+            moved.append(_mark_institution(facility, label))
+        else:
+            judged.append(facility)
+    marked = [
+        _mark_institution(facility, label)
+        if (label := _institution_gas_label(facility))
+        else facility
+        for facility in nearby
+    ]
+    return judged, sorted(moved + marked, key=lambda item: item.distance_m), moved
+
+
+def _institution_gas_label(facility: HazardFacility) -> str:
+    if str(facility.metadata.get("dataset") or "") not in INSTITUTION_GAS_DATASETS:
+        return ""
+    return self_use_gas_institution(facility.name)
+
+
+_INSTITUTION_KIND = {"대학교": "university", "병원": "hospital", "소방서": "fire_station"}
+
+
+def _mark_institution(facility: HazardFacility, label: str) -> HazardFacility:
+    return facility.model_copy(
+        update={"institution_kind": _INSTITUTION_KIND[label], "institution_label": label}
+    )
 
 
 def _rule_definition(rule: Rule) -> HazardRuleDefinition:
@@ -689,16 +710,29 @@ class HazardReviewService:
                     self._not_applicable_category(cat, reason)
                     for cat in judged_categories
                 ]
+                # 미적용 Rule 이라도 근처 유해시설은 전부 지도에 올린다(사용자 결정
+                # 2026-09-27: 「판정에 적용되지 않더라도 전부 지도에 올려는 줘야지」).
+                # 참고 핀으로만 싣고 판정·status·집계에는 넣지 않는다.
+                nearby = await self._find_reference_facilities(
+                    request, rule, judged_categories, safemap_snapshot, safemap_failed,
+                )
+                _, nearby, _ = _split_institutional(rule, [], nearby)
             else:
                 facilities, nearby, rule_failed = await self._find_rule_facilities(
                     request, rule, judged_categories, threshold,
                     safemap_snapshot, safemap_failed,
                 )
                 failed_sources |= rule_failed
+                facilities, nearby, exempted = _split_institutional(
+                    rule, facilities, nearby
+                )
                 summaries = [
-                    self._evaluate_category(
-                        cat, threshold, facilities, site_boundary_resolved,
-                        site_pnu, rule_failed,
+                    self._with_institution_note(
+                        self._evaluate_category(
+                            cat, threshold, facilities, site_boundary_resolved,
+                            site_pnu, rule_failed,
+                        ),
+                        [f for f in exempted if self._in_category(f, cat)],
                     )
                     for cat in judged_categories
                 ]
@@ -876,14 +910,19 @@ class HazardReviewService:
             if t is not None
         ]
         if not thresholds:
-            return None, False
+            # 두 rule 다 미적용(오피스텔)이어도 참고 핀은 올린다(2026-09-27 사용자
+            # 결정 「판정 미적용이어도 전부 지도에」). 참고 반경만큼만 받는다.
+            if HAZARD_CONTEXT_RADIUS_M <= 0:
+                return None, False
+            fetch_limit_m = float(HAZARD_CONTEXT_RADIUS_M)
+        else:
+            search_limit_m = max(thresholds) + BOUNDARY_BUFFER_M
+            # 참고 반경까지 함께 받아 둔다. 그러지 않으면 주유소·LPG 는 참고 시설이
+            # 비게 된다. 각 rule 은 여전히 자기 search_limit_m 으로 판정 후보를 거른다.
+            # 컨텍스트 반경이 작아도(0 포함) 경계 부착용 예비검색 슬랙은 확보해야, 점
+            # 거리가 판정창 밖이어도 경계 거리는 안인 시설을 놓치지 않는다.
+            fetch_limit_m = max(search_limit_m + SEARCH_SLACK_M, HAZARD_CONTEXT_RADIUS_M)
         boundaries = self._site_boundaries(request)
-        search_limit_m = max(thresholds) + BOUNDARY_BUFFER_M
-        # 참고 반경까지 함께 받아 둔다. 그러지 않으면 주유소·LPG 는 참고 시설이
-        # 비게 된다. 각 rule 은 여전히 자기 search_limit_m 으로 판정 후보를 거른다.
-        # 컨텍스트 반경이 작아도(0 포함) 경계 부착용 예비검색 슬랙은 확보해야, 점
-        # 거리가 판정창 밖이어도 경계 거리는 안인 시설을 놓치지 않는다.
-        fetch_limit_m = max(search_limit_m + SEARCH_SLACK_M, HAZARD_CONTEXT_RADIUS_M)
         search_radius_m = fetch_limit_m + round(
             max_extent_multi(request.site.coordinates, boundaries)
         )
@@ -898,6 +937,93 @@ class HazardReviewService:
     # ------------------------------------------------------------------
     # 후보 조회 (공개원천만)
     # ------------------------------------------------------------------
+    async def _fetch_rule_facilities(
+        self,
+        request: HazardReviewRequest,
+        rule: Rule,
+        rule_categories: list[Category],
+        fetch_limit_m: float,
+        search_radius_m: float,
+        now: datetime,
+        failed_sources: set[str],
+        safemap_snapshot: list[SafemapStation] | None,
+        safemap_failed: bool,
+    ) -> list[HazardFacility]:
+        """Rule 한 개의 원천을 전부 훑어 점 거리 fetch_limit_m 이내 시설을 모은다.
+
+        경계 부착·판정창 필터 같은 후처리는 하지 않는다. 판정 경로
+        (_find_rule_facilities)와 미적용 Rule 의 참고 핀 경로
+        (_find_reference_facilities)가 같은 조회를 나눠 쓴다.
+        """
+
+        facilities: list[HazardFacility] = []
+        if self.demo_mode:
+            facilities.extend(
+                self._demo_rule_facilities(
+                    request, rule_categories, fetch_limit_m, now
+                )
+            )
+            return facilities
+        facilities.extend(
+            self._licence_rule_facilities(
+                request, rule_categories, fetch_limit_m, now, failed_sources
+            )
+        )
+        facilities.extend(
+            await self._provider_rule_facilities(
+                request, rule, fetch_limit_m, search_radius_m, now,
+                failed_sources, safemap_snapshot, safemap_failed,
+            )
+        )
+        facilities.extend(
+            self._local_source_facilities(
+                request, rule, fetch_limit_m, now, existing=facilities
+            )
+        )
+        facilities.extend(
+            await self._factory_api_facilities(
+                request, rule, fetch_limit_m, now, failed_sources
+            )
+        )
+        return facilities
+
+    async def _find_reference_facilities(
+        self,
+        request: HazardReviewRequest,
+        rule: Rule,
+        rule_categories: list[Category],
+        safemap_snapshot: list[SafemapStation] | None = None,
+        safemap_failed: bool = False,
+    ) -> list[HazardFacility]:
+        """신청유형 매트릭스상 미적용인 Rule 의 참고 핀(지도 표시 전용).
+
+        판정 후보는 만들지 않는다 — 임계거리가 없으니 판정창도 없다. 참고 반경
+        (HAZARD_CONTEXT_RADIUS_M) 이내 시설을 적용 Rule 의 참고 핀과 같은 모습
+        (경계 부착·거리순)으로 돌려주고, status·candidate_count·심사표·CSV 는
+        건드리지 않는다. 원천 실패도 판정 상태로 번지지 않는다(미적용이므로).
+        """
+
+        if HAZARD_CONTEXT_RADIUS_M <= 0:
+            return []
+        now = datetime.now(UTC)
+        fetch_limit_m = float(HAZARD_CONTEXT_RADIUS_M)
+        boundaries = self._site_boundaries(request)
+        search_radius_m = fetch_limit_m + round(
+            max_extent_multi(request.site.coordinates, boundaries)
+        )
+        failed_sources: set[str] = set()
+        facilities = await self._fetch_rule_facilities(
+            request, rule, rule_categories, fetch_limit_m, search_radius_m, now,
+            failed_sources, safemap_snapshot, safemap_failed,
+        )
+        nearby = [f for f in facilities if f.distance_m <= HAZARD_CONTEXT_RADIUS_M]
+        if rule.rule_id == "RB14-AMUSEMENT":
+            nearby = self._merge_duplicate_dance_registrations(nearby)
+        # 참고 시설도 경계↔경계 거리로 보여 준다(적용 Rule 의 참고 핀과 같은 규칙).
+        await self._attach_facility_boundaries(request, nearby)
+        nearby.sort(key=lambda item: item.distance_m)
+        return nearby
+
     async def _find_rule_facilities(
         self,
         request: HazardReviewRequest,
@@ -919,38 +1045,13 @@ class HazardReviewService:
             max_extent_multi(request.site.coordinates, boundaries)
         )
 
-        facilities: list[HazardFacility] = []
         # 조회에 실패한 원천 식별자. 실패한 원천에 기댄 카테고리는
         # no_conflict 가 아니라 dataset_missing 으로 내려간다.
         failed_sources: set[str] = set()
-        if self.demo_mode:
-            facilities.extend(
-                self._demo_rule_facilities(
-                    request, rule_categories, fetch_limit_m, now
-                )
-            )
-        else:
-            facilities.extend(
-                self._licence_rule_facilities(
-                    request, rule_categories, fetch_limit_m, now, failed_sources
-                )
-            )
-            facilities.extend(
-                await self._provider_rule_facilities(
-                    request, rule, fetch_limit_m, search_radius_m, now,
-                    failed_sources, safemap_snapshot, safemap_failed,
-                )
-            )
-            facilities.extend(
-                self._local_source_facilities(
-                    request, rule, fetch_limit_m, now, existing=facilities
-                )
-            )
-            facilities.extend(
-                await self._factory_api_facilities(
-                    request, rule, fetch_limit_m, now, failed_sources
-                )
-            )
+        facilities = await self._fetch_rule_facilities(
+            request, rule, rule_categories, fetch_limit_m, search_radius_m, now,
+            failed_sources, safemap_snapshot, safemap_failed,
+        )
 
         # 판정용 후처리(경계 부착·건축물대장·무도장 병합)는 경계 부착 전 예비검색
         # 범위(판정창 + 예비검색 슬랙) 이내 후보에만 적용한다. 점 거리로 판정창을
@@ -1253,18 +1354,15 @@ class HazardReviewService:
             return []
         facilities: list[HazardFacility] = []
         for row in rows:
-            # 고압가스 자가설비(기관 자체 사용)는 판정·검토·참고 핀에서 완전히 뺀다
-            # (LH 확정 2026-09-11 안건 ③). 후보 목록에 애초에 올리지 않는다.
-            if row.dataset_key in (
-                "high_pressure_gas",
-                "specific_high_pressure_gas",
-            ) and is_self_use_gas(
-                row.name,
-                row.category,
-                str((getattr(row, "extra", None) or {}).get("MNFTR_SE_NM") or ""),
-                str((getattr(row, "extra", None) or {}).get("USE_PRPS") or ""),
-            ):
+            # 고압가스 「냉동 제조」(건물 냉방·매장 냉장용 냉동기)는 위험물시설로 싣지 않는다.
+            # 판정 미적용이 아니라 유해시설 자체가 아니다 — 판정·검토·참고 핀 어디에도
+            # 올리지 않는다. LH앱(진용성 v6 build-facilities.ts ①, 수행팀 결정 2026-09-15)과
+            # 같은 기준이다(2026-09-28 사용자 결정). 근거: 제9조의2 제2호 바목은 고압가스
+            # 「충전소·판매소·저장소」이고 공통 전제가 「자가 목적 시설 제외」다.
+            if row.dataset_key == "high_pressure_gas" and _is_refrigeration(row):
                 continue
+            # 그 밖의 기관 자가설비는 여기서 빼지 않는다. 병원·소방서·대학교 이름만 판정
+            # 단계(_split_institutional)에서 빼고 지도에 보라로 남긴다(가이드 H09·H10).
             distance = self._measure_distance(request, row.coordinates, None)
             if distance > search_limit_m:
                 continue
@@ -3615,6 +3713,23 @@ class HazardReviewService:
     def _is_living_accommodation(facility: HazardFacility) -> bool:
         business = str(facility.metadata.get("business_category") or "")
         return any(word in business for word in LIVING_ACCOMMODATION_KEYWORDS)
+
+    @staticmethod
+    def _with_institution_note(
+        summary: HazardCategorySummary, exempted: list[HazardFacility]
+    ) -> HazardCategorySummary:
+        """판정창 안에서 기관 부지라 뺀 시설이 있으면 그 사실을 note 에 밝힌다."""
+
+        if not exempted:
+            return summary
+        names = ", ".join(dict.fromkeys(f.name for f in exempted))
+        note = (
+            f"병원·소방서·대학교 이름의 고압가스 {len(exempted)}건({names})은 기관 "
+            "자가설비로 보아 유해시설 판정에서 뺐습니다(가이드 H09·H10 · 지도 보라 영역)."
+        )
+        return summary.model_copy(
+            update={"note": f"{summary.note} {note}".strip()}
+        )
 
     @staticmethod
     def _in_category(facility: HazardFacility, category: Category) -> bool:

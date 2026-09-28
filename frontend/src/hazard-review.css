@@ -399,6 +399,24 @@
   border-color: #059669;
 }
 
+/* 병원·소방서·대학교 이름의 고압가스 시설(기관 자가설비 · 유해 판정 제외). 보라. */
+
+.hazard-map-legend .marker-institution {
+  width: 12px;
+  height: 12px;
+  background: rgba(124, 58, 237, 0.22);
+  border: 1.5px solid #7c3aed;
+  border-radius: 3px;
+}
+
+.hazard-map-marker.is-institution .hazard-map-pin {
+  background: #ede9fe;
+}
+
+.hazard-distance-label.is-institution {
+  background: #7c3aed;
+}
+
 .hazard-map-legend .marker-door {
   width: 13px;
   height: 0;

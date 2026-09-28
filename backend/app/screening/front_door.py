@@ -26,6 +26,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 from dataclasses import dataclass
@@ -33,15 +34,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.models import Coordinates
+from app.services.geo import haversine_meters
 
-
-# 캠퍼스 통필지 안전장치 임계면적. 국장님 §3-3 값(5만㎡)을 그대로 쓴다.
-# 근거: 대학 캠퍼스가 하나의 지번(통필지)으로 묶여 있으면 그 필지 경계가 캠퍼스
-# 전체 외곽(도로변)까지 물고 있어, 이를 '정문'으로 쓰면 사업지~정문 거리가 실제
-# 정문 위치보다 짧게 나오는 축소 왜곡이 생긴다. 이 크기 이상이면 필지경계 기준을
-# 쓰지 않고 좌표(점) 기준으로 폴백한다. 판정을 느슨하게 만드는 방향의 추정을
-# 막기 위한 보수적 임계다.
-CAMPUS_PARCEL_MAX_AREA_M2 = 50_000.0
 
 DEFAULT_PATH = Path(__file__).resolve().parents[2] / "data" / "front_doors.json"
 
@@ -368,3 +362,96 @@ def _university_tokens(name: str) -> tuple[str, ...]:
             if len(core) >= 3:
                 tokens.add(core)
     return tuple(tokens)
+
+
+# ---------------------------------------------------------------------------
+# 표준 데이터셋 정문 좌표 — 대학교 정문을 특정하는 1차 원천(담당자 수기 지정 다음)
+# ---------------------------------------------------------------------------
+# 전북 생활입지 표준 데이터셋(시너지랩스)의 「대학교」 POINT 행을 옮겼다. 대학알리미 학교
+# 개황 + 네이버 지역검색으로 정문 좌표를 수기 보완한 값이다(가이드 Ⅰ-1-나 · 원천
+# 편의시설/52_university_exit_update.xlsx). 납품 앱(진용성 v6)도 이 좌표로 잰다.
+# 정문을 특정할 근거가 여기 있으므로, 캠퍼스 필지를 정문 대용으로 쓰지 않는다
+# (그래서 통필지 면적 상한이 필요 없어졌다 — 2026-09-28 사용자 결정으로 폐지).
+DATASET_GATES_PATH = Path(__file__).resolve().parents[2] / "data" / "university_gates_jeonbuk.csv"
+DATASET_GATE_SOURCE = "표준 데이터셋 정문 좌표(대학알리미 + 수기 보완)"
+# 학교 이름이 같아도 캠퍼스가 다르면 다른 정문이다(전북대 전주 ↔ 특성화(익산) 19km).
+# 카카오 시설 좌표에서 이 거리 안의 정문만 그 학교 정문으로 본다.
+DATASET_GATE_MAX_M = 3_000.0
+_GATE_SUFFIXES: tuple[str, ...] = ("정문", "입구", "동문", "서문", "남문", "북문", "후문")
+
+
+@dataclass(frozen=True)
+class DatasetGate:
+    school: str
+    label: str
+    coordinates: Coordinates
+
+
+def school_key(name: str) -> str:
+    """정문·시설 이름에서 학교 단위 키를 뽑는다(공백·숫자 제거).
+
+    「전북대학교 공과대학」·「전북대학교 전주캠퍼스정문」 → 「전북대학교」,
+    「전주기전대학정문」 → 「전주기전대학」, 「한국폴리텍5대학 익산캠퍼스정문」 →
+    「한국폴리텍대학」(카카오는 「한국폴리텍대학 익산캠퍼스」로 적는다).
+    「대학교」가 있으면 거기까지, 없으면 「대학」까지. 「원불교대학원대학교」처럼
+    앞에 「대학」이 먼저 나와도 「대학교」를 우선한다. 카카오가 붙이는 「국립」 접두
+    (「국립한국농수산대학교」·「국립군산대학교」)는 떼고 본다 — 데이터셋 정문 이름엔 없다.
+    """
+
+    text = "".join(ch for ch in "".join((name or "").split()) if not ch.isdigit())
+    for prefix in ("(국립)", "국립"):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    for suffix in _GATE_SUFFIXES:
+        if text.endswith(suffix):
+            text = text[: -len(suffix)]
+            break
+    for token in ("대학교", "대학"):
+        index = text.find(token)
+        if index >= 0:
+            return text[: index + len(token)]
+    return text
+
+
+def load_dataset_gates(path: Path | None = None) -> tuple[DatasetGate, ...]:
+    """정문 CSV 를 읽는다. 파일이 없거나 깨졌으면 빈 튜플(다음 순위 원천으로 넘어간다)."""
+
+    target = path or DATASET_GATES_PATH
+    try:
+        with target.open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+    except OSError:
+        return ()
+    gates: list[DatasetGate] = []
+    for row in rows:
+        try:
+            point = Coordinates(lat=float(row["lat"]), lng=float(row["lng"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+        label = (row.get("gate_name") or "").strip()
+        if label:
+            gates.append(DatasetGate(school_key(label), label, point))
+    return tuple(gates)
+
+
+def dataset_gate_for(
+    place_name: str,
+    place_coordinates: Coordinates,
+    gates: tuple[DatasetGate, ...],
+) -> DatasetGate | None:
+    """학교 키가 같고 시설 좌표에서 DATASET_GATE_MAX_M 안인 정문 중 가장 가까운 것."""
+
+    key = school_key(place_name)
+    if not key:
+        return None
+    best: tuple[float, DatasetGate] | None = None
+    for gate in gates:
+        if gate.school != key:
+            continue
+        distance = haversine_meters(place_coordinates, gate.coordinates)
+        if distance > DATASET_GATE_MAX_M:
+            continue
+        if best is None or distance < best[0]:
+            best = (distance, gate)
+    return best[1] if best else None

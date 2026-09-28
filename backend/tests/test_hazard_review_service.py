@@ -24,7 +24,6 @@ from app.hazard_review.rulebook import (
 from app.hazard_review.service import (
     HazardReviewService,
     SEARCH_SLACK_M,
-    is_self_use_gas,
     offset_coordinates,
 )
 from app.models import Coordinates
@@ -929,62 +928,62 @@ class TestFactoryDecision:
 
 
 # ---------------------------------------------------------------------------
-# §3 고압가스 자가설비(기관 자체 사용) 제외 — LH 확정 2026-09-11 (안건 ③)
+# §3 고압가스 자가설비(기관 자체 사용) 제외 — 납품 앱과 같은 기준 (2026-09-28)
+# 사업장명에 병원·소방서·대학교가 있으면 판정에서 빼고 지도에 보라로 남긴다.
+# 그 밖의 기관(의료원·군청·연구원)은 납품 데이터셋(v6)처럼 판정에 넣는다.
 # ---------------------------------------------------------------------------
 class TestSelfUseGas:
-    def test_fire_station_air_filling_is_self_use(self) -> None:
-        # 소방서 공기충전(제조구분 충전) → 자가설비로 제외.
-        assert is_self_use_gas("완주소방서", "제조", "충전") is True
-
-    def test_hospital_storage_is_self_use(self) -> None:
-        # 병원 저장소(업태 저장소) → 자가설비로 제외.
-        assert is_self_use_gas("전북대학교병원", "저장소", "일반") is True
-
-    def test_general_filling_station_is_kept(self) -> None:
-        # 기관 명칭이 아닌 일반 충전소 → 유지.
-        assert is_self_use_gas("행복엘피지충전소", "제조", "충전") is False
-
-    def test_hospital_specific_gas_use_report_is_self_use(self) -> None:
-        # 특정고압가스 사용신고 행은 업태·제조구분이 비어 있다. 기관 명칭 + 사용목적
-        # (의료용)으로 자가설비로 본다(2026-09-14 건국대학교병원 사례).
-        assert is_self_use_gas("건국대학교병원", "", "", "의료용") is True
-
-    def test_medical_purpose_is_self_use_regardless_of_name(self) -> None:
-        assert is_self_use_gas("혜민의원", "", "", "의료용(병실의 환자 호흡용 등)") is True
-
-    def test_plant_specific_gas_use_report_is_not_self_use(self) -> None:
-        # 기관 명칭이 아닌 공장의 사용신고는 종전대로 검토 후보로 남는다(§7-3 미확정).
-        assert is_self_use_gas("삼성전자 화성사업장", "", "", "반도체 공정용") is False
-
-    def test_refrigeration_non_institution_is_not_self_use_here(self) -> None:
-        # 냉동(냉방설비)은 이 함수가 제외하지 않는다 — 기존 _classify_gas_facilities 의
-        # 「냉동=판정 미적용」 처리를 그대로 둔다.
-        assert is_self_use_gas("행복마트", "제조", "냉동") is False
-
-    def test_self_use_gas_row_is_not_a_candidate(self) -> None:
-        # 자가설비 행은 판정·검토·참고 핀 어디에도 올라오지 않는다(후보에서 완전 제외).
+    def _gas(self, rows: list[Any]) -> tuple[Any, Any]:
         request = build_request(
             "house", "general", geometry_source="parcel_polygon", half_size_m=30
         )
-        store = FakeFacilityStore(
-            [
-                stored_facility(
-                    "high_pressure_gas", "완주소방서", 0, 20,
-                    category="저장소", extra={"MNFTR_SE_NM": "충전"},
-                ),
-                stored_facility(
-                    "high_pressure_gas", "행복충전소", 0, -20,
-                    category="제조", extra={"MNFTR_SE_NM": "충전"},
-                ),
-            ]
-        )
         result = run_review(
-            request, facility_store=store, vworld=FakeVWorldForFacilities(half_size_m=5)
+            request,
+            facility_store=FakeFacilityStore(rows),
+            vworld=FakeVWorldForFacilities(half_size_m=5),
         )
-        gas = category_for(result, "high_pressure_gas")
+        finding = next(f for f in result.findings if f.rule_id == "RB14-HAZMAT")
+        return category_for(result, "high_pressure_gas"), finding
+
+    def test_fire_station_is_excluded_but_shown_purple(self) -> None:
+        gas, finding = self._gas([
+            stored_facility(
+                "high_pressure_gas", "완주소방서", 0, 20,
+                category="저장소", extra={"MNFTR_SE_NM": "충전"},
+            ),
+            stored_facility(
+                "high_pressure_gas", "행복충전소", 0, -20,
+                category="제조", extra={"MNFTR_SE_NM": "충전"},
+            ),
+        ])
         names = {f.name for f in gas.facilities}
-        assert "완주소방서" not in names  # 자가설비 → 완전 제외
-        assert "행복충전소" in names  # 일반 충전소 → 유지(검토)
+        assert "완주소방서" not in names  # 판정 제외
+        assert "행복충전소" in names  # 일반 충전소 → 유지
+        shown = {f.name: f for f in finding.nearby_facilities}
+        assert shown["완주소방서"].institution_kind == "fire_station"
+
+    def test_other_institution_storage_is_judged_like_lh_app(self) -> None:
+        # 병원·소방서·대학교가 아닌 기관(군청·연구원)의 고압가스 저장소는 LH앱처럼 판정 대상.
+        gas, _ = self._gas([
+            stored_facility(
+                "high_pressure_gas", "부안군청", 0, -20,
+                category="저장소", extra={"MNFTR_SE_NM": "일반"},
+            ),
+        ])
+        assert {f.name for f in gas.facilities} == {"부안군청"}
+        assert all(not f.institution_kind for f in gas.facilities)
+
+    def test_specific_gas_use_reports_are_not_loaded(self) -> None:
+        # 특정고압가스 사용신고(의료용 산소 등)는 유해시설로 싣지 않는다(LH앱 ① 과 같은 기준).
+        gas, finding = self._gas([
+            stored_facility(
+                "specific_high_pressure_gas", "진안군의료원", 0, 20,
+                category="", extra={"USE_PRPS": "의료용"},
+            ),
+        ])
+        assert gas.candidate_count == 0
+        shown = {f.name for f in [*finding.facilities, *finding.nearby_facilities]}
+        assert "진안군의료원" not in shown
 
 
 # ---------------------------------------------------------------------------
@@ -1702,18 +1701,30 @@ class TestHighPressureGasFilter:
         result = run_review(request, facility_store=FakeFacilityStore(rows))
         return category_for(result, "high_pressure_gas")
 
-    def test_refrigeration_self_use_is_not_judged(self) -> None:
-        # 전주우체국 냉방기 같은 「제조/냉동」 설비는 제2호 공통 전제(자가설비 제외)로
-        # 판정 미적용이다. 후보에서 빠지고 note 에 건수를 남긴다.
-        category = self._run([
-            stored_facility(
-                "high_pressure_gas", "전주우체국", 0, 20, category="제조",
-                extra={"MNFTR_SE_NM": "냉동", "BPLC_SIE_USG_SE_NM": "상업업무용"},
-            )
-        ])
+    def test_refrigeration_is_not_a_hazard_at_all(self) -> None:
+        # 전주우체국·전북특별자치도청 냉방기 같은 「제조/냉동」 설비는 유해시설이 아니다.
+        # 판정 미적용이 아니라 후보·참고 핀 어디에도 올리지 않는다(LH앱 build-facilities ①
+        # 「냉동 제조」 제외와 같은 기준, 2026-09-28).
+        request = build_request("house", "general")
+        result = run_review(
+            request,
+            facility_store=FakeFacilityStore([
+                stored_facility(
+                    "high_pressure_gas", "전주우체국", 0, 20, category="제조",
+                    extra={"MNFTR_SE_NM": "냉동", "BPLC_SIE_USG_SE_NM": "상업업무용"},
+                ),
+                stored_facility(
+                    "high_pressure_gas", "전북특별자치도청", 0, 480, category="제조",
+                    extra={"MNFTR_SE_NM": "냉동"},
+                ),
+            ]),
+        )
+        category = category_for(result, "high_pressure_gas")
         assert category.candidate_count == 0
         assert category.status == "no_conflict_in_snapshot", category.note
-        assert "자가용 냉동설비 1건" in category.note
+        finding = next(f for f in result.findings if f.rule_id == "RB14-HAZMAT")
+        shown = {f.name for f in [*finding.facilities, *finding.nearby_facilities]}
+        assert not shown & {"전주우체국", "전북특별자치도청"}
 
     def test_storage_and_retail_are_confirmable(self) -> None:
         # 업태 「저장소」·「판매」는 바목 문언에 해당해 확정 가능(점 좌표라 경계 미확보).
@@ -1743,12 +1754,51 @@ class TestHighPressureGasFilter:
         ])
         assert category.facilities[0].metadata["gas_type_confirmed"] is True
 
-    def test_specific_high_pressure_gas_stays_review(self) -> None:
-        # 특정고압가스는 사용신고 성격이라 목 배정이 미확정(§7-3) — 확정하지 않는다.
+    def test_specific_high_pressure_gas_is_not_loaded(self) -> None:
+        # 특정고압가스 사용신고는 바목(충전소·판매소·저장소)이 아니다 — 싣지 않는다(§7-3,
+        # LH앱과 같은 기준 2026-09-28). 검토로 남기지도 않는다.
         category = self._run([
             stored_facility("specific_high_pressure_gas", "사용신고업체", 0, 20, category=""),
+            # 고압가스 원장이 적재돼 있음을 보이는 먼 행(판정창 밖).
+            stored_facility("high_pressure_gas", "먼가스저장소", 0, 900, category="저장소"),
         ])
-        assert category.status == "review_required", category.note
+        assert category.candidate_count == 0
+        assert category.status == "no_conflict_in_snapshot", category.note
+
+    def test_institution_gas_is_shown_but_not_judged(self) -> None:
+        # 가이드 붙임 2 H09 · 사용자 결정 2026-09-28 A안: 사업장명에 병원·소방서·대학교가
+        # 있는 고압가스는 지도에는 보라로 표시하되 판정에서는 뺀다.
+        request = build_request("house", "general")
+        result = run_review(
+            request,
+            facility_store=FakeFacilityStore([
+                stored_facility(
+                    "high_pressure_gas", "전북대학교병원", 0, 20, category="제조",
+                    extra={"MNFTR_SE_NM": "일반"},
+                ),
+            ]),
+        )
+        category = category_for(result, "high_pressure_gas")
+        assert category.candidate_count == 0
+        assert category.status == "no_conflict_in_snapshot", category.note
+        assert "전북대학교병원" in category.note
+        finding = next(f for f in result.findings if f.rule_id == "RB14-HAZMAT")
+        shown = [f for f in finding.nearby_facilities if f.name == "전북대학교병원"]
+        assert shown and shown[0].institution_kind == "university"
+        assert shown[0].institution_label == "대학교"
+
+    def test_other_public_office_gas_is_still_judged(self) -> None:
+        # A안: 도청 등 병원·소방서·대학교가 아닌 기관은 넓히지 않는다(납품 데이터셋과 같은 기준).
+        request = build_request("house", "general")
+        result = run_review(
+            request,
+            facility_store=FakeFacilityStore([
+                stored_facility("high_pressure_gas", "전북특별자치도청", 0, 20, category="저장소"),
+            ]),
+        )
+        category = category_for(result, "high_pressure_gas")
+        assert category.candidate_count == 1
+        assert not category.facilities[0].institution_kind
 
     def test_legacy_rows_without_extra_are_not_treated_as_self_use(self) -> None:
         # 재적재 전 구 스키마 행(extra 없음)은 제조구분을 알 수 없으므로 빼지 않는다.
@@ -1898,6 +1948,55 @@ class TestNearbyFacilities:
         assert "반경밖모텔" not in nearby_names
         # 반경 밖 시설은 판정 후보에도 없다.
         assert "반경밖모텔" not in {f.name for f in finding.facilities}
+
+    def test_not_applicable_rule_still_maps_nearby_hazards(self) -> None:
+        """미적용 Rule 이라도 참고 반경 이내 유해시설은 전부 지도에 올린다.
+
+        2026-09-27 군산 경장동 511-7(주택·일반): 일반숙박이 다자녀 한정이라 후보
+        조회를 통째로 건너뛰어 터미널 옆 모텔들이 지도에 하나도 안 보였다. 사용자
+        결정 「판정에 적용되지 않더라도 전부 지도에 올려는 줘야지」. 판정은 그대로
+        not_applicable·후보 0 이고, 참고 핀(nearby)에만 실린다.
+        """
+
+        request = build_request(
+            "house", "general", geometry_source="parcel_polygon", half_size_m=18
+        )
+        result = run_review(
+            request,
+            facility_store=FakeFacilityStore(
+                [
+                    stored_facility("lodgings", "터미널옆모텔", 0, 60),
+                    stored_facility("lodgings", "참고반경모텔", 0, 300),
+                    stored_facility("lodgings", "반경밖모텔", 0, 1300),
+                ]
+            ),
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        lodging = category_for(result, "general_lodging")
+        assert lodging.status == "not_applicable"
+        assert lodging.candidate_count == 0
+        assert lodging.facilities == []
+        finding = self._lodging_finding(result)
+        assert finding.status == "not_applicable"
+        assert finding.threshold_m is None
+        assert finding.facilities == []
+        assert finding.measured_distance_m is None
+        # 참고 반경(1000m) 이내는 전부 참고 핀, 밖은 없다. 거리순·경계 부착.
+        assert [f.name for f in finding.nearby_facilities] == ["터미널옆모텔", "참고반경모텔"]
+        assert all(f.geometry_type == "polygon" for f in finding.nearby_facilities)
+        # 종합상태·집계는 참고 핀 때문에 바뀌지 않는다.
+        assert result.status_counts["not_applicable"] >= 1
+
+    def test_not_applicable_rule_respects_zero_context_radius(self, monkeypatch) -> None:
+        monkeypatch.setattr("app.hazard_review.service.HAZARD_CONTEXT_RADIUS_M", 0)
+        result = run_review(
+            build_request("house", "general", geometry_source="parcel_polygon"),
+            facility_store=FakeFacilityStore(
+                [stored_facility("lodgings", "터미널옆모텔", 0, 60)]
+            ),
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        assert self._lodging_finding(result).nearby_facilities == []
 
     def test_nearby_facility_gets_boundary_too(self) -> None:
         # 참고 시설도 경계를 붙여 경계↔경계 거리로 보여 준다(2026-09-14). 종전엔

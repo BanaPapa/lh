@@ -227,6 +227,13 @@ export interface ScreeningOutOfScopeItem {
   reason: string;
 }
 
+/** 원천 장애·대체 경고 한 줄(TAGO·생활안전지도 등 공공 API 먹통). */
+export interface ScreeningSourceAlert {
+  stage: "stage_one" | "stage_two";
+  source: string;
+  message: string;
+}
+
 /** 2차 생활편의성 배점 — 심사표 3종 중 신청유형에 맞는 한 장. */
 export interface ScreeningStageTwo {
   sheet_key: string;
@@ -268,6 +275,8 @@ export interface ScreeningResult {
   hazard_review: HazardReviewResult;
   calculation_note: string;
   disclaimer: string;
+  /** 이번 심사에서 응답하지 않았거나 대체 원천으로 넘어간 공공 원천. 있으면 재심사를 권한다. */
+  source_alerts?: ScreeningSourceAlert[];
 }
 
 export interface ScreeningRequest {

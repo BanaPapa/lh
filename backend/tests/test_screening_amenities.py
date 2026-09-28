@@ -131,6 +131,25 @@ async def test_group_states_and_notes_follow_the_source_map() -> None:
 
 
 @pytest.mark.asyncio
+async def test_planned_facilities_are_not_counted() -> None:
+    # 지도 POI 의 「(2027년예정)」 시설은 아직 없다. 내부망 앱 데이터셋에도 없다.
+    kakao = FakeKakao(
+        categories={
+            "CT1": [
+                place("한국문화원형콘텐츠체험전시관 (2027년예정)", 400),
+                place("전주시컨벤션센터(2028년예정)", 500),
+                place("판교아트홀", 900),
+            ]
+        },
+    )
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]))
+
+    result = await collector.collect([], CENTER)
+
+    assert [f.name for f in result["culture"].facilities] == ["판교아트홀"]
+
+
+@pytest.mark.asyncio
 async def test_filters_drop_places_the_scoresheet_does_not_recognise() -> None:
     kakao = FakeKakao(
         categories={
@@ -210,12 +229,18 @@ def test_university_accepts_junior_colleges() -> None:
     )
 
 
+TERMINAL_CATEGORY = "교통,수송 > 교통시설 > 고속,시외버스터미널"
+
+
 @pytest.mark.asyncio
 async def test_terminal_merges_two_keyword_searches() -> None:
     kakao = FakeKakao(
         keywords={
-            "버스터미널": [place("성남종합버스터미널", 1500)],
-            "고속버스터미널": [place("성남종합버스터미널", 1500), place("서울고속터미널", 2800)],
+            "버스터미널": [place("성남종합버스터미널", 1500, TERMINAL_CATEGORY)],
+            "고속버스터미널": [
+                place("성남종합버스터미널", 1500, TERMINAL_CATEGORY),
+                place("서울고속터미널", 2800, TERMINAL_CATEGORY),
+            ],
         }
     )
     collector = AmenityCollector(kakao=kakao, tago=FakeTago([]))
@@ -224,6 +249,48 @@ async def test_terminal_merges_two_keyword_searches() -> None:
 
     assert len(result["terminal"].facilities) == 2
     assert result["terminal"].state == "substituted"
+
+
+@pytest.mark.asyncio
+async def test_terminal_keeps_only_terminal_category_leaf() -> None:
+    """실측(2026-09-27 군산 경장동 511-7): 「버스터미널」 검색 8건 중 진짜 터미널은 2건.
+
+    「G car zone 군산시외버스터미널 옆」(카셰어링)이 최근접 터미널로 잡혀 811m 로
+    표시됐다. 터미널 이름을 빌린 카셰어링·공중화장실·소화물취급소는 분류 잎으로
+    거르고, 시외·고속 두 터미널만 남긴다.
+    """
+
+    kakao = FakeKakao(
+        keywords={
+            "버스터미널": [
+                place(
+                    "G car zone 군산시외버스터미널 옆",
+                    918,
+                    "교통,수송 > 교통시설 > 카셰어링 > G car zone",
+                ),
+                place("군산시외버스터미널 공중화장실", 1019, "가정,생활 > 화장실"),
+                place("군산시외버스터미널 소화물취급소", 1030, "교통,수송 > 교통시설"),
+                place("군산시외버스터미널", 1032, TERMINAL_CATEGORY),
+                place("군산고속버스터미널", 1107, TERMINAL_CATEGORY),
+            ],
+            "고속버스터미널": [
+                place("군산고속버스터미널", 1107, TERMINAL_CATEGORY),
+                place(
+                    "투루카 군산고속버스터미널 옆(화갤러리 주차장)",
+                    1142,
+                    "교통,수송 > 교통시설 > 카셰어링 > 투루카",
+                ),
+            ],
+        }
+    )
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]))
+
+    result = await collector.collect([], CENTER)
+
+    names = [f.name for f in result["terminal"].facilities]
+    assert names == ["군산시외버스터미널", "군산고속버스터미널"]
+    # 최근접은 카셰어링(918m)이 아니라 진짜 터미널이다.
+    assert result["terminal"].facilities[0].distance_m > 1000
 
 
 @pytest.mark.asyncio
@@ -300,7 +367,11 @@ async def test_distance_is_measured_from_the_parcel_boundary() -> None:
 
 @pytest.mark.asyncio
 async def test_repeated_collection_uses_the_cache() -> None:
-    kakao = FakeKakao(categories={"SW8": [place("판교역", 400)]})
+    kakao = FakeKakao(
+        categories={"SW8": [place("판교역", 400)]},
+        # 정류장이 0곳이면 응답 이상 경고가 붙어 캐시하지 않는다. 정상 결과를 만든다.
+        keywords={"버스정류장": [place("판교역정류장", 120)]},
+    )
     collector = AmenityCollector(kakao=kakao, tago=FakeTago([]))
 
     await collector.collect([], CENTER)
@@ -747,20 +818,19 @@ async def test_boundary_lookup_is_limited_to_nearest_facilities() -> None:
 
 
 @pytest.mark.asyncio
-async def test_oversized_parcel_keeps_point_basis_with_notice() -> None:
-    from app.screening.front_door import CAMPUS_PARCEL_MAX_AREA_M2
-
+async def test_oversized_parcel_is_still_measured_to_its_boundary() -> None:
+    # 통필지 면적 상한은 2026-09-28 사용자 결정으로 없앴다 — 대형 필지도 끝점(경계선).
     site = square_ring(CENTER, 20.0)
     kakao = FakeKakao(categories={"SC4": [place("전주초등학교", 400, "교육,학문 > 학교 > 초등학교")]})
-    vworld = FakeVWorld(half=300.0, area_m2=CAMPUS_PARCEL_MAX_AREA_M2 * 2)
+    vworld = FakeVWorld(half=300.0, area_m2=100_000.0)
     collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=vworld)
 
     result = await collector.collect([site], CENTER)
 
     facility = result["school_elementary"].facilities[0]
-    assert facility.measurement_tier == "coordinate"
-    assert facility.distance_m == pytest.approx(380, abs=3)
-    assert "통필지" in facility.front_door_notice
+    assert facility.measurement_tier == "site_boundary"
+    assert facility.distance_m == pytest.approx(80, abs=3)
+    assert "통필지" not in facility.front_door_notice
 
 
 # ---------------------------------------------------------------------------
@@ -1134,11 +1204,9 @@ async def test_bus_stops_without_route_info_keep_counting_all_with_notice() -> N
 @pytest.mark.asyncio
 async def test_hospital_uses_parcel_boundary_even_for_oversized_parcel() -> None:
     # LH 09/22 결정 2: 종합병원은 통필지(전북대병원 같은 대형 캠퍼스)여도 필지 경계로 잰다.
-    from app.screening.front_door import CAMPUS_PARCEL_MAX_AREA_M2
-
     site = square_ring(CENTER, 20.0)
     kakao = FakeKakao(categories={"HP8": [place("전북대학교병원", 400, "의료,건강 > 병원 > 종합병원")]})
-    vworld = FakeVWorld(half=300.0, area_m2=CAMPUS_PARCEL_MAX_AREA_M2 * 2)
+    vworld = FakeVWorld(half=300.0, area_m2=100_000.0)
     collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=vworld)
 
     result = await collector.collect([site], CENTER)
@@ -1147,3 +1215,60 @@ async def test_hospital_uses_parcel_boundary_even_for_oversized_parcel() -> None
     assert facility.measurement_tier == "site_boundary"
     assert facility.distance_m < 380
     assert "통필지" not in facility.front_door_notice
+
+
+@pytest.mark.asyncio
+async def test_public_office_campus_parcel_is_measured_to_its_boundary() -> None:
+    # 2026-09-28 전주 효자동2가: 전북도청 필지(101,019㎡)가 통필지 상한에 걸려 좌표로
+    # 폴백하고, 같은 부지의 「전라북도청」·「전북도청출장소」는 최근접 5곳 밖이라 부지 안
+    # 점까지 선이 그어졌다. 상한을 없애고, 청사는 최근접 5곳 밖이어도 조회하며, 같은
+    # 필지 안 뒤쪽 시설도 그 경계를 나눠 쓴다.
+    site = square_ring(CENTER, 20.0)
+    rows = [place(f"효자복지관{i}", 400 + 10 * i, "공공기관") for i in range(5)] + [
+        place("전북특별자치도청", 700, "공공기관 > 도청"),
+        place("전라북도청", 720, "공공기관 > 도청"),
+        place("전북도청출장소", 730, "공공기관 > 도청"),
+    ]
+    kakao = FakeKakao(categories={"PO3": rows})
+    vworld = FakeVWorld(half=150.0, area_m2=101_019.0)
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), vworld=vworld)
+
+    result = await collector.collect([site], CENTER)
+
+    by_name = {f.name: f for f in result["public"].facilities}
+    office = by_name["전북특별자치도청"]
+    assert office.measurement_tier == "site_boundary"
+    assert office.distance_m == pytest.approx(530, abs=3)
+    for name in ("전라북도청", "전북도청출장소"):
+        assert by_name[name].measurement_tier == "site_boundary"
+        assert by_name[name].distance_m == pytest.approx(office.distance_m, abs=0.5)
+    assert by_name["효자복지관0"].measurement_tier == "site_boundary"
+    # 청사는 최근접 5곳 밖이어도 조회하고, 이미 잰 필지 안의 시설(복지관1~4 · 전라북도청·
+    # 전북도청출장소)은 새로 조회하지 않고 그 필지를 나눠 쓴다 — 복지관0 + 도청 2회.
+    assert len(vworld.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_tago_outage_is_reported_as_source_alert() -> None:
+    class BrokenTago(FakeTago):
+        async def nearby_stops(self, lat, lng):
+            raise RuntimeError("TAGO 503")
+
+    kakao = FakeKakao(keywords={"버스정류장": [place("판교역정류장", 120)]})
+    collector = AmenityCollector(kakao=kakao, tago=BrokenTago([]))
+
+    result = await collector.collect([], CENTER)
+
+    assert "TAGO" in result["bus_stop"].source_alert
+    assert "카카오" in result["bus_stop"].source_alert
+    # 대체 결과는 캐시하지 않는다 — 다음 심사에서 TAGO 를 다시 부른다.
+    assert collector._cache == {}
+
+
+@pytest.mark.asyncio
+async def test_zero_bus_stops_is_flagged() -> None:
+    collector = AmenityCollector(kakao=FakeKakao(), tago=FakeTago([]))
+
+    result = await collector.collect([], CENTER)
+
+    assert "버스정류장을 한 곳도" in result["bus_stop"].source_alert

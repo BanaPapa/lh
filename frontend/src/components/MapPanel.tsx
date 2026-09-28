@@ -54,9 +54,11 @@ import {
   MAX_TILE_DEPTH,
   boxCenter,
   boxesOverlap,
+  isNonFacilityParcel,
   metersBetween,
   parcelContaining,
   pointInRing,
+  smallestParcelContaining,
   subdivideTile,
   tileCenter,
   tilesForViewport,
@@ -649,6 +651,9 @@ const HOVER_Z_INDEX = 30;
  *  hazard-review.css 의 .is-basis 와 같은 값이어야 한다. */
 const SCREENING_BASIS_TONE = "#059669";
 const SCREENING_GROUP_TONE = "#2563eb";
+/** 병원·소방서·대학교 이름의 고압가스 시설(기관 자가설비 · 유해 판정 제외)의 영역 색.
+ *  빨강(1차)도 파랑·초록(2차)도 아닌 보라. hazard-review.css 의 .marker-institution 과 같은 값. */
+const INSTITUTION_TONE = "#7c3aed";
 
 /**
  * 포인터 위치로 호버 상태를 다시 계산한다. SDK 의 폴리곤 mouseout 은 커스텀
@@ -1364,14 +1369,32 @@ export function MapPanel({
       const path = parcel.geometry.map((point) =>
         toMapPosition(runtime, point.lat, point.lng),
       );
+      // 도로·하천 등은 사업지가 될 수 없다. 바깥 링만 오므로 채우거나 클릭을 받으면
+      // 그 안 블록 전체가 한 필지처럼 칠해지고 눌린다(금암동 796 도). 선만 긋는다.
+      if (isNonFacilityParcel(parcel)) {
+        const outline = new runtime.sdk.maps.Polygon({
+          map,
+          ...(runtime.provider === "kakao" ? { path } : { paths: path }),
+          strokeWeight: 1,
+          strokeColor: "#64748b",
+          strokeOpacity: 0.4,
+          strokeStyle: "solid",
+          fillOpacity: 0,
+          clickable: false,
+        });
+        cadastralOverlaysRef.current.push(outline);
+        return;
+      }
       const polygon = new runtime.sdk.maps.Polygon({
         map,
         ...(runtime.provider === "kakao" ? { path } : { paths: path }),
         strokeWeight: isSelected ? 3 : 1,
-        strokeColor: isSelected ? "#2563eb" : "#8b5cf6",
+        // 일반 필지는 회색이다. 보라는 기관 자가설비(판정 제외) 영역 전용이라
+        // 필지 경계까지 보라면 필지 하나하나가 제외 시설처럼 읽힌다.
+        strokeColor: isSelected ? "#2563eb" : "#64748b",
         strokeOpacity: isSelected ? 1 : 0.55,
         strokeStyle: "solid",
-        fillColor: isSelected ? "#3b82f6" : "#a78bfa",
+        fillColor: isSelected ? "#3b82f6" : "#94a3b8",
         // 투명에 가깝게라도 채워야 필지 내부 클릭이 잡힌다.
         fillOpacity: isSelected ? 0.18 : 0.04,
         clickable: true,
@@ -1518,6 +1541,9 @@ export function MapPanel({
             cadastralAutoRef.current = true;
             setCadastralAutoOn(true);
             loadCadastralAroundRef.current(point);
+            // 도로·하천 위를 누른 것이면 사업지에 더하지 않는다.
+            const hit = smallestParcelContaining(point, cadastralParcelsRef.current);
+            if (hit && isNonFacilityParcel(hit)) return;
             // 누른 자리의 필지를 사업지에 더한다(좌표로 필지를 조회한다).
             toggleParcelRef.current?.(point.lat, point.lng);
           },
@@ -1770,6 +1796,18 @@ export function MapPanel({
       path.forEach((point) => bounds.extend(point));
     });
 
+    // 기관 부지(보라) 링. 같은 부지에 걸린 2차 근거 시설 영역도 보라로 칠하는 데 쓴다.
+    const institutionRings: Array<Array<{ lat: number; lng: number }>> = [];
+    // 2차 편의시설(대학교·병원 등) 부지와 섞인 유해시설도 보라다. 예: 전북대 캠퍼스
+    // 필지(금암동 663)에 등록된 입주 기업 공장. 판정은 그대로 두고(내부망 앱과 같다)
+    // 색만 보라로 가른다. 점으로 재는 시설(정류장·역 출입구)은 도로 위라 보지 않는다.
+    const amenityPoints = screeningHitRefs.flatMap((ref) =>
+      ref.hit.coordinates && ref.hit.measurement_tier !== "coordinate"
+        ? [{ point: ref.hit.coordinates, label: ref.groupLabel }]
+        : [],
+    );
+    // 편의시설 부지와 섞인 유해시설 id → 편의시설군 이름. 아래 거리선도 이 색을 쓴다.
+    const mixedAmenityOf = new Map<string, string>();
     hazardMarkers.forEach(({ finding, facility, nearby }) => {
       const position = toMapPosition(
         runtime,
@@ -1785,7 +1823,6 @@ export function MapPanel({
       // is-${status} 클래스가 채움·글리프로 처리한다. 참고 시설만 회색이다.
       // 기준 밖 시설도 유해시설이다. 회색이 아니라 연한 빨강으로 두어 축소 축척의
       // 핀에서도 빨강 계열로 읽히게 한다.
-      const markerColor = nearby ? "#ef4444" : "#dc2626";
       // 같은 규칙에 후보가 여러 개면 누른 것 하나만 강조해야 거리가 구분된다.
       const selected = selectedHazardFacilityId
         ? facility.facility_id === selectedHazardFacilityId
@@ -1805,6 +1842,15 @@ export function MapPanel({
           : (parcelContaining(facility.coordinates, parcelPool)?.geometry ??
             []);
       const hasArea = ring.length >= 4;
+      const mixedAmenity =
+        !facility.institution_kind && hasArea
+          ? (amenityPoints.find(({ point }) => pointInRing(point, ring))?.label ?? "")
+          : "";
+      if (mixedAmenity) mixedAmenityOf.set(facility.facility_id, mixedAmenity);
+      // 병원·소방서·대학교 이름의 고압가스(기관 자가설비)와 편의시설 부지에 섞인
+      // 유해시설은 보라로 가른다.
+      const institution = Boolean(facility.institution_kind) || Boolean(mixedAmenity);
+      const markerColor = institution ? INSTITUTION_TONE : nearby ? "#ef4444" : "#dc2626";
       let facilityHoverRing: Array<{ lat: number; lng: number }> | null = null;
       if (hasArea) {
         const ringPath = ring.map((point) =>
@@ -1816,11 +1862,12 @@ export function MapPanel({
             ? { path: ringPath }
             : { paths: ringPath }),
           strokeWeight: selected ? 2.5 : 1.5,
-          strokeColor: "#dc2626",
-          strokeOpacity: nearby ? 0.55 : 0.9,
-          strokeStyle: nearby ? "shortdash" : "solid",
-          fillColor: "#dc2626",
-          fillOpacity: nearby ? (selected ? 0.18 : 0.09) : selected ? 0.3 : 0.18,
+          strokeColor: institution ? INSTITUTION_TONE : "#dc2626",
+          strokeOpacity: nearby && !institution ? 0.55 : 0.9,
+          strokeStyle: nearby && !institution ? "shortdash" : "solid",
+          fillColor: institution ? INSTITUTION_TONE : "#dc2626",
+          fillOpacity:
+            nearby && !institution ? (selected ? 0.18 : 0.09) : selected ? 0.3 : 0.18,
           clickable: true,
           zIndex: nearby ? 1 : 2,
         });
@@ -1831,6 +1878,7 @@ export function MapPanel({
         overlaysRef.current.push(facilityPolygon);
         facilityHoverRing = ring;
         facilityRingsRef.current.push(ring);
+        if (institution) institutionRings.push(ring);
       }
 
       const distanceText = `${Math.round(
@@ -1845,14 +1893,18 @@ export function MapPanel({
       // 판정에 들어가지 않아 「통과」다. 판정창 안 시설은 항목의 판정 상태를 쓴다.
       const thresholdText =
         finding.threshold_m !== null ? `기준 ${finding.threshold_m}m` : "";
-      const verdictText = nearby
+      // 편의시설 부지와 섞인 시설은 판정 결과를 그대로 적고 부지를 덧붙인다.
+      const verdictText = facility.institution_kind
+        ? `${facility.institution_label} 자가설비 → 판정 제외`
+        : nearby
         ? "기준거리 밖 → 통과"
         : finding.status === "exclusion_match"
           ? "저촉 → 매입제외"
           : finding.status === "review_required"
             ? "검토 필요"
             : finding.status_label;
-      const metaText = [finding.label, thresholdText, distanceText, verdictText]
+      const mixedText = mixedAmenity ? `${mixedAmenity} 부지 안` : "";
+      const metaText = [finding.label, thresholdText, distanceText, verdictText, mixedText]
         .filter(Boolean)
         .join(" · ") + zoningText;
 
@@ -1863,7 +1915,7 @@ export function MapPanel({
       markerNode.type = "button";
       markerNode.className = `hazard-map-marker is-${finding.status}${
         nearby ? " is-nearby" : ""
-      }${hasArea ? " is-area" : ""}${selected ? " is-selected" : ""}`;
+      }${institution ? " is-institution" : ""}${hasArea ? " is-area" : ""}${selected ? " is-selected" : ""}`;
       markerNode.style.setProperty("--hazard-tone", markerColor);
       markerNode.setAttribute(
         "aria-label",
@@ -1924,17 +1976,21 @@ export function MapPanel({
           const endPosition = end
             ? toMapPosition(runtime, end.lat, end.lng)
             : toMapPosition(runtime, facility.coordinates.lat, facility.coordinates.lng);
+          const institution =
+            Boolean(facility.institution_kind) || mixedAmenityOf.has(facility.facility_id);
           const line = new runtime.sdk.maps.Polyline({
             map,
             path: [originPosition, endPosition],
             strokeWeight: 2,
-            strokeColor: "#ef4444",
+            strokeColor: institution ? INSTITUTION_TONE : "#ef4444",
             strokeOpacity: 0.75,
             strokeStyle: "shortdash",
           });
           overlaysRef.current.push(line);
           const label = document.createElement("span");
-          label.className = "hazard-distance-label is-many";
+          label.className = `hazard-distance-label is-many${
+            institution ? " is-institution" : ""
+          }`;
           label.textContent = `${Math.round(facility.distance_m).toLocaleString()}m`;
           const originLat = origin ? origin.lat : site.coordinates.lat;
           const originLng = origin ? origin.lng : site.coordinates.lng;
@@ -1976,17 +2032,22 @@ export function MapPanel({
       const endPosition = facilityEnd
         ? toMapPosition(runtime, facilityEnd.lat, facilityEnd.lng)
         : facilityPosition;
+      const selectedPurple =
+        Boolean(selectedHazardFacility.institution_kind) ||
+        mixedAmenityOf.has(selectedHazardFacility.facility_id);
       const distanceLine = new runtime.sdk.maps.Polyline({
         map,
         path: [originPosition, endPosition],
         strokeWeight: 3,
-        strokeColor: "#ef4444",
+        strokeColor: selectedPurple ? INSTITUTION_TONE : "#ef4444",
         strokeOpacity: 0.95,
         strokeStyle: "shortdash",
       });
       overlaysRef.current.push(distanceLine);
       const labelNode = document.createElement("span");
-      labelNode.className = "hazard-distance-label";
+      labelNode.className = `hazard-distance-label${
+        selectedPurple ? " is-institution" : ""
+      }`;
       labelNode.textContent = `${
         facilityRing.length >= 4
           ? "대지경계간"
@@ -2062,15 +2123,19 @@ export function MapPanel({
         const hitPath = hitParcel.geometry.map((point) =>
           toMapPosition(runtime, point.lat, point.lng),
         );
+        // 기관 부지(위험물이 잡혔지만 편의시설로 판단한 곳)와 같은 부지면 영역은 보라로
+        // 칠한다. 보라 채움은 1차 쪽이 이미 깔았으니 여기서는 옅게 겹친다.
+        const onInstitution = institutionRings.some((ring) => pointInRing(anchor, ring));
+        const areaTone = onInstitution ? INSTITUTION_TONE : tone;
         const hitPolygon = new runtime.sdk.maps.Polygon({
           map,
           ...(runtime.provider === "kakao" ? { path: hitPath } : { paths: hitPath }),
           strokeWeight: selected ? 2.5 : 1.5,
-          strokeColor: tone,
+          strokeColor: areaTone,
           strokeOpacity: 0.9,
           strokeStyle: "solid",
-          fillColor: tone,
-          fillOpacity: selected ? 0.3 : 0.18,
+          fillColor: areaTone,
+          fillOpacity: onInstitution ? (selected ? 0.12 : 0.04) : selected ? 0.3 : 0.18,
           clickable: true,
           zIndex: 2,
         });
@@ -2274,6 +2339,7 @@ export function MapPanel({
     railCategory,
     site,
     visibleScreeningHitRefs,
+    screeningHitRefs,
     candidateHitRef,
     selectedScreeningHitName,
     onSelectScreeningHit,
@@ -2550,30 +2616,26 @@ export function MapPanel({
               .filter(Boolean)
               .join(" ")}
           >
-            {/* 읽는 순서대로: 1차(빨강) → 2차 점수 근거(초록) → 2차 펼친 시설군(파랑) → 기준 밖(회색) → 거리 밴드. 설명은 도움말로. */}
+            {/* 읽는 순서대로: 1차(빨강) → 2차 점수 근거(초록) → 2차 펼친 시설군(파랑) → 기관 자가설비·판정 제외(보라) → 기준 밖(빨강 점선) → 거리 밴드. 설명은 도움말로. */}
             <strong>
               지도 범례 <Info size={13} aria-hidden="true" />
             </strong>
-            {hazardMarkers.some((marker) => !marker.nearby) && (
-              <span>
-                <i className="marker-primary" /> 1차 유해시설
-              </span>
-            )}
-            {screeningHitRefs.length > 0 && (
-              <span>
-                <i className="marker-screening is-basis" /> 2차 점수 근거
-              </span>
-            )}
-            {visibleScreeningHitRefs.some((ref) => !ref.isCriterionNearest) && (
-              <span>
-                <i className="marker-screening" /> 2차 펼친 시설군
-              </span>
-            )}
-            {hazardMarkers.some((marker) => marker.nearby) && (
-              <span>
-                <i className="marker-nearby" /> 기준거리 밖 (통과)
-              </span>
-            )}
+            {/* 네 가지 영역 색(빨강·초록·파랑·보라)은 지도에 없어도 항상 뜻을 적는다. */}
+            <span>
+              <i className="marker-primary" /> 1차 유해시설
+            </span>
+            <span>
+              <i className="marker-screening is-basis" /> 2차 점수 근거
+            </span>
+            <span>
+              <i className="marker-screening" /> 2차 펼친 시설군
+            </span>
+            <span title="편의시설과 유해시설이 한 부지에 섞인 곳입니다. 사업장명에 병원·소방서·대학교가 들어간 고압가스(기관 자가설비)는 유해시설 판정에서 뺐고(납품 앱과 같은 기준), 대학 캠퍼스 입주 공장처럼 편의시설 부지 안에 등록된 유해시설은 판정 결과를 그대로 두고 색만 보라로 표시합니다.">
+              <i className="marker-institution" /> 편의·유해 혼재 (기관 부지)
+            </span>
+            <span>
+              <i className="marker-nearby" /> 기준거리 밖 (통과)
+            </span>
             <span>
               <i className="buffer-25" /> 25m
             </span>
