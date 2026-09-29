@@ -45,6 +45,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { API_BASE_URL } from "../api-base";
 import { getParcelsInBounds } from "../hazard-review/api";
 import {
   CADASTRAL_MAX_LEVEL,
@@ -117,6 +118,8 @@ interface MapViewport {
 // 검색 직후 첫 화면에 즉시 요청할 사업지 주변 반경(m). 인접 필지를 고르기에
 // 충분하다. 이후는 지도 idle 마다 뷰포트와 겹치는 타일을 반경 3km 까지 채운다.
 const CADASTRAL_RADIUS_M = 350;
+// 지적도 이미지를 얹는 축척 상한. 이미지는 한 장이라 도형보다 가벼워 한 단계 더 넓게 둔다.
+const CADASTRAL_IMAGE_MAX_LEVEL = 4;
 // 시설 영역이 아닌 자리를 눌렀을 때 그 주변으로 새로 받는 반경(m). 검색 직후
 // 사업지 주변과 같은 폭이다.
 const CADASTRAL_CLICK_RADIUS_M = 350;
@@ -1482,6 +1485,9 @@ export function MapPanel({
     cadastralOverlaysRef.current.forEach((overlay) => overlay.setMap?.(null));
     cadastralOverlaysRef.current = [];
     if (!runtime || !map || !mapReady) return;
+    // 평소 지적도는 이미지 한 장(아래 지적도 이미지 레이어)으로 그린다. 필지 도형은
+    // 기준점 지정 모드에서만 그린다 — 필지를 눌러 그 필지(PNU)를 기준으로 지정해야 한다.
+    if (!designationTarget) return;
 
     const selected = new Set(hazardParcels.map((parcel) => parcel.pnu));
     cadastralParcels.forEach((parcel) => {
@@ -1530,7 +1536,101 @@ export function MapPanel({
       cadastralOverlaysRef.current.forEach((overlay) => overlay.setMap?.(null));
       cadastralOverlaysRef.current = [];
     };
-  }, [cadastralParcels, hazardParcels, mapReady, mapInstanceRevision]);
+  }, [cadastralParcels, hazardParcels, mapReady, mapInstanceRevision, designationTarget]);
+
+  // ── 지적도 이미지 레이어 ─────────────────────────────────────────────
+  // 화면 영역의 연속지적도를 투명 이미지 한 장으로 얹는다(백엔드가 VWorld WMS 를 대신
+  // 받아 준다, 실측 0.1~0.15초). 필지 도형 수천 개를 받아 그리던 것보다 훨씬 빨라 켜자마자
+  // 보인다. 지도를 옮기거나 확대하면(idle) 새 영역 이미지로 바꾼다. 새 이미지가 다 받아진
+  // 뒤에 옛 이미지를 내려 깜빡이지 않게 한다.
+  const cadastralImageRef = useRef<any>(null);
+  const refreshCadastralImage = useCallback(() => {
+    const runtime = runtimeRef.current;
+    const map = mapRef.current;
+    const container = containerRef.current;
+    const clear = () => {
+      cadastralImageRef.current?.setMap?.(null);
+      cadastralImageRef.current = null;
+    };
+    if (!runtime || !map || !mapReady || !site || !container || !cadastralAutoRef.current) {
+      clear();
+      return;
+    }
+    if (getNormalizedLevel(runtime, map) > CADASTRAL_IMAGE_MAX_LEVEL) {
+      clear();
+      setCadastralNote("확대하면 지적도가 표시됩니다.");
+      return;
+    }
+    const box = readMapBounds(runtime, map);
+    if (!box) return;
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    const cssWidth = container.clientWidth;
+    const cssHeight = container.clientHeight;
+    if (cssWidth < 16 || cssHeight < 16) return;
+    const width = Math.min(2048, Math.round(cssWidth * ratio));
+    const height = Math.min(2048, Math.round(cssHeight * ratio));
+    const query = new URLSearchParams({
+      south: box.south.toFixed(7),
+      west: box.west.toFixed(7),
+      north: box.north.toFixed(7),
+      east: box.east.toFixed(7),
+      width: String(width),
+      height: String(height),
+    });
+    const url = `${API_BASE_URL}/api/hazard-review/cadastral-image?${query}`;
+    const previous = cadastralImageRef.current;
+    let next: any;
+    if (runtime.provider === "naver") {
+      const sdk = runtime.sdk.maps;
+      next = new sdk.GroundOverlay(
+        url,
+        new sdk.LatLngBounds(
+          new sdk.LatLng(box.south, box.west),
+          new sdk.LatLng(box.north, box.east),
+        ),
+        { opacity: 0.9, clickable: false },
+      );
+      next.setMap(map);
+      previous?.setMap?.(null);
+    } else {
+      const img = document.createElement("img");
+      img.className = "cadastral-image-layer";
+      img.alt = "";
+      img.style.width = `${cssWidth}px`;
+      img.style.height = `${cssHeight}px`;
+      next = new runtime.sdk.maps.CustomOverlay({
+        position: toMapPosition(runtime, box.north, box.west),
+        content: img,
+        xAnchor: 0,
+        yAnchor: 0,
+        zIndex: 0,
+      });
+      img.onload = () => {
+        if (cadastralImageRef.current !== next) return;
+        previous?.setMap?.(null);
+      };
+      img.onerror = () => {
+        if (cadastralImageRef.current !== next) return;
+        previous?.setMap?.(null);
+      };
+      next.setMap(map);
+      img.src = url;
+    }
+    cadastralImageRef.current = next;
+    setCadastralNote("");
+  }, [mapReady, site]);
+  const cadastralImageRefreshRef = useRef(refreshCadastralImage);
+  useEffect(() => {
+    cadastralImageRefreshRef.current = refreshCadastralImage;
+    refreshCadastralImage();
+  }, [refreshCadastralImage, cadastralAutoOn, mapInstanceRevision]);
+  useEffect(
+    () => () => {
+      cadastralImageRef.current?.setMap?.(null);
+      cadastralImageRef.current = null;
+    },
+    [],
+  );
 
   // 기준점 지정 모드에서는 Esc 로 언제든 빠져나올 수 있어야 한다.
   useEffect(() => {
@@ -1704,6 +1804,7 @@ export function MapPanel({
             window.clearTimeout(cadastralIdleTimer);
             cadastralIdleTimer = window.setTimeout(() => {
               cadastralRefreshRef.current();
+              cadastralImageRefreshRef.current();
             }, 300);
           },
         );
@@ -2644,6 +2745,7 @@ export function MapPanel({
                 cadastralAutoRef.current = next;
                 if (next) cadastralRefreshRef.current();
                 else setCadastralParcels([]);
+                cadastralImageRefreshRef.current();
               }}
             >
               <Layers size={16} aria-hidden="true" />

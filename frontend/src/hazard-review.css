@@ -1096,3 +1096,13 @@
 .map-rail-subitem > b {
   font-variant-numeric: tabular-nums;
 }
+
+/* 지적도 이미지 레이어(화면 영역 연속지적도 한 장). 지도 클릭·끌기를 막지 않는다 —
+   필지 선택은 지도 클릭 좌표로 조회한다. */
+.cadastral-image-layer {
+  display: block;
+  max-width: none;
+  opacity: 0.9;
+  pointer-events: none;
+  user-select: none;
+}
