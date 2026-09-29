@@ -20,11 +20,13 @@ API 실측(2026-09-30): swagger(infuser.odcloud.kr/oas/docs?namespace=15152505/v
 from __future__ import annotations
 
 import asyncio
+import csv
 import hashlib
 import re
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -44,6 +46,12 @@ GAS_PRODUCT_URL = (
 )
 GAS_PRODUCT_DATASET_PAGE_URL = "https://www.data.go.kr/data/15152505/fileData.do"
 GAS_PRODUCT_AS_OF = "2025-09-30"
+# 공공데이터포털은 이 자료를 CSV 파일로만 준다(ODcloud 변환 API 는 이 키로 401). 원본 CSV 와
+# 한 번 지오코딩해 둔 좌표 파일을 서버에 함께 싣는다(2026-09-30 사용자 결정). Cloud Run 은
+# 디스크가 임시라 켤 때마다 767곳을 다시 지오코딩하지 않도록 좌표까지 미리 구워 둔다.
+BUNDLED_DIR = Path(__file__).resolve().parents[2] / "data"
+BUNDLED_SOURCE_CSV = BUNDLED_DIR / "gas_product_manufacturers_20250930.csv"
+BUNDLED_GEOCODED_CSV = BUNDLED_DIR / "gas_product_manufacturers_20250930.geocoded.csv"
 STORE_DATASET_KEY = "gas_product_file"
 STORE_MAX_AGE = timedelta(days=30)
 
@@ -126,8 +134,11 @@ class GasProductFileClient:
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
         store: FacilityStore | None = None,
+        bundled_path: Path | None = BUNDLED_GEOCODED_CSV,
     ) -> None:
         self.service_key = service_key
+        # 서버에 실은 좌표 파일. 있으면 API·지오코딩 없이 바로 쓴다.
+        self.bundled_path = bundled_path
         self._geocode = geocode
         self.timeout = timeout
         self._transport = transport
@@ -140,8 +151,12 @@ class GasProductFileClient:
         self._fill_lock = LoopSafeLock()
 
     @property
+    def has_bundle(self) -> bool:
+        return self.bundled_path is not None and self.bundled_path.exists()
+
+    @property
     def enabled(self) -> bool:
-        return bool(self.service_key and self._geocode is not None)
+        return self.has_bundle or bool(self.service_key and self._geocode is not None)
 
     @property
     def geocode_failures(self) -> list[GeocodeFailure]:
@@ -155,7 +170,7 @@ class GasProductFileClient:
     def has_fast_path(self) -> bool:
         """메모리 캐시나 신선한 저장분이 있어 심사 중 전량 수집·지오코딩 없이 답할 수 있는가."""
 
-        if self._is_warm():
+        if self._is_warm() or self.has_bundle:
             return True
         if self._store is None:
             return False
@@ -181,6 +196,12 @@ class GasProductFileClient:
         async with self._fill_lock.get():
             if self._is_warm():
                 return self._cache
+            if self.has_bundle:
+                self._cache = self._load_bundle()
+                self._failures = []
+                self._cached_at = time.monotonic()
+                self.loaded_from = "bundle"
+                return self._cache
             stored = self._load_from_store()
             if stored is not None:
                 rows, failures = stored, []
@@ -194,6 +215,24 @@ class GasProductFileClient:
             self._failures = failures
             self._cached_at = time.monotonic()
             return rows
+
+    def _load_bundle(self) -> list[GasProductManufacturer]:
+        assert self.bundled_path is not None
+        rows: list[GasProductManufacturer] = []
+        with self.bundled_path.open(encoding="utf-8", newline="") as handle:
+            for row in csv.DictReader(handle):
+                try:
+                    point = Coordinates(lat=float(row["lat"]), lng=float(row["lng"]))
+                except (KeyError, TypeError, ValueError):
+                    continue
+                rows.append(
+                    GasProductManufacturer(
+                        record_id=row["record_id"], name=row["name"], address=row["address"],
+                        coordinates=point, status=row.get("status") or "영업",
+                        products=row.get("products", ""), law=row.get("law", ""),
+                    )
+                )
+        return rows
 
     async def probe_total(self) -> int:
         """첫 1건만 불러 키·엔드포인트 생존과 총건수를 확인한다(예열 전 점검용)."""

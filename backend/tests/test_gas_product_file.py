@@ -59,6 +59,7 @@ async def test_client_geocodes_merged_places_and_filters_radius() -> None:
     client = GasProductFileClient(
         "key", geocode=geocode,
         transport=transport(200, {"data": ROWS, "totalCount": len(ROWS)}),
+        bundled_path=None,  # 서버 내장 파일 대신 API 경로를 시험한다
     )
     rows = await client.manufacturers_around(CENTER, 500)
     assert [r.name for r in rows] == ["(주)성현"]
@@ -75,6 +76,21 @@ async def test_unregistered_key_raises_with_dataset_id() -> None:
     client = GasProductFileClient(
         "key", geocode=geocode,
         transport=transport(401, {"code": -401, "msg": "유효하지 않은 인증키 입니다."}),
+        bundled_path=None,
     )
     with pytest.raises(PublicDataAPIError, match="15152505"):
         await client.all_manufacturers()
+
+
+@pytest.mark.asyncio
+async def test_bundled_file_is_used_without_key_or_geocoding() -> None:
+    # 공공데이터포털이 CSV 로만 주는 자료라 서버에 좌표까지 구워 실었다(기준일 2025-09-30).
+    from app.services.gas_product_file import BUNDLED_GEOCODED_CSV
+
+    client = GasProductFileClient("", geocode=None)
+    assert client.has_bundle and client.enabled
+    rows = await client.all_manufacturers()
+    assert client.loaded_from == "bundle"
+    assert len(rows) == 767
+    assert sum("전북" in r.address for r in rows) == 18
+    assert BUNDLED_GEOCODED_CSV.name.endswith("20250930.geocoded.csv")

@@ -21,7 +21,7 @@ from app.services.city_gas_registry import CITY_GAS_REGISTRY_URL
 from app.services.logistics_warehouse import WAREHOUSE_DATASET_PAGE_URL
 from app.services.lpg_municipal import LPG_MUNICIPAL_DATASETS
 from app.services.lpg_retailer_file import LPG_RETAILER_DATASET_PAGE_URL
-from app.services.gas_product_file import GAS_PRODUCT_DATASET_PAGE_URL
+from app.services.gas_product_file import GAS_PRODUCT_AS_OF, GAS_PRODUCT_DATASET_PAGE_URL
 from app.services.lpg_seoul import SEOUL_LPG_PAGE_URL
 from app.services.safemap_layers import SAFEMAP_LAYERS, SafemapLayerClient
 
@@ -196,6 +196,9 @@ async def _probe_lpg_retailer_file(hazard: Any, screening: Any) -> str:
 
 async def _probe_gas_product_file(hazard: Any, screening: Any) -> str:
     client = hazard.gas_product_file
+    if client.has_bundle:
+        rows = await client.all_manufacturers()
+        return f"서버 내장 파일 · 기준일 {GAS_PRODUCT_AS_OF} · 제조업소 {len(rows):,}곳(좌표 확정)"
     if not client.is_warm:
         total = await client.probe_total()
         return f"원천 응답 정상(제조업소 원장 {total:,}행) · 지오코딩 예열 중(백그라운드)"
@@ -399,9 +402,9 @@ CONNECTION_SPECS: tuple[ConnectionSpec, ...] = (
         "공공데이터포털", LPG_RETAILER_DATASET_PAGE_URL,
     ),
     ConnectionSpec(
-        "gas_product_file", "가스안전공사 가스제품 제조업소정보(ODcloud 15152505)",
-        "1차 위험물 50m 가스제품 제조업소(LH 앱 기준) — 전국 1,549행(2025-09 일회성), "
-        "업소 단위로 합쳐 주소를 카카오로 지오코딩. 활용신청 필요",
+        "gas_product_file", f"가스안전공사 가스제품 제조업소정보(CSV · 기준일 {GAS_PRODUCT_AS_OF})",
+        "1차 위험물 50m 가스제품 제조업소(LH 앱 기준) — 공공데이터포털이 CSV 로만 제공해 "
+        "서버에 실음. 전국 1,549행 → 업소 767곳(좌표 미리 확정). 새 판이 나오면 파일을 바꿔 다시 배포",
         "PUBLIC_DATA_SERVICE_KEY", lambda h, s: getattr(h, "gas_product_file", None),
         _probe_gas_product_file,
         "공공데이터포털", GAS_PRODUCT_DATASET_PAGE_URL,
