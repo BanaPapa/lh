@@ -21,8 +21,12 @@ from app.settings_api.connections import (
 )
 from app.rules_config import (
     ExcludedFacility,
+    OPTION_BY_KEY,
+    OPTION_DEFS,
+    OptionDef,
     RulesConfig,
     get_config as get_rules_config,
+    option_enabled,
     save_config as save_rules_config,
     threshold_key,
 )
@@ -108,6 +112,9 @@ class RulesResponse(BaseModel):
     cells: list[RulesMatrixCell]
     default_pass_threshold: int
     relaxed_pass_threshold: int
+    # 판정 옵션 스위치 정의(라벨·설명·기본값)와 지금 값.
+    option_defs: list[OptionDef] = []
+    option_values: dict[str, bool] = {}
 
 
 def _rules_response() -> RulesResponse:
@@ -148,6 +155,8 @@ def _rules_response() -> RulesResponse:
         cells=cells,
         default_pass_threshold=PASS_THRESHOLD,
         relaxed_pass_threshold=PASS_THRESHOLD_RELAXED,
+        option_defs=list(OPTION_DEFS),
+        option_values={o.key: option_enabled(o.key) for o in OPTION_DEFS},
     )
 
 
@@ -157,6 +166,8 @@ class RulesUpdateRequest(BaseModel):
     stage1_thresholds: dict[str, int | None] = {}
     relaxed_2027: bool = False
     excluded_facilities: list[ExcludedFacility] = []
+    # 판정 옵션 스위치. 기본값과 같은 값은 저장하지 않는다(기본값 보관).
+    options: dict[str, bool] = {}
 
 
 # 읽기는 누구나 된다 — 지금 적용 중인 임계거리·완화 기준은 비밀이 아니고, 배포 테스트
@@ -189,11 +200,18 @@ async def update_rules(payload: RulesUpdateRequest) -> RulesResponse:
         for item in payload.excluded_facilities
         if item.name.strip()
     ]
+    options: dict[str, bool] = {}
+    for key, value in payload.options.items():
+        if key not in OPTION_BY_KEY:
+            raise HTTPException(status_code=400, detail=f"알 수 없는 판정 옵션입니다: {key}")
+        if value != OPTION_BY_KEY[key].default:
+            options[key] = value
     save_rules_config(
         RulesConfig(
             stage1_thresholds=thresholds,
             relaxed_2027=payload.relaxed_2027,
             excluded_facilities=facilities,
+            options=options,
         )
     )
     # 임계거리·완화 여부는 판정 때마다 읽으므로 서비스 캐시(예열된 원천)를 버릴 필요가 없다.

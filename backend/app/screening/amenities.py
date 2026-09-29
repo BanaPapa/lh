@@ -38,6 +38,7 @@ from app.screening.front_door import (
 )
 from app.screening.bus_headway import BusHeadwayResolver, StopHeadway
 from app.screening.scorebook import FACILITY_GROUPS
+from app.rules_config import option_enabled, options_fingerprint
 from app.services.cadastral_local import CadastralLocalStore
 from app.services.facility_store import FacilityStore
 from app.services.geo import (
@@ -2249,7 +2250,9 @@ class AmenityCollector:
         # 정문 지정이 바뀌면 캐시된 거리가 낡는다. 지정 리비전을 키에 넣어 새 지정이
         # 다음 검토부터(캐시 TTL 을 기다리지 않고) 반영되게 한다(§3-3).
         revision = self.front_door_store.revision() if self.front_door_store else 0
-        return f"{center.lat:.5f},{center.lng:.5f}:{radius_m}:{fingerprint}:fd{revision}"
+        # 관리자 판정 옵션(운행주기·문화시설 범위 등)이 바뀌면 시설 목록이 달라진다.
+        options = options_fingerprint()
+        return f"{center.lat:.5f},{center.lng:.5f}:{radius_m}:{fingerprint}:fd{revision}:{options}"
 
     def _cache_get(self, key: str) -> dict[str, GroupCollection] | None:
         cached = self._cache.get(key)
@@ -2286,6 +2289,16 @@ def _apply_bus_headway(
     """
 
     tagged: list[CollectedFacility] = []
+    # 관리자 설정에서 운행주기 기준을 끄면 LH 내부망 앱처럼 모든 정류장을 센다.
+    # 판정 근거로 배차 정보는 그대로 적어 둔다.
+    if not option_enabled("bus_headway_filter"):
+        for facility in facilities:
+            headway = headways.get(_stop_name_key(facility.name))
+            note = headway.label if headway is not None else "운행주기 판정 정보 없음"
+            tagged.append(
+                facility._replace(counted=True, count_note=f"운행주기 기준 끔(관리자 설정) · {note}")
+            )
+        return sorted(tagged, key=lambda f: f.distance_m)
     for facility in facilities:
         headway = headways.get(_stop_name_key(facility.name))
         if headway is None or not headway.determined:

@@ -30,6 +30,45 @@ class ExcludedFacility(BaseModel):
     reason: str = ""
 
 
+class OptionDef(BaseModel):
+    """관리자 설정의 판정 옵션 스위치 하나. 값은 RulesConfig.options[key] 에 남는다."""
+
+    key: str
+    label: str
+    description: str
+    # 기본값 = LH 기준(내부망 앱)과 같게 두는 쪽. 없던 스위치는 이 값으로 동작한다.
+    default: bool
+    # 화면에서 묶어 보일 이름(예: 「2차 대중교통」).
+    group: str = ""
+
+
+# 관리자 설정 「판정 옵션」 탭에 나오는 스위치 목록. 새 스위치는 여기 한 줄만 더하고
+# 판정 코드에서 option_enabled(key) 로 읽는다. 기본값은 LH 기준을 따른다.
+OPTION_DEFS: tuple[OptionDef, ...] = (
+    OptionDef(
+        key="bus_headway_filter",
+        label="버스 운행주기 15분 기준 적용",
+        description=(
+            "TAGO 배차간격으로 15분당 평균 도착 버스가 1대 미만인 정류장을 배점에서 뺍니다. "
+            "끄면 LH 내부망 앱처럼 운행주기와 관계없이 모든 정류장을 셉니다."
+        ),
+        default=True,
+        group="2차 대중교통",
+    ),
+    OptionDef(
+        key="culture_extended",
+        label="문화시설 넓게 보기(지도 문화시설 분류 추가)",
+        description=(
+            "기본은 LH 기준대로 공연장·박물관·미술관·영화상영관만 문화시설로 셉니다. "
+            "켜면 지도(카카오) 문화시설 분류의 갤러리·전시장 등도 더합니다."
+        ),
+        default=False,
+        group="2차 주거여건",
+    ),
+)
+OPTION_BY_KEY: dict[str, OptionDef] = {option.key: option for option in OPTION_DEFS}
+
+
 class RulesConfig(BaseModel):
     # 1차 임계거리 덮어쓰기. 키 "house:general:factory" → m. None 은 「미적용」.
     # 여기 없는 조합·Rule 은 룰북 정본 값을 쓴다.
@@ -37,6 +76,8 @@ class RulesConfig(BaseModel):
     # 2027 서류심사 기준 완화(교육여건 or 조건 · 합격선 65 · 대학교 가점) 적용 여부.
     relaxed_2027: bool = False
     excluded_facilities: list[ExcludedFacility] = Field(default_factory=list)
+    # 판정 옵션 스위치 값(OPTION_DEFS 키 → 켬/끔). 여기 없는 키는 기본값을 쓴다.
+    options: dict[str, bool] = Field(default_factory=dict)
     updated_at: str = ""
 
 
@@ -95,6 +136,21 @@ def stage1_override(housing_type: str, application_type: str, column: str) -> tu
 
 def is_relaxed() -> bool:
     return get_config().relaxed_2027
+
+
+def option_enabled(key: str) -> bool:
+    """판정 옵션 스위치 값. 저장값이 없으면 OPTION_DEFS 의 기본값(LH 기준)."""
+
+    definition = OPTION_BY_KEY.get(key)
+    if definition is None:
+        raise KeyError(f"알 수 없는 판정 옵션: {key}")
+    return get_config().options.get(key, definition.default)
+
+
+def options_fingerprint() -> str:
+    """지금 옵션 값을 한 줄로. 결과 캐시 키에 넣어 스위치를 바꾸면 캐시가 갈리게 한다."""
+
+    return ",".join(f"{o.key}={int(option_enabled(o.key))}" for o in OPTION_DEFS)
 
 
 def _norm(text: str) -> str:

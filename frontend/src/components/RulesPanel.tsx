@@ -15,10 +15,11 @@ interface RulesPanelProps {
   onClose: () => void;
 }
 
-type RulesTab = "stage1" | "relaxed" | "excluded";
+type RulesTab = "stage1" | "options" | "relaxed" | "excluded";
 
 const TAB_LABELS: Record<RulesTab, string> = {
   stage1: "1차 임계거리",
+  options: "판정 옵션",
   relaxed: "2027 완화 기준",
   excluded: "LH 개별 확인 제외",
 };
@@ -44,6 +45,8 @@ export function RulesPanel({ open, onClose }: RulesPanelProps) {
   // 편집 중인 값(칸 키 → 입력 문자열). 저장 전까지는 화면에만 있다.
   const [cells, setCells] = useState<Record<string, string>>({});
   const [relaxed, setRelaxed] = useState(false);
+  // 판정 옵션 스위치(키 → 켬/끔). 저장 전까지는 화면에만 있다.
+  const [options, setOptions] = useState<Record<string, boolean>>({});
   const [excluded, setExcluded] = useState<ExcludedFacility[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,6 +63,7 @@ export function RulesPanel({ open, onClose }: RulesPanelProps) {
         Object.fromEntries(next.cells.map((cell) => [cell.key, cell.value === null ? "" : String(cell.value)])),
       );
       setRelaxed(next.config.relaxed_2027);
+      setOptions({ ...next.option_values });
       setExcluded(next.config.excluded_facilities.map((item) => ({ ...item })));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "기준을 불러오지 못했습니다.");
@@ -123,7 +127,9 @@ export function RulesPanel({ open, onClose }: RulesPanelProps) {
         stage1_thresholds: thresholds,
         relaxed_2027: relaxed,
         excluded_facilities: excluded.filter((item) => item.name.trim()),
+        options,
       });
+      setOptions({ ...next.option_values });
       setData(next);
       setCells(
         Object.fromEntries(next.cells.map((cell) => [cell.key, cell.value === null ? "" : String(cell.value)])),
@@ -270,6 +276,47 @@ export function RulesPanel({ open, onClose }: RulesPanelProps) {
                   </tbody>
                 </table>
               </div>
+            </section>
+          )}
+
+          {!loading && data && tab === "options" && (
+            <section className="rules-section">
+              <header>
+                <div>
+                  <h3>판정 옵션</h3>
+                  <p>
+                    기본값은 LH 기준(내부망 앱)과 같게 두었습니다. 끄거나 켜면 다음 심사부터
+                    반영됩니다. 「기본」 표시가 없는 스위치는 LH 기준과 다르게 바뀐 상태입니다.
+                  </p>
+                </div>
+              </header>
+              <ul className="rules-options">
+                {data.option_defs.map((option) => {
+                  const on = options[option.key] ?? option.default;
+                  return (
+                    <li key={option.key}>
+                      <label className="rules-toggle">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={(event) =>
+                            setOptions((prev) => ({ ...prev, [option.key]: event.target.checked }))
+                          }
+                        />
+                        <span>
+                          {option.group && <small>{option.group}</small>}
+                          <b>{option.label}</b>
+                          <em className={on === option.default ? "is-default" : "is-changed"}>
+                            {on ? "켬" : "끔"}
+                            {on === option.default ? " · 기본(LH 기준)" : " · LH 기준과 다름"}
+                          </em>
+                        </span>
+                      </label>
+                      <p>{option.description}</p>
+                    </li>
+                  );
+                })}
+              </ul>
             </section>
           )}
 

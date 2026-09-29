@@ -316,3 +316,52 @@
   display: flex;
   gap: 8px;
 }
+
+/* 판정 옵션 스위치 목록 — 스위치 한 줄 + 설명 한 문단. */
+.rules-options {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 14px;
+}
+
+.rules-options > li {
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.rules-options > li > p {
+  margin: 6px 0 0 30px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.rules-options .rules-toggle span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.rules-options .rules-toggle small {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.rules-options .rules-toggle em {
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rules-options .rules-toggle em.is-default {
+  color: var(--teal);
+}
+
+.rules-options .rules-toggle em.is-changed {
+  color: var(--amber);
+}

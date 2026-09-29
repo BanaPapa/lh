@@ -123,7 +123,17 @@ export interface RulesConfig {
   stage1_thresholds: Record<string, number | null>;
   relaxed_2027: boolean;
   excluded_facilities: ExcludedFacility[];
+  options: Record<string, boolean>;
   updated_at: string;
+}
+
+/** 관리자 「판정 옵션」 스위치 하나. 기본값은 LH 기준(내부망 앱)과 같게 둔 쪽이다. */
+export interface RuleOptionDef {
+  key: string;
+  label: string;
+  description: string;
+  default: boolean;
+  group: string;
 }
 
 export interface RulesMatrixCell {
@@ -149,12 +159,15 @@ export interface RulesResponse {
   cells: RulesMatrixCell[];
   default_pass_threshold: number;
   relaxed_pass_threshold: number;
+  option_defs: RuleOptionDef[];
+  option_values: Record<string, boolean>;
 }
 
 export interface RulesUpdatePayload {
   stage1_thresholds: Record<string, number | null>;
   relaxed_2027: boolean;
   excluded_facilities: ExcludedFacility[];
+  options: Record<string, boolean>;
 }
 
 export function getRules(): Promise<RulesResponse> {
