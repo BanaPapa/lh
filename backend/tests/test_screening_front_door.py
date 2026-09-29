@@ -480,6 +480,29 @@ class TestStationExitCandidates:
         assert len(selected) == 1
         assert selected[0].label == "성남역 1번출구"
 
+    def test_railway_exits_skip_nearby_building_exits(self) -> None:
+        # 2026-09-30 익산역: 네이버 「익산역 출구」가 「익산역출구」(표준 데이터셋 출구 1·2와
+        # 같은 좌표) 둘과 함께 역 앞 주차장·오피스텔 출구를 섞어 준다. 건물 출구는 역
+        # 출구가 아니므로 후보에서 빠져야 하고, 붙여 쓴 질의로도 한 번 더 묻는다.
+        kakao = FakeKakao(keywords={"기차역": [_place("익산역", 400.0, "")]})
+        naver = FakeNaver(
+            {
+                "익산역 출구": [
+                    _local("익산역출구", 420.0),
+                    _local("익산역시그니처S오피스텔출구", 150.0),
+                    _local("익산역 서측주차장출구", 200.0),
+                ],
+                "익산역출구": [_local("익산역출구", 380.0)],
+            }
+        )
+        collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), naver=naver)
+        facility = _collect(collector)["railway"].facilities[0]
+        assert "익산역출구" in naver.queries
+        distances = sorted(round(c.distance_m) for c in facility.front_door_candidates)
+        assert {c.label for c in facility.front_door_candidates} == {"익산역출구"}
+        assert len(distances) == 2
+        assert round(facility.distance_m) == distances[0]
+
 
 class TestStationManualDesignation:
     """역·터미널 수기 기준점 지정(#11 「출구 여럿이면 담당자 선택」)."""
@@ -591,6 +614,52 @@ class TestDatasetGates:
         assert school_key("원불교대학원대학교정문") == "원불교대학원대학교"
         assert school_key("호원대학교동문") == "호원대학교"
         assert school_key("국립한국농수산대학교") == "한국농수산대학교"
+        # 폴리텍 권역 번호는 로마 숫자로도 온다(카카오 「한국폴리텍 V 대학 익산캠퍼스」).
+        assert school_key("한국폴리텍 V 대학 익산캠퍼스") == "한국폴리텍대학"
+        assert school_key("한국폴리텍Ⅴ대학 익산캠퍼스") == "한국폴리텍대학"
+        assert school_key("한국폴리텍대학 익산캠퍼스") == "한국폴리텍대학"
+        # 영문 단어 속 I·V·X 는 로마 숫자로 보지 않는다.
+        assert school_key("KAIST") == "KAIST"
+
+    def test_polytech_roman_numeral_name_finds_the_iksan_gate(self) -> None:
+        # 2026-09-30 부송동 764-10: 「한국폴리텍 V 대학 익산캠퍼스」가 정문을 못 찾아
+        # 시설 좌표(736.7m)로 재어졌다. 카카오 두 이름 모두 같은 정문 행을 찾아야 한다.
+        from app.screening.front_door import dataset_gate_for, load_dataset_gates
+
+        gates = load_dataset_gates()
+        kakao_point = Coordinates(lat=35.9518029, lng=126.9919174)
+        for name in ("한국폴리텍 V 대학 익산캠퍼스", "한국폴리텍대학 익산캠퍼스"):
+            gate = dataset_gate_for(name, kakao_point, gates)
+            assert gate is not None and gate.label == "한국폴리텍5대학 익산캠퍼스정문"
+        # 김제 전북캠퍼스(약 16km)는 이름이 같아도 익산 캠퍼스 정문이 아니다.
+        gimje = dataset_gate_for(
+            "한국폴리텍 V 대학 전북캠퍼스", Coordinates(lat=35.8085, lng=126.9396), gates
+        )
+        assert gimje is not None and gimje.label == "한국폴리텍대학 전북캠퍼스정문"
+
+    def test_same_campus_under_two_kakao_names_collapses_to_one(self) -> None:
+        from app.screening.front_door import DatasetGate
+
+        gate_point = offset_coordinates(CENTER, 1_200.0, 0)
+        kakao = FakeKakao(
+            keywords={
+                "대학교": [
+                    _place("한국폴리텍 V 대학 익산캠퍼스", 1_000.0),
+                    _place("한국폴리텍대학 익산캠퍼스", 1_050.0),
+                ]
+            }
+        )
+        collector = AmenityCollector(
+            kakao=kakao,
+            tago=FakeTago([]),
+            dataset_gates=(
+                DatasetGate("한국폴리텍대학", "한국폴리텍5대학 익산캠퍼스정문", gate_point),
+            ),
+        )
+        facilities = _collect(collector)["university"].facilities
+        assert len(facilities) == 1
+        assert facilities[0].measurement_tier == "front_door_point"
+        assert facilities[0].distance_m == _distance_m(gate_point, [SITE_RING], CENTER)
 
     def test_bundled_csv_loads_the_21_jeonbuk_gates(self) -> None:
         from app.screening.front_door import load_dataset_gates

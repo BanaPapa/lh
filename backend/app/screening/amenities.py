@@ -23,7 +23,7 @@ from app.screening.front_door import (
     _AUTO_EXCLUDE_TOKENS,
     FACILITY_DOOR_TOKENS,
     HOSPITAL_EXCLUDE_TOKENS,
-    STATION_DOOR_TOKENS,
+    station_exit_places,
     DATASET_GATE_SOURCE,
     DatasetGate,
     FrontDoorRef,
@@ -1166,19 +1166,20 @@ class AmenityCollector:
         return doors
 
     async def _naver_station_exits(self, base: str) -> list[tuple[str, Coordinates]]:
-        """네이버 「{역명} 출구」 보충(최대 5건·무작위). 역명을 품은 출구만 남긴다."""
+        """네이버 「{역명} 출구」·「{역명}출구」(질의당 최대 5건·무작위). 그 역 출구만 남긴다.
 
-        try:
-            places = await self.naver.local(f"{base} 출구")
-        except Exception:
-            return []
-        squashed_base = "".join(base.split())
-        return [
-            (p.name.strip(), p.coordinates)
-            for p in places
-            if any(t in p.name for t in STATION_DOOR_TOKENS)
-            and squashed_base in "".join(p.name.split())
-        ]
+        철도역은 카카오에 출구 POI 가 없어 이 경로가 유일한 출구 원천이다. 5건 무작위라
+        한 번에 빠질 수 있어 붙여 쓴 질의로 한 번 더 묻는다(표준 데이터셋 이름이
+        「익산역출구」 꼴이다). 역 앞 주차장·오피스텔 출구는 station_exit_places 가 버린다.
+        """
+
+        places: list[Any] = []
+        for query in (f"{base} 출구", f"{''.join(base.split())}출구"):
+            try:
+                places.extend(await self.naver.local(query))
+            except Exception:
+                continue
+        return station_exit_places(base, places)
 
     def _with_station_entrance(
         self,
