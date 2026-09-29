@@ -269,6 +269,31 @@ class ScreeningSourceAlert(BaseModel):
     message: str
 
 
+class ScreeningAppliedOption(BaseModel):
+    """이 심사에 적용된 관리자 판정 옵션 스위치 하나(심사 시각 기준)."""
+
+    key: str
+    label: str
+    enabled: bool
+
+
+class ScreeningDataSnapshot(BaseModel):
+    """이 심사가 본 데이터의 판(版). 심사표·결과 Excel 에 그대로 적는다.
+
+    인허가(LOCALDATA) 시설은 facilities.db 로컬 캐시에서 읽으므로 동기화 시각이
+    곧 데이터 기준일이다. 나머지 원천은 공공 API 를 심사 때 실시간으로 조회한다.
+    """
+
+    # 인허가 캐시 데이터셋 중 가장 오래된·최근 동기화 시각. 캐시가 비면 None.
+    localdata_synced_at_min: datetime | None = None
+    localdata_synced_at_max: datetime | None = None
+    localdata_dataset_count: int = 0
+    localdata_record_count: int = 0
+    live_api_note: str = "그 밖의 원천은 공공 API 실시간 조회"
+    relaxed_2027: bool = False
+    options: list[ScreeningAppliedOption] = Field(default_factory=list)
+
+
 class ScreeningResult(BaseModel):
     screening_id: str
     created_at: datetime
@@ -292,6 +317,8 @@ class ScreeningResult(BaseModel):
     disclaimer: str = ""
     # 원천 장애·대체 경고. 비어 있지 않으면 화면이 「잠시 후 재심사」를 권한다.
     source_alerts: list[ScreeningSourceAlert] = Field(default_factory=list)
+    # 데이터 판(인허가 캐시 동기화 시각·적용 판정 옵션). 옛 결과에는 없을 수 있다.
+    data_snapshot: ScreeningDataSnapshot | None = None
 
 
 class ScreeningRequest(BaseModel):

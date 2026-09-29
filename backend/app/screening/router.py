@@ -7,7 +7,10 @@ import logging
 from functools import lru_cache
 from uuid import uuid4
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
@@ -36,6 +39,12 @@ from app.screening.scorebook import (
     Criterion,
     ScoreSheet,
     sheet_for,
+)
+from app.screening.export_xlsx import (
+    XLSX_MEDIA_TYPE,
+    ScreeningExportRequest,
+    build_workbook,
+    xlsx_filename_header,
 )
 from app.screening.front_door import FrontDoorRef, FrontDoorStore
 from app.screening.service import ScreeningService
@@ -352,6 +361,18 @@ async def screen(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     screening_results[result.screening_id] = result
     return result
+
+
+@router.post("/export.xlsx")
+async def export_screening_xlsx(payload: ScreeningExportRequest) -> Response:
+    """심사 결과(담당자 판단 포함)를 받아 4시트 Excel 로 돌려준다(심사표 「Excel」)."""
+
+    generated_at = datetime.now(UTC)
+    return Response(
+        content=build_workbook(payload.sites, generated_at),
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": xlsx_filename_header("LH_서류심사", generated_at)},
+    )
 
 
 @router.post("/jobs", response_model=ScreeningJobStart)

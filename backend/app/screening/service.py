@@ -35,7 +35,9 @@ from app.screening.amenities import (
     GroupCollection,
 )
 from app.screening.models import (
+    ScreeningAppliedOption,
     ScreeningChecklistEntry,
+    ScreeningDataSnapshot,
     FrontDoorCandidate,
     GROUP_STATE_LABELS,
     ITEM_OUTCOME_LABELS,
@@ -52,7 +54,7 @@ from app.screening.models import (
     ScreeningStageTwo,
     ScreeningTier,
 )
-from app.rules_config import is_relaxed
+from app.rules_config import OPTION_DEFS, is_relaxed, option_enabled
 from app.screening.scorebook import (
     FACILITY_GROUP_BY_KEY,
     OUT_OF_SCOPE_ITEMS,
@@ -221,7 +223,35 @@ class ScreeningService:
             calculation_note=_calculation_note(bool(rings)),
             disclaimer=DISCLAIMER,
             source_alerts=_source_alerts(review, collections),
+            data_snapshot=self._data_snapshot(),
         )
+
+    def _data_snapshot(self) -> ScreeningDataSnapshot:
+        """이번 심사가 본 데이터의 판. 인허가 캐시 동기화 시각과 적용 판정 옵션.
+
+        심사 결과를 막지 않도록 캐시 조회가 실패하면 동기화 시각만 비운다.
+        """
+
+        options = [
+            ScreeningAppliedOption(key=o.key, label=o.label, enabled=option_enabled(o.key))
+            for o in OPTION_DEFS
+        ]
+        snapshot = ScreeningDataSnapshot(relaxed_2027=is_relaxed(), options=options)
+        store = getattr(self.hazard, "facility_store", None) or getattr(
+            self.amenities, "facility_store", None
+        )
+        if store is None:
+            return snapshot
+        try:
+            states = [s for s in store.sync_states() if s.record_count > 0]
+        except Exception:  # noqa: BLE001 — 판 표시는 부가 정보다.
+            return snapshot
+        if states:
+            snapshot.localdata_synced_at_min = min(s.synced_at for s in states)
+            snapshot.localdata_synced_at_max = max(s.synced_at for s in states)
+            snapshot.localdata_dataset_count = len(states)
+            snapshot.localdata_record_count = sum(s.record_count for s in states)
+        return snapshot
 
     async def _review(
         self,

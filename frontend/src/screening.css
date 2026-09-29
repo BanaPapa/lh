@@ -166,6 +166,16 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 데이터 판 — 규칙팩 줄 바로 아래 한 줄. 인허가 캐시 동기화 시각과 적용 판정 옵션. */
+.screening-datapack {
+  margin: -4px 0 0;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: var(--sh-small);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
+
 /* ── 공용 고지 문구 ─────────────────────────────────────────── */
 
 .screening-notice {
@@ -732,13 +742,14 @@
   min-width: 0;
 }
 
-.screening-stage-one-table thead th:nth-child(1) { width: 23%; min-width: 0; }
+.screening-stage-one-table thead th:nth-child(1) { width: 20%; min-width: 0; }
 .screening-stage-one-table thead th:nth-child(2) { width: 7%; }
-.screening-stage-one-table thead th:nth-child(3) { width: 8%; }
+.screening-stage-one-table thead th:nth-child(3) { width: 7%; }
 .screening-stage-one-table thead th:nth-child(4) { width: 8%; }
-.screening-stage-one-table thead th:nth-child(5) { width: 21.6%; min-width: 0; }
-.screening-stage-one-table thead th:nth-child(6) { width: 9%; }
-.screening-stage-one-table thead th:nth-child(7) { width: 23.4%; min-width: 0; max-width: none; }
+.screening-stage-one-table thead th:nth-child(5) { width: 19%; min-width: 0; }
+.screening-stage-one-table thead th:nth-child(6) { width: 8%; }
+.screening-stage-one-table thead th:nth-child(7) { width: 20%; min-width: 0; max-width: none; }
+.screening-stage-one-table thead th:nth-child(8) { width: 11%; }
 
 /* 기준거리·최근접·결과·원천은 값을 가운데 정렬해 열 사이 여백이 좌우 같게 보이게 한다.
    머리글은 모든 열 가운데 정렬(공통 규칙). */
@@ -1910,4 +1921,119 @@
   word-break: keep-all;
   overflow-wrap: break-word;
   line-break: strict;
+}
+
+/* ── 1차 담당자 판단·메모 ─────────────────────────────────────── */
+.screening-stage-one-table tbody td.screening-judgement-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.screening-judgement-select {
+  width: 100%;
+  min-height: 28px;
+  padding: 0 4px;
+  color: var(--fg);
+  background: var(--surface-3);
+  border: 1px solid var(--border-2);
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: var(--sh-small);
+  cursor: pointer;
+}
+
+.screening-judgement-select:focus-visible {
+  border-color: var(--blue);
+  outline: none;
+}
+
+.screening-judgement-select.is-confirmed {
+  color: var(--teal);
+  border-color: color-mix(in srgb, var(--teal) 45%, var(--border-2));
+}
+
+.screening-judgement-select.is-evidence_requested {
+  color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 45%, var(--border-2));
+}
+
+.screening-judgement-select.is-false_positive,
+.screening-judgement-select.is-excluded {
+  color: var(--purple);
+  border-color: color-mix(in srgb, var(--purple) 45%, var(--border-2));
+}
+
+.screening-memo-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 4px;
+  padding: 1px 6px;
+  color: var(--fg-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: var(--sh-small);
+  cursor: pointer;
+}
+
+.screening-memo-toggle:hover,
+.screening-memo-toggle.has-memo {
+  color: var(--blue);
+  border-color: color-mix(in srgb, var(--blue) 40%, var(--border));
+}
+
+.screening-row-memo > td {
+  padding-top: 0;
+  background: color-mix(in srgb, var(--blue) 4%, transparent);
+}
+
+.screening-row-memo label {
+  display: grid;
+  gap: 4px;
+}
+
+.screening-row-memo label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-2);
+  font-size: var(--sh-small);
+  font-weight: 700;
+}
+
+.screening-row-memo textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 8px;
+  color: var(--fg);
+  background: var(--surface-3);
+  border: 1px solid var(--border-2);
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: var(--sh-small);
+  resize: vertical;
+}
+
+.screening-row-memo textarea:focus-visible {
+  border-color: var(--blue);
+  outline: none;
+}
+
+.screening-head-actions button:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+@media print {
+  .screening-memo-toggle {
+    display: none;
+  }
+
+  .screening-judgement-select {
+    appearance: none;
+    border: 0;
+    background: transparent;
+  }
 }

@@ -254,6 +254,25 @@ export interface ScreeningStageTwo {
   note: string;
 }
 
+/** 이 심사에 적용된 관리자 판정 옵션 스위치 하나(심사 시각 기준). */
+export interface ScreeningAppliedOption {
+  key: string;
+  label: string;
+  enabled: boolean;
+}
+
+/** 이 심사가 본 데이터의 판. 인허가 캐시 동기화 시각과 적용 판정 옵션. */
+export interface ScreeningDataSnapshot {
+  /** 인허가(LOCALDATA) 캐시 데이터셋 중 가장 오래된·최근 동기화 시각. 비면 null. */
+  localdata_synced_at_min: string | null;
+  localdata_synced_at_max: string | null;
+  localdata_dataset_count: number;
+  localdata_record_count: number;
+  live_api_note: string;
+  relaxed_2027: boolean;
+  options: ScreeningAppliedOption[];
+}
+
 export interface ScreeningResult {
   screening_id: string;
   created_at: string;
@@ -277,6 +296,8 @@ export interface ScreeningResult {
   disclaimer: string;
   /** 이번 심사에서 응답하지 않았거나 대체 원천으로 넘어간 공공 원천. 있으면 재심사를 권한다. */
   source_alerts?: ScreeningSourceAlert[];
+  /** 데이터 판(인허가 캐시 동기화 시각·적용 판정 옵션). 옛 결과에는 없다. */
+  data_snapshot?: ScreeningDataSnapshot | null;
 }
 
 export interface ScreeningRequest {

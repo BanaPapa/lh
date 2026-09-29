@@ -19,6 +19,8 @@ import {
   type BatchRowStatus,
   type BatchStatus,
 } from "./batchApi";
+import { downloadBatchXlsx } from "./exportApi";
+import { collectJudgements } from "./judgements";
 import type { ScreeningResult } from "./types";
 import "../batch.css";
 import { IS_LOCAL_APP, TEST_BATCH_LIMIT } from "../deployment";
@@ -87,6 +89,7 @@ export function BatchPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [openingRow, setOpeningRow] = useState<string | null>(null);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   // 열 때마다 본 화면의 유형을 기본값으로 따라간다.
@@ -194,6 +197,23 @@ export function BatchPanel({
       setBatch(await cancelBatch(batch.batch_id));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "중단 요청에 실패했습니다.");
+    }
+  };
+
+  // 결과 Excel. 담당자 판단은 건마다 심사표에서 남긴 것을 이 브라우저에서 모아 싣는다.
+  const handleExportXlsx = async () => {
+    if (!batch) return;
+    setExportingXlsx(true);
+    setError("");
+    try {
+      await downloadBatchXlsx(
+        batch.batch_id,
+        collectJudgements(batch.rows.map((row) => row.screening_id)),
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "결과 Excel 을 만들지 못했습니다.");
+    } finally {
+      setExportingXlsx(false);
     }
   };
 
@@ -318,6 +338,18 @@ export function BatchPanel({
             <button type="button" className="batch-stop" onClick={() => void handleStop()}>
               <Square size={14} aria-hidden="true" />
               중단
+            </button>
+          )}
+          {batch && !running && (
+            <button
+              type="button"
+              className="batch-export"
+              disabled={exportingXlsx}
+              title="종합요약·1차 상세·2차 상세·데이터 스냅샷 4시트. 심사표에서 남긴 담당자 판단·메모가 1차 상세에 실립니다."
+              onClick={() => void handleExportXlsx()}
+            >
+              <FileSpreadsheet size={16} aria-hidden="true" />
+              {exportingXlsx ? "Excel 만드는 중…" : "결과 Excel(4시트)"}
             </button>
           )}
           {batch && !running && (

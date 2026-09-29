@@ -43,6 +43,13 @@ from app.hazard_review.rulebook import (
     HousingType,
 )
 from app.models import Coordinates
+from app.screening.export_xlsx import (
+    XLSX_MEDIA_TYPE,
+    BatchExportRequest,
+    ExportSite,
+    build_workbook,
+    xlsx_filename_header,
+)
 from app.screening.models import ScreeningRequest, ScreeningResult
 from app.screening.service import ScreeningProgressCallback, ScreeningService
 
@@ -659,6 +666,26 @@ def export_rows(batch: BatchStatus) -> dict[str, list[list[object]]]:
     return {"종합요약": summary, "1차상세": stage_one, "2차상세": stage_two}
 
 
+def export_sites(batch: BatchStatus, request: BatchExportRequest) -> list[ExportSite]:
+    """일괄 심사 행을 Excel 한 줄씩으로. 실패·중단 건도 오류와 함께 요약에 남긴다."""
+
+    sites: list[ExportSite] = []
+    for row in batch.rows:
+        result = batch_results.get((batch.batch_id, row.id))
+        sites.append(
+            ExportSite(
+                receipt_no=row.id,
+                address=row.address,
+                housing_type_label=HOUSING_TYPE_LABELS[row.housing_type],
+                application_type_label=APPLICATION_TYPE_LABELS[row.application_type],
+                result=result,
+                error=row.error or ("" if result is not None else row.message),
+                judgements=request.judgements.get(result.screening_id, {}) if result else {},
+            )
+        )
+    return sites
+
+
 def export_zip(batch: BatchStatus) -> bytes:
     stamp = batch.created_at.astimezone().strftime("%Y-%m-%d")
     buffer = io.BytesIO()
@@ -802,4 +829,17 @@ async def export_batch(batch_id: str) -> Response:
         content=export_zip(batch),
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename=LH_batch_{stamp}.zip"},
+    )
+
+
+@router.post("/{batch_id}/export.xlsx")
+async def export_batch_xlsx(batch_id: str, payload: BatchExportRequest) -> Response:
+    """일괄 심사 결과 Excel(4시트). 담당자 판단은 브라우저에만 있어 요청에 싣는다."""
+
+    batch = _batch_or_404(batch_id)
+    generated_at = datetime.now(UTC)
+    return Response(
+        content=build_workbook(export_sites(batch, payload), generated_at),
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": xlsx_filename_header("LH_일괄심사", generated_at)},
     )

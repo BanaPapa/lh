@@ -5,7 +5,9 @@ import {
   Crosshair,
   DoorOpen,
   ExternalLink,
+  FileSpreadsheet,
   MapPin,
+  NotebookPen,
   Printer,
   RotateCcw,
   X,
@@ -13,6 +15,15 @@ import {
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { categoryOrderKey } from "./screeningOverlays";
 import { isMultiParcelQuery } from "../hazard-review/api";
+import { downloadScreeningXlsx } from "./exportApi";
+import {
+  JUDGEMENT_OPTIONS,
+  loadJudgements,
+  saveJudgements,
+  type ItemJudgement,
+  type JudgementMap,
+  type JudgementState,
+} from "./judgements";
 import {
   SCREENING_GROUP_STATE_CONFIG,
   SCREENING_OUTCOME_CONFIG,
@@ -29,6 +40,7 @@ import type {
   FrontDoorCandidate,
   FrontDoorView,
   ScreeningCriterion,
+  ScreeningDataSnapshot,
   ScreeningDataSource,
   ScreeningFacilityHit,
   ScreeningGroupStatus,
@@ -424,6 +436,38 @@ interface ScreeningSheetProps {
 /** 심사표 본문은 1차와 2차 두 장이다. 한 화면에 쏟지 않고 탭으로 가른다. */
 type ScreeningStageTab = "stage-one" | "stage-two" | "stage-two-sources";
 
+/** ISO 시각을 「2026-09-28」 날짜로. 읽지 못하면 빈 문자열. */
+function formatDay(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** 심사표 「데이터 판」 한 줄. 인허가 캐시 동기화 범위와 공공 API 실시간 조회 고지. */
+function dataSnapshotText(snapshot: ScreeningDataSnapshot | null | undefined): string {
+  if (!snapshot) return "데이터 판 기록 없음(이전 심사) · 공공 API 실시간 조회";
+  const from = formatDay(snapshot.localdata_synced_at_min);
+  const to = formatDay(snapshot.localdata_synced_at_max);
+  const localdata = from
+    ? `인허가(LOCALDATA) 캐시 ${from === to ? from : `${from}~${to}`} 동기화 · ${snapshot.localdata_dataset_count}종 ${snapshot.localdata_record_count.toLocaleString()}건`
+    : "인허가(LOCALDATA) 캐시 없음";
+  const options = snapshot.options
+    .map((option) => `${option.label} ${option.enabled ? "켬" : "끔"}`)
+    .join(", ");
+  return [
+    `데이터 판 ${localdata}`,
+    snapshot.live_api_note || "그 밖의 원천은 공공 API 실시간 조회",
+    options ? `판정 옵션: ${options}` : "",
+    snapshot.relaxed_2027 ? "2027 완화 기준 적용" : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+const UNCHECKED: ItemJudgement = { state: "unchecked", memo: "" };
+
 /** 열림 상태를 키 집합으로 들고 있는다. 여러 줄을 동시에 펼칠 수 있다. */
 function useExpandedKeys(resetKey: string | undefined) {
   const [openKeys, setOpenKeys] = useState<ReadonlySet<string>>(
@@ -532,6 +576,42 @@ export function ScreeningSheet({
   // 1차 대분류 접기. 기본은 펼침이라 「접힌 키」 집합으로 든다.
   const folded = useExpandedKeys(result?.screening_id);
   const [stageTab, setStageTab] = useState<ScreeningStageTab>("stage-one");
+  // 1차 항목별 담당자 판단·메모. 심사 ID 마다 이 브라우저에 남는다.
+  const [judgements, setJudgements] = useState<JudgementMap>({});
+  const memoRows = useExpandedKeys(result?.screening_id);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  useEffect(() => {
+    setJudgements(loadJudgements(result?.screening_id));
+    setExportError("");
+  }, [result?.screening_id]);
+  const screeningId = result?.screening_id;
+  const updateJudgement = useCallback(
+    (itemKey: string, patch: Partial<ItemJudgement>) => {
+      if (!screeningId) return;
+      setJudgements((current) => {
+        const next = {
+          ...current,
+          [itemKey]: { ...(current[itemKey] ?? UNCHECKED), ...patch },
+        };
+        saveJudgements(screeningId, next);
+        return next;
+      });
+    },
+    [screeningId],
+  );
+  const handleExport = useCallback(async () => {
+    if (!result) return;
+    setExporting(true);
+    setExportError("");
+    try {
+      await downloadScreeningXlsx(result, judgements);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Excel 을 만들지 못했습니다.");
+    } finally {
+      setExporting(false);
+    }
+  }, [result, judgements]);
 
   // 새 심사 결과가 오면 1차부터 다시 읽는다.
   useEffect(() => setStageTab("stage-one"), [result?.screening_id]);
@@ -628,6 +708,9 @@ export function ScreeningSheet({
     // 비고는 데이터 열(원천 칩 아래)에 둔다. 통과 처리(판정 미적용) 행의 비고는 표 아래
     // 「판정 미적용 항목」 목록에 그대로 실리므로 표 안에서는 되풀이하지 않는다.
     const noteInDataCell = hasNote && !item.passthrough;
+    const judgement = judgements[item.key] ?? UNCHECKED;
+    // 메모가 적힌 항목은 늘 펼쳐 두고, 빈 항목은 「메모」 버튼으로 연다.
+    const memoOpen = memoRows.openKeys.has(item.key) || judgement.memo !== "";
 
     return (
       <Fragment key={item.key}>
@@ -677,10 +760,58 @@ export function ScreeningSheet({
               <small className="screening-row-note">{item.note}</small>
             )}
           </td>
+          <td className="screening-judgement-cell">
+            <select
+              className={`screening-judgement-select is-${judgement.state}`}
+              aria-label={`${item.label} 담당자 판단`}
+              value={judgement.state}
+              onChange={(event) =>
+                updateJudgement(item.key, {
+                  state: event.target.value as JudgementState,
+                })
+              }
+            >
+              {JUDGEMENT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={`screening-memo-toggle${judgement.memo ? " has-memo" : ""}`}
+              title={judgement.memo ? "메모가 적혀 있습니다" : "메모 남기기"}
+              aria-expanded={memoOpen}
+              onClick={() => memoRows.toggle(item.key)}
+            >
+              <NotebookPen size={13} aria-hidden="true" />
+              메모
+            </button>
+          </td>
         </tr>
+        {memoOpen && (
+          <tr className="screening-row-memo">
+            <td colSpan={8}>
+              <label>
+                <span>
+                  <NotebookPen size={13} aria-hidden="true" />
+                  {item.label} 메모
+                </span>
+                <textarea
+                  rows={2}
+                  value={judgement.memo}
+                  placeholder="확인 내용·증빙 요청 사항 등을 적어 두세요. 이 브라우저에만 저장되며 결과 Excel 1차 상세에 실립니다."
+                  onChange={(event) =>
+                    updateJudgement(item.key, { memo: event.target.value })
+                  }
+                />
+              </label>
+            </td>
+          </tr>
+        )}
         {expandable && open && (
           <tr className="screening-row-detail">
-            <td colSpan={7}>
+            <td colSpan={8}>
               <ul className="screening-facility-list">
                 {item.facilities.map((facility) => (
                   <li
@@ -1141,6 +1272,15 @@ export function ScreeningSheet({
           <div className="screening-head-actions">
             <button
               type="button"
+              title="결과 Excel 내려받기(종합요약·1차 상세·2차 상세·데이터 스냅샷)"
+              aria-label="결과 Excel 내려받기"
+              disabled={exporting}
+              onClick={() => void handleExport()}
+            >
+              <FileSpreadsheet size={17} />
+            </button>
+            <button
+              type="button"
               title="심사표 인쇄"
               onClick={() => window.print()}
             >
@@ -1159,6 +1299,14 @@ export function ScreeningSheet({
         · {result.application_type_label}
         {result.demo ? " · 데모 데이터" : ""}
       </p>
+      <p className="screening-datapack">{dataSnapshotText(result.data_snapshot)}</p>
+
+      {exportError && (
+        <p className="screening-notice tone-danger">
+          <AlertTriangle size={14} />
+          {exportError}
+        </p>
+      )}
 
       {error && (
         <p className="screening-notice tone-danger">
@@ -1352,6 +1500,7 @@ export function ScreeningSheet({
                 <th scope="col">근거</th>
                 <th scope="col">원천</th>
                 <th scope="col">데이터</th>
+                <th scope="col">담당자 판단</th>
               </tr>
             </thead>
             <tbody>
@@ -1390,7 +1539,7 @@ export function ScreeningSheet({
                         {group.outcomeLabel}
                       </em>
                     </td>
-                    <td colSpan={3} />
+                    <td colSpan={4} />
                   </tr>
                   {!folded.openKeys.has(group.ruleId) &&
                     group.items.map(renderExclusionRow)}
