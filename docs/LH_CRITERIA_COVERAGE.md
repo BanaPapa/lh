@@ -222,9 +222,9 @@ LH 최기헌 박사님 8/20 회신 — 위험시설은 원칙 50m이나 이 3종
 | 50 | 의료시설 — 종합병원 | `apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncListInfoInqire` (국립중앙의료원, `dutyDivNam=종합병원` 필터) | `00_hospitals.csv` (보조) | **연결** (API 직결) | — | 2026-08-28 연결. `Q0`=시도(카카오 역지오코딩)로 받아 종합병원·상급종합병원만 산정. 상급종합 인정 여부는 LH 미확정 → `is_tertiary` 로 구분해 함께 계산. **카카오 역지오코딩 실패 시 빈 피드가 아니라 실패로 처리 — 「병원 없음」과 「조회 못 함」을 구분(missing)** |
 | 51 | 공원 — 국공립공원 | — | `53_national_public_parks.shp` (브이월드 자연공원 용도지구) | **대체** (카카오 분류) | 주거여건 정확도 | |
 | 52 | 공원 — 생활권공원 | — | `54_neighborhood_parks.xlsx` (전국도시공원정보표준데이터) | **대체** (카카오 분류) | 주거여건 정확도 | |
-| 53 | 문화시설 — 공연장 | `apis.data.go.kr/1741000/performance_halls/info` | `38_performance_halls.xlsx` | **대체** (카카오 CT1) | 주거여건 정확도 | API 원천이 있는데 카카오로 근사 중 |
-| 54 | 문화시설 — 박물관·미술관 | `apis.data.go.kr/1741000/museums_and_art_galleries/info` | `39_museums_galleries.xlsx` | **대체** (카카오 CT1) | 주거여건 정확도 | |
-| 55 | 문화시설 — 영화상영관 | `apis.data.go.kr/1741000/movie_theaters/info` | `40_movie_theaters.xlsx` | **대체** (카카오 CT1) | 주거여건 정확도 | |
+| 53 | 문화시설 — 공연장 | `apis.data.go.kr/1741000/performance_halls/info` | `38_performance_halls.xlsx` | **연결 대기** (활용신청 403 · 미적재 동안 카카오 CT1 대체+경고) | 주거여건 정확도 | 2026-09-30 적재·판정 경로 연결(`performance_halls`). 관리자 `culture_extended` 를 켜면 CT1 을 겹치지 않게 더함 |
+| 54 | 문화시설 — 박물관·미술관 | `apis.data.go.kr/1741000/museums_and_art_galleries/info` | `39_museums_galleries.xlsx` | **연결 대기** (활용신청 403) | 주거여건 정확도 | `museums_and_art_galleries` |
+| 55 | 문화시설 — 영화상영관 | `apis.data.go.kr/1741000/movie_theaters/info` | `40_movie_theaters.xlsx` | **연결 대기** (활용신청 403) | 주거여건 정확도 | `movie_theaters` (관마다 한 행 → 극장 한 곳으로 묶음) |
 | 56 | 공공시설 — 관공서 | — | `43_government_offices.csv` (전북특별자치도) | **대체** (카카오 PO3) | 주거여건 정확도 | 체크리스트상 **전북 데이터만 존재(jb)** — 타지역 확장 시 결손 |
 | 57 | 공공시설 — 행정복지센터 | — | `44_admin_centers.csv` (행안부 읍면동 하부행정기관) | **대체** (카카오 PO3) | 주거여건 정확도 | |
 | 58 | 공공시설 — 도서관 | — | `45_public_libraries.xlsx` (문체부 전국문화기반시설 총람) | **대체** (카카오 + 분류 필터) | 주거여건 정확도 | '도서관' 키워드가 영어학원·화장실을 물어와 분류 필터로 거름 |

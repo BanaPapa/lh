@@ -37,6 +37,7 @@ from app.screening.front_door import (
     university_base,
 )
 from app.screening.bus_headway import BusHeadwayResolver, StopHeadway
+from app.screening import culture as culture_source
 from app.screening.scorebook import FACILITY_GROUPS
 from app.rules_config import option_enabled, options_fingerprint
 from app.services.cadastral_local import CadastralLocalStore
@@ -616,7 +617,16 @@ GROUP_SPECS: dict[str, GroupSpec] = {
         "도시공원정보 표준데이터 대신 지도 검색으로 근사했습니다.",
         keep=_is_park,
     ),
-    "culture": GroupSpec(("culture",), "connected", ""),
+    # 문화시설은 LH 기준(인허가 공연장·박물관미술관·영화상영관)으로 센다. 카카오 CT1
+    # feed 는 관리자 확장(culture_extended)이나 원장 미적재 대체일 때만 부른다
+    # (screening/culture.py · _build_culture_group).
+    "culture": GroupSpec(
+        ("culture",),
+        "connected",
+        culture_source.CULTURE_STANDARD_NOTE,
+        kakao_backed=False,
+        missing_note=culture_source.CULTURE_MISSING_NOTE,
+    ),
     # 공공·초중고는 생활안전지도 레이어(지정 원천)가 답하면 connected 로 올린다
     # (_build_group). 레이어가 없거나 실패해 지도 분류로 채웠으면 근사(substituted)다.
     "public": GroupSpec(
@@ -1350,6 +1360,9 @@ class AmenityCollector:
         for name, code in category.items():
             if name == "hospital" and use_designated_hospital:
                 continue
+            # 문화시설 CT1 은 LH 기준 밖이라 확장·대체일 때만 부른다.
+            if name == "culture" and not self._culture_plan().use_kakao:
+                continue
             if name in feeds:
                 continue
             feeds[name] = self._kakao_category(code, center, radius_m)
@@ -1816,6 +1829,8 @@ class AmenityCollector:
         radius_m: int,
     ) -> GroupCollection:
         spec = GROUP_SPECS[key]
+        if key == "culture":
+            return self._build_culture_group(results, rings, center, radius_m)
         if spec.localdata_datasets:
             return self._build_localdata_group(key, spec, rings, center, radius_m)
         if not spec.feeds:
@@ -1997,6 +2012,104 @@ class AmenityCollector:
             actual_source=LOCALDATA_SOURCE,
             distances_m=tuple(facility.distance_m for facility in facilities),
             facilities=tuple(facilities[:MAX_HITS_PER_GROUP]),
+        )
+
+    # -- 문화시설(인허가 3종 + 선택 확장) -----------------------------------
+    def _culture_plan(self) -> culture_source.CulturePlan:
+        ready: set[str] = set()
+        if self.facility_store is not None:
+            try:
+                ready = self.facility_store.ready_datasets()
+            except Exception:  # 적재 상태를 못 읽으면 미적재로 보고 대체·경고로 간다.
+                logger.exception("문화시설 인허가 원장 적재 상태 조회 실패")
+        return culture_source.plan_culture(
+            ready, option_enabled(culture_source.CULTURE_EXTENDED_OPTION)
+        )
+
+    def _build_culture_group(
+        self,
+        results: dict[str, FeedResult | BaseException],
+        rings: list[list[Coordinates]],
+        center: Coordinates,
+        radius_m: int,
+    ) -> GroupCollection:
+        """문화시설 — 기본은 LH 기준 인허가 3종, 확장·미적재 대체일 때만 카카오 CT1 을 더한다.
+
+        원장이 빠져 카카오로 메웠으면 근사(substituted)로 내리고 source_alert 로 경고한다.
+        """
+
+        plan = self._culture_plan()
+        facilities: list[CollectedFacility] = []
+        sources: list[str] = []
+        if plan.use_localdata and self.facility_store is not None:
+            seen: list[tuple[str, Coordinates]] = []
+            for item in self.facility_store.facilities_around(center, radius_m, plan.ready):
+                # 영화상영관 원장은 관(스크린)마다 한 행이다. 같은 극장은 한 곳으로 센다.
+                venue = culture_source.venue_name(item.name)
+                if any(
+                    culture_source.name_key(name) == culture_source.name_key(venue)
+                    and haversine_meters(point, item.coordinates)
+                    <= culture_source.DEDUPE_RADIUS_M
+                    for name, point in seen
+                ):
+                    continue
+                seen.append((venue, item.coordinates))
+                suspended = "휴업" in (item.status or "")
+                facilities.append(
+                    CollectedFacility(
+                        name=venue,
+                        address=item.road_address or item.address,
+                        coordinates=item.coordinates,
+                        distance_m=_distance_m(item.coordinates, rings, center),
+                        source_label=culture_source.CULTURE_LOCALDATA_SOURCE,
+                        nearest_facility_point=item.coordinates,
+                        nearest_boundary_point=_anchor_for(item.coordinates, rings),
+                        count_note=(
+                            culture_source.CULTURE_SUSPENDED_COUNT_NOTE if suspended else ""
+                        ),
+                    )
+                )
+            sources.append(culture_source.CULTURE_LOCALDATA_SOURCE)
+
+        outcome = results.get("culture")
+        kakao_ok = isinstance(outcome, FeedResult)
+        if plan.use_kakao and kakao_ok:
+            existing = [(f.name, f.coordinates) for f in facilities]
+            for place in _dedupe(outcome.places):
+                if is_planned_facility(place.name):
+                    continue
+                if culture_source.is_duplicate(place.name, place.coordinates, existing):
+                    continue
+                existing.append((place.name, place.coordinates))
+                measured = self._measure_station_like(
+                    place,
+                    rings,
+                    center,
+                    outcome.source_label,
+                    is_station=False,
+                    designatable=False,
+                )
+                if plan.extended and not plan.fallback:
+                    measured = measured._replace(
+                        count_note=culture_source.CULTURE_KAKAO_COUNT_NOTE
+                    )
+                facilities.append(measured)
+            sources.append(outcome.source_label)
+
+        alert = plan.alert(kakao_ok)
+        if not sources:
+            return GroupCollection(
+                "culture", "missing", plan.note(kakao_ok), "", (), (), source_alert=alert
+            )
+        facilities.sort(key=lambda facility: facility.distance_m)
+        return GroupCollection(
+            key="culture",
+            state=plan.state,
+            note=plan.note(kakao_ok),
+            actual_source=" + ".join(sources),
+            distances_m=tuple(facility.distance_m for facility in facilities),
+            facilities=tuple(facilities[:MAX_HITS_PER_GROUP]),
+            source_alert=alert,
         )
 
     # -- 정문·출구 3단 측정(대학·종합병원 공용) -----------------------------
@@ -2390,7 +2503,8 @@ def _with_source_alert(
     """시설군을 채운 원천의 장애·대체 경고를 모아 싣는다(심사 결과 상단 경고용)."""
 
     spec = GROUP_SPECS.get(collection.key)
-    messages: list[str] = []
+    # 시설군 조립 단계에서 이미 단 경고(문화시설 원장 미적재 등)는 지우지 않고 잇는다.
+    messages: list[str] = [collection.source_alert] if collection.source_alert else []
     for feed in spec.feeds if spec else ():
         outcome = results.get(feed)
         if isinstance(outcome, SourceMissing):
