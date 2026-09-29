@@ -299,7 +299,8 @@ def test_api_outage_is_dataset_missing_not_no_conflict() -> None:
 
     result = asyncio.run(service.review(request, progress, asyncio.Event()))
     factory = category_for(result, "factory_registered")
-    assert factory.status == "dataset_missing"
+    # 조회 실패는 원천이 없는 것과 달라 검토 필요로 올린다(통과 처리 금지, 2026-09-30).
+    assert factory.status == "review_required"
     assert "조회 실패" in factory.note and "재심사" in factory.note
     # 원천 상태에도 「실패」 줄이 생겨 심사 결과 경고(source_alerts)가 재심사를 안내한다.
     failed = [s for s in result.sources if s.state == "failed"]

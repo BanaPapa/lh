@@ -795,7 +795,8 @@ class TestSourceFailureNotSnapshot:
         )
         gas = category_for(result, "gas_station")
         assert gas.status != "no_conflict_in_snapshot"
-        assert gas.status == "dataset_missing"
+        # 조회 실패는 원천 미설정(dataset_missing)과 달리 검토 필요다 — 통과 처리되면 안 된다.
+        assert gas.status == "review_required"
         assert "실패" in gas.note
 
     def test_failed_source_is_marked_failed_in_status(self) -> None:
@@ -1185,7 +1186,8 @@ class TestFuelSources:
             request, facility_store=FakeFacilityStore([]), cng=RaisingCngClient()
         )
         cng = category_for(result, "cng_station")
-        assert cng.status == "dataset_missing", cng.note
+        # 조회 실패는 검토 필요로 올린다(원천 미설정 dataset_missing 과 구분, 2026-09-30).
+        assert cng.status == "review_required", cng.note
         assert "조회 실패 — 복구 후 재심사 필요" in cng.note
         assert "CNG" in cng.note
 
