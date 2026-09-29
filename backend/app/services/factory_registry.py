@@ -9,6 +9,12 @@ API 실측(2026-09-15): `cmpnyNm` 이 필수지만 공백 한 칸(" ")이 와일
 
 등록공장은 매입제외 확정 근거가 아니라 「공장 있음」 검토 표시(LH 확정 2026-09-11
 #1)이므로, 좌표를 못 붙인 행은 삭제하지 않고 격리 목록에 남긴다.
+
+카카오가 못 찾은 주소는 보조 지오코더(VWorld 주소검색)로 한 번 더 찾는다(2026-09-30).
+전북 등록공장 주소의 약 15%(4,978 중 724)가 카카오 실패였고, 그중 「전주시완산구 효자동2가
+368번지」(현대콘크리트, 분할로 사라진 옛 지번)는 LH 표준 데이터셋이 효자동2가 366-13(쑥고개로
+368)에 두어 LH 앱 1차 공장 검토에 37m 로 나온다. 보조 결과는 캐시에 「vworld|주소」 키로
+따로 남겨, 관리자 스위치(factory_geocode_vworld_fallback)를 끄면 카카오 결과만 쓴다.
 """
 
 from __future__ import annotations
@@ -48,6 +54,8 @@ DEFAULT_GEOCODE_CACHE = (
 )
 
 Geocoder = Callable[[str], Awaitable[Coordinates | None]]
+# 보조 지오코더 캐시 키 접두어. 카카오 결과(주소 그대로)와 섞이지 않게 한다.
+FALLBACK_CACHE_PREFIX = "vworld|"
 
 
 class FactoryRecord(NamedTuple):
@@ -128,11 +136,17 @@ class FactoryRegistryClient:
         service_key: str,
         geocoder: Geocoder | None = None,
         cache_path: Path | None = DEFAULT_GEOCODE_CACHE,
+        fallback_geocoder: Geocoder | None = None,
+        fallback_enabled: Callable[[], bool] | None = None,
         timeout: float = 60.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.service_key = service_key
         self.geocoder = geocoder
+        # 카카오가 못 찾은 주소의 보조(VWorld 주소검색). fallback_enabled 는 요청마다
+        # 관리자 스위치를 읽는다(없으면 늘 켬).
+        self.fallback_geocoder = fallback_geocoder
+        self._fallback_enabled = fallback_enabled or (lambda: True)
         self.cache_path = cache_path
         self.timeout = timeout
         self._transport = transport
@@ -224,17 +238,29 @@ class FactoryRegistryClient:
             logger.warning("등록공장 지오코딩 캐시를 쓰지 못했습니다: %s", self.cache_path)
 
     async def _coordinates_for(self, address: str) -> Coordinates | None:
+        found = await self._cached_lookup(address, address, self.geocoder)
+        if found is not None or self.fallback_geocoder is None:
+            return found
+        if not self._fallback_enabled():
+            return None
+        return await self._cached_lookup(
+            FALLBACK_CACHE_PREFIX + address, address, self.fallback_geocoder
+        )
+
+    async def _cached_lookup(
+        self, key: str, address: str, geocoder: Geocoder | None
+    ) -> Coordinates | None:
         cache = self._load_geocache()
-        if address in cache:
-            hit = cache[address]
+        if key in cache:
+            hit = cache[key]
             return Coordinates(lat=hit["lat"], lng=hit["lng"]) if hit else None
-        if self.geocoder is None:
+        if geocoder is None:
             return None
         try:
-            found = await self.geocoder(geocode_query(address))
+            found = await geocoder(geocode_query(address))
         except Exception:  # noqa: BLE001 — 지오코딩 장애는 격리로 남기고 계속 간다
             found = None
-        cache[address] = {"lat": found.lat, "lng": found.lng} if found else None
+        cache[key] = {"lat": found.lat, "lng": found.lng} if found else None
         return found
 
     async def factories_near(

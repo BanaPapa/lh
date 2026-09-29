@@ -748,8 +748,8 @@ class TestResultShape:
         result = run_review(build_request("house", "multi_child"), demo_mode=True)
         assert result.housing_type == "house"
         assert result.application_type == "multi_child"
-        # 공장 5종을 한 종류로 합쳐 30 → 26 (LH 확정 2026-09-11).
-        assert len(result.categories) == 26
+        # 공장 5종을 한 종류로 합쳐 30 → 26 (LH 확정 2026-09-11), 가스제품 제조업소(LH 앱 기준) 추가로 27.
+        assert len(result.categories) == 27
         assert len(result.findings) == 6
         # 미결은 INDEX §10-1 LH 판정 기준 결정 항목 위주로 싣는다. 건수보다 각
         # 항목이 근거 문서(H-번호)를 가리키는지가 중요하다. 2026-09-11 확정분은 내렸다.

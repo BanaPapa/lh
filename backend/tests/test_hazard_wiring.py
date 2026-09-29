@@ -823,6 +823,75 @@ class TestLpgRetailerWiring:
         assert retailer.note == "" and retailer.data_sources == []
 
 
+class FakeGasProductFile:
+    def __init__(self, rows, enabled: bool = True) -> None:
+        from app.services.gas_product_file import GasProductManufacturer
+
+        self.enabled = enabled
+        self.rows = [
+            GasProductManufacturer(
+                f"G-{n}", name, "주소", offset_coordinates(SITE_CENTER, n, e), "영업",
+                "압력용기 · 저장탱크", "고법",
+            )
+            for name, n, e in rows
+        ]
+
+    async def manufacturers_around(self, center, radius_m):
+        return list(self.rows)
+
+
+class TestGasProductManufacturerWiring:
+    """가스제품 제조업소 — LH 앱 기준 위험물 50m (관리자 스위치 gas_product_manufacturers)."""
+
+    @staticmethod
+    def _switch(monkeypatch, tmp_path, on: bool | None) -> None:
+        from app import rules_config
+
+        monkeypatch.setattr(rules_config, "RULES_PATH", tmp_path / "rule_overrides.json")
+        monkeypatch.setattr(rules_config, "_cache", None)
+        if on is not None:
+            rules_config.save_config(
+                rules_config.RulesConfig(options={"gas_product_manufacturers": on})
+            )
+
+    def test_manufacturer_within_50m_is_exclusion_by_default(self, monkeypatch, tmp_path) -> None:
+        self._switch(monkeypatch, tmp_path, None)
+        result = run_review(
+            build_request("house", "general"),
+            local_sources=LocalSourcesBundle(),
+            gas_product_file=FakeGasProductFile([("(주)성현", 0, 20)]),
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        maker = category_for(result, "gas_product_manufacturer")
+        assert maker.status == "exclusion_match", maker.note
+        assert maker.facilities[0].provider == "gas_product_file"
+        assert "압력용기" in maker.facilities[0].classification_note
+        assert [s.detail for s in maker.data_sources] == ["gas_product_file"]
+
+    def test_switch_off_is_not_applicable_and_moves_candidate_to_reference(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        self._switch(monkeypatch, tmp_path, False)
+        result = run_review(
+            build_request("house", "general"),
+            local_sources=LocalSourcesBundle(),
+            gas_product_file=FakeGasProductFile([("(주)성현", 0, 20)]),
+            vworld=FakeVWorldForFacilities(half_size_m=5),
+        )
+        maker = category_for(result, "gas_product_manufacturer")
+        assert maker.status == "not_applicable"
+        assert "관리자 설정" in (maker.not_applicable_reason or "")
+        hazmat = next(f for f in result.findings if f.rule_id == "RB14-HAZMAT")
+        assert hazmat.status != "exclusion_match"
+        assert any(f.name == "(주)성현" for f in hazmat.nearby_facilities)
+
+    def test_without_source_is_dataset_missing(self, monkeypatch, tmp_path) -> None:
+        self._switch(monkeypatch, tmp_path, None)
+        result = run_review(build_request("house", "general"), local_sources=LocalSourcesBundle())
+        maker = category_for(result, "gas_product_manufacturer")
+        assert maker.status == "dataset_missing"
+
+
 class TestCasinoRegistryWiring:
     def test_casino_within_25m_is_exclusion_for_multi_child(self) -> None:
         registry = FakeCasinoRegistry([("파라다이스카지노 워커힐점", 0, 20, "영업")])

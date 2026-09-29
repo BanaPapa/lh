@@ -164,6 +164,49 @@ async def test_factories_near_geocodes_once_and_caches_to_disk(tmp_path) -> None
     assert calls == []
 
 
+@pytest.mark.asyncio
+async def test_vworld_fallback_places_vanished_lot_and_respects_switch(tmp_path) -> None:
+    """카카오가 못 찾은 옛 지번(효자동2가 368번지)은 보조 지오코더로 한 번 더 찾는다.
+
+    보조 결과는 「vworld|주소」 키로 따로 캐시해, 스위치를 끄면 카카오 결과만 쓴다.
+    """
+
+    old_lot = "전북특별자치도 전주시완산구 효자동2가 368번지"
+    near = offset_coordinates(CENTER, 37, 0)
+    kakao_calls: list[str] = []
+    vworld_calls: list[str] = []
+
+    async def kakao(address: str) -> Coordinates | None:
+        kakao_calls.append(address)
+        return None
+
+    async def vworld(address: str) -> Coordinates | None:
+        vworld_calls.append(address)
+        return near
+
+    pages = [xml_page([factory_row("9", "현대콘크리트", old_lot)], total=1)]
+    cache = tmp_path / "geo.json"
+    switch = {"on": True}
+    client = FactoryRegistryClient(
+        "key", geocoder=kakao, cache_path=cache, transport=Recorder(pages).transport(),
+        fallback_geocoder=vworld, fallback_enabled=lambda: switch["on"],
+    )
+
+    found = await client.factories_near(CENTER, 100, "52111")
+    assert [f.name for f in found] == ["현대콘크리트"]
+    assert vworld_calls == [old_lot]
+    saved = json.loads(cache.read_text(encoding="utf-8"))
+    assert saved[old_lot] is None
+    assert saved["vworld|" + old_lot]["lat"] == pytest.approx(near.lat)
+
+    # 캐시가 있으면 다시 묻지 않고, 스위치를 끄면 보조 결과를 쓰지 않는다.
+    switch["on"] = False
+    assert await client.factories_near(CENTER, 100, "52111") == []
+    switch["on"] = True
+    assert [f.name for f in await client.factories_near(CENTER, 100, "52111")] == ["현대콘크리트"]
+    assert vworld_calls == [old_lot] and kakao_calls == [old_lot]
+
+
 # ---------------------------------------------------------------------------
 # 서비스 배선 — API 등록공장이 「공장 있음」 검토 표시로 올라온다
 # ---------------------------------------------------------------------------
@@ -228,3 +271,36 @@ def test_api_factory_becomes_review_candidate() -> None:
     )
     # 이 밖의 공장 사유(dataset_missing)가 남지 않는다.
     assert "등록공장 원천 없음" not in (factory.note or "")
+
+
+class BrokenFactoryRegistry(FakeFactoryRegistry):
+    async def factories_near(self, center, radius_m, sigungu_code):
+        raise PublicDataAPIError("등록공장 조회 실패 (04) HTTP 에러")
+
+
+def test_api_outage_is_dataset_missing_not_no_conflict() -> None:
+    """산단공 API 장애(2026-09-30 실측 「04 HTTP 에러」)를 「충돌 없음」으로 접지 않는다."""
+
+    from tests.test_hazard_review_service import FakeKakaoClient, build_request, category_for
+    from app.hazard_review.service import HazardReviewService
+
+    request = build_request(
+        "house", "general", geometry_source="parcel_polygon", half_size_m=20,
+        pnu="5213011900100010000",
+    )
+    service = HazardReviewService(
+        kakao=FakeKakaoClient(),  # type: ignore[arg-type]
+        demo_mode=False,
+        factory_registry=BrokenFactoryRegistry([]),  # type: ignore[arg-type]
+    )
+
+    async def progress(*_args: Any) -> None:
+        return None
+
+    result = asyncio.run(service.review(request, progress, asyncio.Event()))
+    factory = category_for(result, "factory_registered")
+    assert factory.status == "dataset_missing"
+    assert "조회 실패" in factory.note and "재심사" in factory.note
+    # 원천 상태에도 「실패」 줄이 생겨 심사 결과 경고(source_alerts)가 재심사를 안내한다.
+    failed = [s for s in result.sources if s.state == "failed"]
+    assert [s.source_id for s in failed] == ["failed-factory_registry"]

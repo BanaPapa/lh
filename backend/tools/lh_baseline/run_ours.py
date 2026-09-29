@@ -107,6 +107,7 @@ WARMUP_SOURCES = [
     ("cng", "CNG충전소(KGS ODcloud)", "all_stations"),
     ("safemap", "주유시설(생활안전지도)", "all_stations"),
     ("crematorium", "화장시설", "all_crematoriums"),
+    ("gas_product_file", "가스제품 제조업소(KGS ODcloud 15152505)", "all_manufacturers"),
     ("noise_emission", "소음배출시설", "all_facilities"),
 ]
 

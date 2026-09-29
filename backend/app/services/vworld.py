@@ -17,6 +17,8 @@ from app.services.http_client import shared_verify
 
 
 VWORLD_DATA_URL = "https://api.vworld.kr/req/data"
+# 주소 검색 API(느슨한 매칭). 카카오가 못 찾는 옛 지번의 보조 지오코딩에만 쓴다.
+VWORLD_SEARCH_URL = "https://api.vworld.kr/req/search"
 
 # 연속지적도(부번 포함). 지적도 도형은 이 레이어에서 나온다.
 CADASTRAL_LAYER = "LP_PA_CBND_BUBUN"
@@ -208,6 +210,57 @@ class VWorldClient:
             if name:
                 return name
         return ""
+
+    async def search_address_point(self, query: str) -> Coordinates | None:
+        """VWorld 검색 API(주소)로 좌표 한 점을 찾는다. 모호하면 None.
+
+        카카오 주소검색이 못 찾는 옛 지번(분할·합병으로 사라진 번지)의 보조다. 실측
+        (2026-09-30): 산단공 등록공장 「전주시완산구 효자동2가 368번지」(현대콘크리트)는
+        카카오·VWorld 지번 검색 모두 없음이고, 검색 API road 분류가 「쑥고개로 368
+        (효자동2가) = 효자동2가 366-13」 한 건을 준다 — LH 표준 데이터셋이 이 공장을 둔
+        필지(PNU …1036600 13)와 같다. 검색은 느슨한 매칭이라 **결과가 딱 한 건이고 그
+        법정동 이름이 질의에 들어 있을 때만** 받는다(엉뚱한 동 같은 번호를 막는다).
+        지번(parcel) 분류를 먼저, 없으면 도로명(road) 분류를 본다. 실패는 None.
+        """
+
+        if not self.enabled or not query.strip():
+            return None
+        async with httpx.AsyncClient(
+            timeout=self.timeout, transport=self._transport, verify=shared_verify()
+        ) as client:
+            for category in ("parcel", "road"):
+                params = {
+                    "service": "search",
+                    "request": "search",
+                    "version": "2.0",
+                    "query": query,
+                    "type": "address",
+                    "category": category,
+                    "format": "json",
+                    "size": "2",
+                    "key": self.api_key,
+                }
+                try:
+                    response = await client.get(VWORLD_SEARCH_URL, params=params)
+                    body = response.json().get("response") or {}
+                except (httpx.HTTPError, ValueError):
+                    return None
+                if body.get("status") != "OK":
+                    continue
+                items = (body.get("result") or {}).get("items") or []
+                if len(items) != 1:
+                    continue
+                item = items[0]
+                parcel = str((item.get("address") or {}).get("parcel") or "").strip()
+                dong = parcel.split(" ")[0] if parcel else ""
+                if not dong or dong not in query.replace(" ", ""):
+                    continue
+                point = item.get("point") or {}
+                try:
+                    return Coordinates(lat=float(point["y"]), lng=float(point["x"]))
+                except (KeyError, TypeError, ValueError):
+                    continue
+        return None
 
     async def parcel_at(self, lat: float, lng: float) -> ParcelFeature | None:
         """좌표를 품는 필지를 조회한다.
