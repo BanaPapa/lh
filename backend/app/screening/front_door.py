@@ -29,6 +29,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -270,6 +271,49 @@ def collect_door_candidates(
     return out
 
 
+# 역명 뒤에 붙는 출구 꼬리. 「익산역출구」·「익산역출구2」·「서현역 1번출구」·
+# 「건대입구역 2호선 2번 출구」·「판교역 신분당선 1번출구」·「○○역 1번 출입구」.
+_STATION_EXIT_TAIL_RE = re.compile(
+    r"^(\(.*?\))?([가-힣A-Za-z0-9]*선)?(\d+(-\d+)?번?)?(출구|출입구)\d*(\(.*\))?$"
+)
+# 역명을 품었어도 역 출구가 아닌 것 — 역 앞 주차장·오피스텔·아파트 진출입로.
+# 네이버는 「익산역 출구」에 「익산역 서측주차장출구」·「익산역시그니처S오피스텔출구」
+# (분류 「도로시설>방면정보」)를 섞어 준다(2026-09-30 실호출). 그대로 두면 역에서
+# 수백 m 떨어진 건물 출구가 「최근접 출구」로 뽑힐 수 있다.
+_STATION_EXIT_EXCLUDE_TOKENS: tuple[str, ...] = (
+    "주차장", "오피스텔", "아파트", "상가", "빌딩", "타워", "호텔", "백화점", "마트",
+)
+
+
+def station_exit_places(base: str, places: "list") -> list[tuple[str, Coordinates]]:
+    """지역검색 결과에서 그 역의 출구만 고른다.
+
+    철도역(일반·KTX)은 카카오에 「지하철출구」 분류 POI 가 없다(「익산역 1번출구」 0건,
+    2026-09-30 실호출). 표준 데이터셋의 철도역 출구 좌표(「익산역출구」 1·2)는
+    네이버 지역검색 「익산역 출구」가 그대로 돌려주므로, 철도역 출구는 이 경로로 모은다.
+    이름이 「역명 + 출구 꼬리」 꼴이어야 하고, 역 앞 건물·주차장 출구는 버린다.
+    """
+
+    squashed_base = "".join((base or "").split())
+    if not squashed_base:
+        return []
+    out: list[tuple[str, Coordinates]] = []
+    for place in places:
+        raw_name = getattr(place, "name", "") or ""
+        squashed = "".join(raw_name.split())
+        if not squashed.startswith(squashed_base):
+            continue
+        if any(bad in squashed for bad in _STATION_EXIT_EXCLUDE_TOKENS):
+            continue
+        if not _STATION_EXIT_TAIL_RE.match(squashed[len(squashed_base):]):
+            continue
+        coords = getattr(place, "coordinates", None)
+        if coords is None:
+            continue
+        out.append((raw_name.strip(), coords))
+    return out
+
+
 def auto_front_door(
     university_name: str,
     stop_names_and_points: list[tuple[str, Coordinates]],
@@ -372,12 +416,20 @@ def _university_tokens(name: str) -> tuple[str, ...]:
 # 편의시설/52_university_exit_update.xlsx). 납품 앱(진용성 v6)도 이 좌표로 잰다.
 # 정문을 특정할 근거가 여기 있으므로, 캠퍼스 필지를 정문 대용으로 쓰지 않는다
 # (그래서 통필지 면적 상한이 필요 없어졌다 — 2026-09-28 사용자 결정으로 폐지).
+# CSV 는 09-16 판에서 옮겼다. 납품 앱이 쓰는 09-28 판은 로컬에 없어, 그 판 거리를
+# 되짚어 네이버 지역검색 정문 좌표로 바꾼 행이 있다(2026-09-30): 전주대학교정문
+# (효자동2가 1243-3 에서 894.0m = LH 894)·전주비전대학교정문(1,187.7m = LH 1,188).
+# 예수대(LH 2,807 = 네이버 「예수대학교」 학교 지점)·폴리텍 익산(LH 562 = 캠퍼스 필지
+# 어양동 16 경계)은 정문 이름의 지점으로 재현되지 않아 09-16 값 그대로 둔다.
 DATASET_GATES_PATH = Path(__file__).resolve().parents[2] / "data" / "university_gates_jeonbuk.csv"
 DATASET_GATE_SOURCE = "표준 데이터셋 정문 좌표(대학알리미 + 수기 보완)"
 # 학교 이름이 같아도 캠퍼스가 다르면 다른 정문이다(전북대 전주 ↔ 특성화(익산) 19km).
 # 카카오 시설 좌표에서 이 거리 안의 정문만 그 학교 정문으로 본다.
 DATASET_GATE_MAX_M = 3_000.0
 _GATE_SUFFIXES: tuple[str, ...] = ("정문", "입구", "동문", "서문", "남문", "북문", "후문")
+# 권역 번호로 쓰인 로마 숫자(「폴리텍V대학」·「폴리텍Ⅴ대학」). 영문 단어의 일부(「KAIST」의
+# I)는 건드리지 않도록 앞뒤가 영문자가 아닌 I·V·X 묶음과 유니코드 로마 숫자만 뗀다.
+_ROMAN_NUMERAL_RE = re.compile(r"(?<![A-Za-z])[IVX]+(?![A-Za-z])|[Ⅰ-ⅿ]")
 
 
 @dataclass(frozen=True)
@@ -396,9 +448,13 @@ def school_key(name: str) -> str:
     「대학교」가 있으면 거기까지, 없으면 「대학」까지. 「원불교대학원대학교」처럼
     앞에 「대학」이 먼저 나와도 「대학교」를 우선한다. 카카오가 붙이는 「국립」 접두
     (「국립한국농수산대학교」·「국립군산대학교」)는 떼고 본다 — 데이터셋 정문 이름엔 없다.
+    폴리텍의 권역 번호는 로마 숫자로도 온다(카카오 「한국폴리텍 V 대학 익산캠퍼스」,
+    데이터셋 주소 「한국폴리텍V대학」). 아라비아 숫자처럼 떼어 「한국폴리텍대학」으로 모은다
+    — 떼지 않으면 정문을 못 찾아 시설 좌표로 재어졌다(부송동 736.7m, 2026-09-30).
     """
 
-    text = "".join(ch for ch in "".join((name or "").split()) if not ch.isdigit())
+    text = _ROMAN_NUMERAL_RE.sub("", "".join((name or "").split()))
+    text = "".join(ch for ch in text if not ch.isdigit())
     for prefix in ("(국립)", "국립"):
         if text.startswith(prefix):
             text = text[len(prefix):]
