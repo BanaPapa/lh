@@ -91,6 +91,7 @@ async def test_bundled_file_is_used_without_key_or_geocoding() -> None:
     assert client.has_bundle and client.enabled
     rows = await client.all_manufacturers()
     assert client.loaded_from == "bundle"
-    assert len(rows) == 767
+    # 번지 없는 동 중심점 좌표는 쓰지 않아 767곳 중 745곳만 확정(22곳 주소로 못 찾음).
+    assert len(rows) == 745
     assert sum("전북" in r.address for r in rows) == 18
     assert BUNDLED_GEOCODED_CSV.name.endswith("20250930.geocoded.csv")

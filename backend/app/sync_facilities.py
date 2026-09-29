@@ -33,22 +33,16 @@ RETRY_FAILED_AFTER_SECONDS = 60.0
 
 
 def localdata_client(settings: Settings) -> LocalDataClient:
-    """좌표 없는 영업 중 행을 주소로 살리는 지오코더(카카오)를 붙인 인허가 클라이언트."""
+    """좌표 없는 영업 중 행을 주소로 살리는 지오코더(카카오 → VWorld)를 붙인 인허가 클라이언트."""
 
-    from app.services.address_candidates import address_candidates
+    from app.services.address_geocoder import make_address_geocoder
     from app.services.kakao import KakaoClient
+    from app.services.vworld import VWorldClient
 
-    kakao = KakaoClient(settings.kakao_rest_api_key)
-
-    async def geocode(address: str):
-        if not kakao.enabled:
-            return None
-        for candidate in address_candidates(address):
-            found = await kakao.geocode(candidate)
-            if found:
-                return found[0].coordinates
-        return None
-
+    geocode = make_address_geocoder(
+        KakaoClient(settings.kakao_rest_api_key),
+        VWorldClient(settings.vworld_api_key, domain=settings.vworld_domain),
+    )
     return LocalDataClient(settings.public_data_key, geocode=geocode)
 
 

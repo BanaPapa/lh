@@ -160,10 +160,18 @@ def test_rate_limit_is_retried(monkeypatch) -> None:
 def test_address_candidates_strip_trailing_business_names() -> None:
     got = address_candidates("충청남도 당진시 신평면 당진항만로 73 영진티앤엠(주)")
     assert got[0] == "충청남도 당진시 신평면 당진항만로 73 영진티앤엠(주)"
-    assert got[1] == "충청남도 당진시 신평면 당진항만로 73 영진티앤엠"
     assert "충청남도 당진시 신평면 당진항만로 73" in got
-    assert got[-1] == "충청남도 당진시 신평면"
+    # 건물번호가 떨어진 후보(「…신평면」)는 만들지 않는다 — 면 중심점을 시설 위치로 쓰게 된다.
+    assert all(c.split()[-1][-1].isdigit() for c in got[1:])
     assert address_candidates("  ") == []
+
+
+def test_address_candidates_repair_stray_token_and_never_fall_to_region() -> None:
+    # 2026-09-30 성락시장: 「인후동2가 호 1575-1」이 동 중심점으로 떨어져 6.9m 로 재였다.
+    got = address_candidates("전북특별자치도 전주시 덕진구 인후동2가 호 1575-1")
+    assert "전북특별자치도 전주시 덕진구 인후동2가 1575-1" in got
+    assert "전북특별자치도 전주시 덕진구 인후동2가" not in got
+    assert "전북특별자치도 전주시 덕진구" not in got
 
 
 def test_geocoding_retries_with_trimmed_address() -> None:
