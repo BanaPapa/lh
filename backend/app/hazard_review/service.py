@@ -3381,7 +3381,10 @@ class HazardReviewService:
             return summary
 
         # 원천 조회가 실패했으면(활성 원천이 모두 실패) 스냅샷 자체가 없다.
-        # no_conflict_in_snapshot 로 둔갑시키지 않고 dataset_missing 으로 낸다.
+        # no_conflict_in_snapshot 로 둔갑시키지 않는다. dataset_missing(원천 미설정)으로
+        # 내면 심사표가 「판정 미적용 — 통과 처리」로 읽어 1차가 적격이 됐다(2026-09-30
+        # 효자동2가 363-2: 산단공 공장등록 API 장애인데 공장 검토 없이 적격). 조회 실패는
+        # 원천이 없는 것과 다르므로 검토 필요로 올려 재심사하게 한다.
         active_sources = self._category_active_sources(category)
         failed_for_category = active_sources & failed_sources
         if active_sources and active_sources <= failed_sources:
@@ -3390,7 +3393,7 @@ class HazardReviewService:
                 for source in sorted(failed_for_category)
             )
             return self._category_summary(
-                category, threshold, "dataset_missing",
+                category, threshold, "review_required",
                 f"{labels} 조회 실패 — 복구 후 재심사 필요", [],
                 connected=False, site_boundary_resolved=site_boundary_resolved,
             )

@@ -481,7 +481,8 @@ class TestSafemapColdStartInReview:
             safemap=safemap,
         )
         gas = category_for(result, "gas_station")
-        assert gas.status == "dataset_missing", gas.note
+        # 예열 전 조회 불가도 실패로 보고 검토 필요로 올린다(통과 처리 금지).
+        assert gas.status == "review_required", gas.note
         assert gas.status != "no_conflict_in_snapshot"
 
 
