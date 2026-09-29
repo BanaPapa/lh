@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/location/:path*",
-      "destination": "https://CLOUD_RUN_URL/:path*"
+      "destination": "https://lh-screening-api-117202716743.asia-northeast3.run.app/:path*"
     },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

@@ -1,4 +1,4 @@
-# LH 서류심사 백엔드를 Google Cloud Run 에 배포한다(docs/DEPLOY.md 3단계).
+﻿# LH 서류심사 백엔드를 Google Cloud Run 에 배포한다(docs/DEPLOY.md 3단계).
 #
 #   powershell -ExecutionPolicy Bypass -File deploy\deploy-backend.ps1 -Project <프로젝트ID>
 #
