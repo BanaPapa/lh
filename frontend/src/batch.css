@@ -573,3 +573,17 @@
   font-weight: 700;
   cursor: pointer;
 }
+
+/* 일괄 심사 제목 줄 오른쪽 끝(닫기 버튼 앞)의 테스트 제한 표시. 배포 사이트에서만 뜬다. */
+.batch-test-badge {
+  margin-left: auto;
+  align-self: center;
+  padding: 5px 12px;
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}

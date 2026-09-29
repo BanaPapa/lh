@@ -1084,10 +1084,11 @@ export function MapPanel({
       ),
     [hazardReview],
   );
-  // 용도지역 오버레이는 카카오 지도에서만 제공된다(네이버 SDK 미지원). 키 없음·
-  // 네이버 모드면 버튼을 비활성한다.
+  // 지도 키가 없으면 버튼을 비활성한다.
+  // 카카오는 USE_DISTRICT 오버레이, 네이버는 CadastralLayer(지적편집도)로 같은 용도지역
+  // 색 지도를 얹는다.
   const zoningLayerSupported =
-    mapProvider === "kakao" && selectedProviderConfigured;
+    (mapProvider === "kakao" || mapProvider === "naver") && selectedProviderConfigured;
 
   const toggleZoningLayer = useCallback(() => {
     setZoningLayerOn((on) => {
@@ -1124,7 +1125,22 @@ export function MapPanel({
   useEffect(() => {
     const map = mapRef.current;
     const runtime = runtimeRef.current;
-    if (!map || !runtime || runtime.provider !== "kakao" || !mapReady) return;
+    if (!map || !runtime || !mapReady) return;
+    if (runtime.provider === "naver") {
+      // 네이버 지도 v3 의 지적편집도 레이어. 용도지역이 색으로 칠해진다.
+      const LayerCtor = runtime.sdk?.maps?.CadastralLayer;
+      if (!zoningLayerOn || !LayerCtor) return;
+      const layer = new LayerCtor();
+      layer.setMap(map);
+      return () => {
+        try {
+          layer.setMap(null);
+        } catch {
+          // 지도 파기 중이면 무시한다.
+        }
+      };
+    }
+    if (runtime.provider !== "kakao") return;
     const typeId = runtime.sdk?.maps?.MapTypeId?.USE_DISTRICT;
     if (typeId == null) return;
     if (zoningLayerOn) {
@@ -1335,7 +1351,9 @@ export function MapPanel({
   const runCadastralRefresh = useCallback(() => {
     const map = mapRef.current;
     const runtime = runtimeRef.current;
-    if (!runtime || !map || !mapReady || !site) return;
+    if (!runtime || !map || !mapReady) return;
+    // 검색 전: 사용자가 지적도를 켰을 때만 지금 보이는 화면의 필지를 받는다.
+    if (!site && !cadastralAutoRef.current) return;
 
     // 확대 수준 게이트: 필지가 읽히는 수준(정규화 레벨 ≤ 4)에서만 조회·표시하고,
     // 더 축소되면 오버레이를 내린 뒤 안내만 남긴다.
@@ -1350,6 +1368,22 @@ export function MapPanel({
     const box = readMapBounds(runtime, map);
     if (!box) return;
 
+    if (!site) {
+      // 검색 전에는 사업지가 없으니 화면 가운데를 기준으로 보이는 타일만 받는다.
+      // 캐시가 겹치는 타일은 다시 받지 않으므로 지도를 옮길 때마다 새 자리만 받는다.
+      const viewCenter = boxCenter(box);
+      cadastralCenterRef.current = viewCenter;
+      cadastralViewportRef.current = box;
+      enqueueTiles(
+        tilesForViewport(box).filter((tile) =>
+          tileWithinRadius(viewCenter, tile, CADASTRAL_MAX_RADIUS_M),
+        ),
+        cadastralGenRef.current,
+      );
+      recomputeVisibleParcels();
+      return;
+    }
+
     const center = site.coordinates;
     // 뷰포트 전체가 사업지 3km 밖이면 조회하지 않는다.
     if (viewportOutsideRadius(center, box, CADASTRAL_MAX_RADIUS_M)) {
@@ -1363,7 +1397,7 @@ export function MapPanel({
     // 지도를 옮긴다고 새로 받지 않는다. 타일은 검색 직후 사업지 주변 350m 와
     // 빈 자리 클릭 주변 350m 에서만 받고, 여기서는 받아 둔 것을 뷰포트에 맞춰 그린다.
     recomputeVisibleParcels();
-  }, [mapReady, site, recomputeVisibleParcels]);
+  }, [mapReady, site, recomputeVisibleParcels, enqueueTiles]);
 
   /** 누른 자리 주변 350m 타일만 따로 받는다(스위치 상태와 무관). */
   const loadCadastralAround = useCallback(
@@ -1419,8 +1453,9 @@ export function MapPanel({
     cadastralCenterRef.current = null;
     setCadastralParcels([]);
     setCadastralNote("");
-    setCadastralAutoOn(true);
-    cadastralAutoRef.current = true;
+    // 검색 전에는 꺼 둔다 — 켜면 그때 보이는 화면의 필지를 받는다. 검색하면 켠다.
+    setCadastralAutoOn(Boolean(site));
+    cadastralAutoRef.current = Boolean(site);
     facilityRingsRef.current = [];
     if (!site) return;
     cadastralCenterRef.current = site.coordinates;
@@ -2636,9 +2671,7 @@ export function MapPanel({
               title={
                 zoningLayerSupported
                   ? "지적편집도 용도지역 레이어 켜기/끄기"
-                  : mapProvider === "naver"
-                    ? "카카오 지도에서만 제공됩니다"
-                    : "지도 키를 설정하면 사용할 수 있습니다"
+                  : "지도 키를 설정하면 사용할 수 있습니다"
               }
               onClick={toggleZoningLayer}
             >

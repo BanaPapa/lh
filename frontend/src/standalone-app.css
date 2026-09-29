@@ -614,6 +614,16 @@
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: var(--shadow);
+  /* 처음 몇 초만 보이고 사라진다(지도를 계속 가리면 불편하다). 다시 검색하면 새로 뜬다. */
+  animation: solo-map-empty-fade 0.6s ease 3.5s forwards;
+}
+
+@keyframes solo-map-empty-fade {
+  to {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
 }
 
 .solo-map-empty > svg {
@@ -1801,7 +1811,9 @@
 
 .solo-type-popover {
   position: absolute;
-  top: calc(100% + 8px);
+  /* 유형 줄에 딱 붙지 않게 띄운다. 안내일 뿐이라 마우스를 받지 않아 아래 버튼을 막지 않는다. */
+  top: calc(100% + 14px);
+  pointer-events: none;
   right: 0;
   z-index: 50;
   width: 420px;
@@ -1913,4 +1925,10 @@
 .solo-type-bar.is-single .solo-type-popover {
   right: auto;
   left: 0;
+}
+
+/* 주택유형 줄의 안내는 바로 아래 신청유형 줄을 가렸다. 두 줄의 높이가 같으므로 신청유형
+   줄(한 줄 높이 + 줄 간격 6px) 아래로 내려 띄운다. */
+.solo-housing-slot .solo-type-popover {
+  top: calc(200% + 6px + 14px);
 }

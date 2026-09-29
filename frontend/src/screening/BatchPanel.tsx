@@ -21,6 +21,7 @@ import {
 } from "./batchApi";
 import type { ScreeningResult } from "./types";
 import "../batch.css";
+import { IS_LOCAL_APP, TEST_BATCH_LIMIT } from "../deployment";
 
 interface BatchPanelProps {
   open: boolean;
@@ -249,6 +250,11 @@ export function BatchPanel({
               일괄 심사
             </h2>
           </div>
+          {!IS_LOCAL_APP && (
+            <span className="batch-test-badge">
+              테스트버전 - {TEST_BATCH_LIMIT}개 제한 적용중
+            </span>
+          )}
           <button type="button" className="api-keys-close" onClick={onClose} aria-label="닫기">
             <X size={18} />
           </button>
