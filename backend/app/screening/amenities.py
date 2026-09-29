@@ -64,6 +64,7 @@ from app.services.safemap_facilities import (
 )
 from app.services.hira_hospital import HiraHospitalClient
 from app.services.school_locations import SchoolLocationClient
+from app.services import traditional_market as market_source
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
 from app.services.transfer_center import TransferCenterClient
@@ -180,6 +181,7 @@ FEED_LABELS: dict[str, str] = {
     **{group.key: group.label for group in FACILITY_GROUPS},
     "school": "초·중·고등학교",
     "bus_stop": "버스정류장",
+    "traditional_market": "전통시장",
 }
 
 # (원천 이름, 표시 이름, 건수 또는 None, 성공 여부)
@@ -218,12 +220,12 @@ RETAIL_MISSING_NOTE = (
     "대규모점포 원장이 아직 적재되지 않아 산정하지 않습니다."
 )
 
-# 대규모점포 원장으로 산정할 때의 고지. 전통시장(소상공인시장진흥공단
-# 전통시장통통)은 아직 CSV 미적재라 대규모점포만 반영한 사실을 밝힌다.
+# 상업시설 = 대규모점포 + 전통시장(LH 최종보고서 2차 상업시설, 전북 138곳). 전통시장은
+# 전국전통시장표준데이터(2026-09-30 활용신청 승인)로 더한다. 원천이 빠지면
+# market_source.RETAIL_STORES_ONLY_NOTE 로 내리고 경고한다(_build_localdata_group).
 RETAIL_CONNECTED_NOTE = (
-    "행정안전부 대규모점포 인허가 원장으로 산정했습니다. "
-    "전통시장(소상공인시장진흥공단 전통시장통통)은 아직 원장을 확보하지 못해 "
-    "대규모점포만 반영했습니다."
+    "행정안전부 대규모점포 인허가 원장과 소상공인시장진흥공단 전국전통시장표준데이터로 "
+    "산정했습니다. 대규모점포와 40m 안에 겹치는 시장은 한 번만 셉니다."
 )
 
 KAKAO_PLACE_SOURCE = "카카오 장소검색"
@@ -605,7 +607,9 @@ GROUP_SPECS: dict[str, GroupSpec] = {
     # 2026-08-28 활용신청 승인돼 이제 지정 원천으로 직접 산정한다. 원장이
     # 미적재면 근사하지 않고 미적재로 남긴다.
     "retail": GroupSpec(
-        (),
+        # 전통시장 feed 는 대규모점포 원장에 더한다(_build_localdata_group). feed 로 두어
+        # 원천 장애 경고가 _with_source_alert 로 올라간다.
+        ("traditional_market",),
         "connected",
         RETAIL_CONNECTED_NOTE,
         kakao_backed=False,
@@ -728,6 +732,7 @@ class AmenityCollector:
         hospital_client: NcmcHospitalClient | None = None,
         hira_client: HiraHospitalClient | None = None,
         school_client: SchoolLocationClient | None = None,
+        market_client: market_source.TraditionalMarketClient | None = None,
         front_door_store: FrontDoorStore | None = None,
         cadastral_store: CadastralLocalStore | None = None,
         naver: NaverSearchClient | None = None,
@@ -780,6 +785,8 @@ class AmenityCollector:
         self.hira_client = hira_client
         # 초·중·고 1순위 원천(현재 위치). 생활안전지도 레이어는 이전 학교가 옛 부지다.
         self.school_client = school_client
+        # 상업시설의 전통시장 원천(대규모점포 원장에 더한다). 없으면 대규모점포만 센다.
+        self.market_client = market_client
         # 대학 정문 수기 지정 저장소. 없으면 자동 채택/좌표 폴백만 쓴다.
         self.front_door_store = front_door_store
         # 정문 필지경계를 조회할 로컬 지적도. 인덱스가 없으면 필지
@@ -905,9 +912,14 @@ class AmenityCollector:
             ][:BOUNDARY_LOOKUP_PER_GROUP]
             head += institutional
             tail = [f for f in tail if f not in institutional]
-            by_address = can_fetch and key in ADDRESS_PARCEL_GROUPS
+            # 학교와 전통시장은 지번주소 필지가 먼저다(LH앱 location_basis=PNU).
+            by_address = [
+                can_fetch and (key in ADDRESS_PARCEL_GROUPS or _is_market(f)) for f in head
+            ]
             address_parcels: dict[int, ParcelFeature | None] = (
-                await self._prefetch_address_parcels(head) if by_address else {}
+                await self._prefetch_address_parcels(head, by_address)
+                if any(by_address)
+                else {}
             )
             if can_fetch:
                 await self._prefetch_parcels(
@@ -924,8 +936,13 @@ class AmenityCollector:
                     result = _measure_to_parcel(facility, own, rings, center)
                     if result.measurement_tier == "site_boundary":
                         accepted.append(own)
+                        label = (
+                            market_source.MARKET_ADDRESS_PARCEL_NOTICE
+                            if _is_market(facility)
+                            else ADDRESS_PARCEL_NOTICE
+                        )
                         result = result._replace(
-                            front_door_notice=f"{ADDRESS_PARCEL_NOTICE} · {result.front_door_notice}"
+                            front_door_notice=f"{label} · {result.front_door_notice}"
                         )
                         measured.append(result)
                         continue
@@ -983,13 +1000,21 @@ class AmenityCollector:
         await asyncio.gather(*(fetch(f.coordinates) for f in facilities))
 
     async def _prefetch_address_parcels(
-        self, facilities: Sequence[CollectedFacility]
+        self,
+        facilities: Sequence[CollectedFacility],
+        wanted: Sequence[bool] | None = None,
     ) -> dict[int, ParcelFeature | None]:
-        """시설 지번주소 필지를 동시에 찾는다(순번 → 필지, 못 찾으면 None)."""
+        """시설 지번주소 필지를 동시에 찾는다(순번 → 필지, 못 찾으면 None).
+
+        wanted 가 주어지면 True 인 시설만 찾는다(상업시설은 전통시장만 주소 필지).
+        """
 
         semaphore = asyncio.Semaphore(BOUNDARY_LOOKUP_CONCURRENCY)
+        mask = list(wanted) if wanted is not None else [True] * len(facilities)
 
-        async def fetch(facility: CollectedFacility) -> ParcelFeature | None:
+        async def fetch(facility: CollectedFacility, want: bool) -> ParcelFeature | None:
+            if not want:
+                return None
             async with semaphore:
                 try:
                     return await self.address_parcels.parcel_for(
@@ -998,7 +1023,7 @@ class AmenityCollector:
                 except Exception:
                     return None
 
-        found = await asyncio.gather(*(fetch(f) for f in facilities))
+        found = await asyncio.gather(*(fetch(f, w) for f, w in zip(facilities, mask)))
         return dict(enumerate(found))
 
     async def _parcel_by_pnu(self, pnu: str) -> ParcelFeature | None:
@@ -1404,6 +1429,8 @@ class AmenityCollector:
             feeds["school"] = self._schools(center, radius_m)
         if _feed_enabled(self.safemap_offices):
             feeds["public"] = self._layer_offices(center, radius_m)
+        if self.market_client is not None and self.market_client.enabled:
+            feeds["traditional_market"] = self._traditional_markets(center, radius_m)
         if not self.kakao.enabled:
             # 키가 없으면 호출 자체를 만들지 않는다. 상태는 missing 으로 내려간다.
             return feeds
@@ -1487,6 +1514,28 @@ class AmenityCollector:
             return result
         alert = " ".join(filter(None, [standard_alert, result.alert]))
         return result._replace(degraded=True, alert=alert)
+
+    async def _traditional_markets(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """전통시장(상업시설). 실패하면 빈 결과 + 경고 — 대규모점포만으로 세되 조용히 넘기지 않는다."""
+
+        assert self.market_client is not None
+        try:
+            records = await self.market_client.markets_around(center, radius_m)
+        except Exception:
+            logger.warning("전통시장 표준데이터 실패: 대규모점포만 반영", exc_info=True)
+            return FeedResult(
+                (),
+                market_source.MARKET_SOURCE,
+                degraded=True,
+                alert=market_source.MARKET_OUTAGE_ALERT,
+            )
+        return FeedResult(
+            tuple(
+                RawPlace(r.name, r.address, f"전통시장 > {r.kind}", r.coordinates)
+                for r in records
+            ),
+            market_source.MARKET_SOURCE,
+        )
 
     # -- 생활안전지도 시설 레이어 ----------------------------------------------
     async def _layer_schools(self, center: Coordinates, radius_m: int) -> FeedResult:
@@ -1909,7 +1958,7 @@ class AmenityCollector:
         if key == "culture":
             return self._build_culture_group(results, rings, center, radius_m)
         if spec.localdata_datasets:
-            return self._build_localdata_group(key, spec, rings, center, radius_m)
+            return self._build_localdata_group(key, spec, rings, center, radius_m, results)
         if not spec.feeds:
             return GroupCollection(key, "missing", spec.note, "", (), ())
         if spec.kakao_backed and not self.kakao.enabled:
@@ -2046,6 +2095,7 @@ class AmenityCollector:
         rings: list[list[Coordinates]],
         center: Coordinates,
         radius_m: int,
+        results: dict[str, FeedResult | BaseException] | None = None,
     ) -> GroupCollection:
         """인허가 캐시(facility_store)로 채우는 시설군.
 
@@ -2082,11 +2132,23 @@ class AmenityCollector:
             ),
             key=lambda facility: facility.distance_m,
         )
+        note = spec.note
+        actual_source = LOCALDATA_SOURCE
+        if key == "retail":
+            # 상업시설 = 대규모점포 + 전통시장. 시장 feed 가 없거나 실패했으면 대규모점포만
+            # 세고 고지를 바꾼다(실패 경고는 _with_source_alert 가 올린다).
+            outcome = (results or {}).get("traditional_market")
+            if isinstance(outcome, FeedResult) and not outcome.degraded:
+                markets = _market_facilities(outcome, stored, rings, center)
+                facilities = sorted(facilities + markets, key=lambda f: f.distance_m)
+                actual_source = f"{LOCALDATA_SOURCE} + {market_source.MARKET_SOURCE}"
+            else:
+                note = market_source.RETAIL_STORES_ONLY_NOTE
         return GroupCollection(
             key=key,
             state=spec.state,
-            note=spec.note,
-            actual_source=LOCALDATA_SOURCE,
+            note=note,
+            actual_source=actual_source,
             distances_m=tuple(facility.distance_m for facility in facilities),
             facilities=tuple(facilities[:MAX_HITS_PER_GROUP]),
         )
@@ -2571,6 +2633,39 @@ def _collapse_same_gate(
         )
         collapsed.append(nearest._replace(name=label.name, address=label.address))
     return sorted(collapsed, key=lambda facility: facility.distance_m)
+
+
+def _is_market(facility: CollectedFacility) -> bool:
+    return facility.source_label == market_source.MARKET_SOURCE
+
+
+def _market_facilities(
+    outcome: FeedResult,
+    stores: Sequence[Any],
+    rings: list[list[Coordinates]],
+    center: Coordinates,
+) -> list[CollectedFacility]:
+    """전통시장 feed → 상업시설 시설. 대규모점포와 40m 안에 겹치는 시장은 뺀다."""
+
+    records = market_source.drop_duplicate_markets(
+        (
+            market_source.MarketRecord(p.name, "", p.address, "", p.coordinates)
+            for p in outcome.places
+        ),
+        [store.coordinates for store in stores],
+    )
+    return [
+        CollectedFacility(
+            name=record.name,
+            address=record.address,
+            coordinates=record.coordinates,
+            distance_m=_distance_m(record.coordinates, rings, center),
+            source_label=market_source.MARKET_SOURCE,
+            nearest_facility_point=record.coordinates,
+            nearest_boundary_point=_anchor_for(record.coordinates, rings),
+        )
+        for record in records
+    ]
 
 
 def _with_source_alert(
