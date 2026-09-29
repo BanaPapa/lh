@@ -88,6 +88,17 @@ OPTION_DEFS: tuple[OptionDef, ...] = (
         default=True,
         group="1차 유해시설",
     ),
+    OptionDef(
+        key="park_kakao_supplement",
+        label="공원에 지도 검색 공원 더하기",
+        description=(
+            "기본은 LH 기준대로 전국도시공원정보표준데이터의 도시공원만 셉니다. 켜면 "
+            "지도(카카오) 공원 검색 결과 중 표준데이터에 없는 공원(수목원·자연공원 입구 등)도 "
+            "더합니다. LH 결과보다 공원이 늘 수 있습니다."
+        ),
+        default=False,
+        group="2차 주거여건",
+    ),
 )
 OPTION_BY_KEY: dict[str, OptionDef] = {option.key: option for option in OPTION_DEFS}
 

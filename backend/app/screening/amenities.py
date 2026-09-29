@@ -39,6 +39,7 @@ from app.screening.front_door import (
 from app.screening.address_parcels import AddressParcelResolver
 from app.screening.bus_headway import BusHeadwayResolver, StopHeadway
 from app.screening import culture as culture_source
+from app.screening import parks as park_source
 from app.screening.scorebook import FACILITY_GROUPS
 from app.rules_config import option_enabled, options_fingerprint
 from app.services.cadastral_local import CadastralLocalStore
@@ -64,6 +65,7 @@ from app.services.safemap_facilities import (
 )
 from app.services.hira_hospital import HiraHospitalClient
 from app.services.school_locations import SchoolLocationClient
+from app.services.city_parks import CityParkClient
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
 from app.services.transfer_center import TransferCenterClient
@@ -115,10 +117,13 @@ BOUNDARY_LOOKUP_CONCURRENCY = 8
 BOUNDARY_FALLBACK_NOTICE = "시설 경계(필지)를 확인하지 못해 시설 좌표로 쟀습니다."
 # 시설 필지를 좌표가 아니라 시설 지번주소(PNU)로 먼저 찾는 시설군. LH앱은 학교 지번주소로
 # 필지를 만든다. 좌표 필지는 옆 필지·도로라 50~150m 길었다(address_parcels 참조).
+# 공원도 LH앱이 표준데이터 지번주소로 PNU 를 만든다(JB_54 location_basis=PNU). 큰 공원은
+# 대표 좌표가 도로·옆 필지에 떨어져도 공원 지번 필지 경계로 잰다.
 ADDRESS_PARCEL_GROUPS: frozenset[str] = frozenset(
-    {"school_elementary", "school_middle", "school_high"}
+    {"school_elementary", "school_middle", "school_high", "park"}
 )
 ADDRESS_PARCEL_NOTICE = "학교 지번주소 필지"
+ADDRESS_PARCEL_NOTICES: dict[str, str] = {"park": "공원 지번주소 필지"}
 
 # 역 출입구 조회(카카오 「{역명} N번출구」). 네이버 지역검색은 한 질의에 5건(무작위)만
 # 돌려줘 출구가 여섯 이상인 역에서 가장 가까운 출구가 빠졌다(2026-09-14 건대입구역:
@@ -487,6 +492,9 @@ def _is_general_hospital(place: RawPlace) -> bool:
 
 
 def _is_park(place: RawPlace) -> bool:
+    # 도시공원 표준데이터는 공원구분(소공원·묘지공원 등)과 관계없이 모두 공원이다(LH 기준).
+    if park_source.is_standard_category(place.category_name):
+        return True
     return _category_leaf(place) in PARK_CATEGORIES
 
 
@@ -619,10 +627,13 @@ GROUP_SPECS: dict[str, GroupSpec] = {
         "현재는 지도 분류로 근사했습니다.",
         keep=_is_general_hospital,
     ),
+    # 도시공원 표준데이터(park_client)가 답하면 connected 로 올린다(_build_group).
+    # 표준데이터가 없거나 실패해 지도 검색으로 채웠으면 근사(substituted)다.
     "park": GroupSpec(
         ("park",),
         "substituted",
         "도시공원정보 표준데이터 대신 지도 검색으로 근사했습니다.",
+        kakao_backed=False,
         keep=_is_park,
     ),
     # 문화시설은 LH 기준(인허가 공연장·박물관미술관·영화상영관)으로 센다. 카카오 CT1
@@ -728,6 +739,7 @@ class AmenityCollector:
         hospital_client: NcmcHospitalClient | None = None,
         hira_client: HiraHospitalClient | None = None,
         school_client: SchoolLocationClient | None = None,
+        park_client: CityParkClient | None = None,
         front_door_store: FrontDoorStore | None = None,
         cadastral_store: CadastralLocalStore | None = None,
         naver: NaverSearchClient | None = None,
@@ -780,6 +792,8 @@ class AmenityCollector:
         self.hira_client = hira_client
         # 초·중·고 1순위 원천(현재 위치). 생활안전지도 레이어는 이전 학교가 옛 부지다.
         self.school_client = school_client
+        # 공원 1순위 원천(LH 생활권공원과 같은 도시공원 표준데이터). 실패 시 카카오 대체.
+        self.park_client = park_client
         # 대학 정문 수기 지정 저장소. 없으면 자동 채택/좌표 폴백만 쓴다.
         self.front_door_store = front_door_store
         # 정문 필지경계를 조회할 로컬 지적도. 인덱스가 없으면 필지
@@ -925,7 +939,10 @@ class AmenityCollector:
                     if result.measurement_tier == "site_boundary":
                         accepted.append(own)
                         result = result._replace(
-                            front_door_notice=f"{ADDRESS_PARCEL_NOTICE} · {result.front_door_notice}"
+                            front_door_notice=(
+                                f"{ADDRESS_PARCEL_NOTICES.get(key, ADDRESS_PARCEL_NOTICE)}"
+                                f" · {result.front_door_notice}"
+                            )
                         )
                         measured.append(result)
                         continue
@@ -1404,6 +1421,8 @@ class AmenityCollector:
             feeds["school"] = self._schools(center, radius_m)
         if _feed_enabled(self.safemap_offices):
             feeds["public"] = self._layer_offices(center, radius_m)
+        if self.park_client is not None and self.park_client.enabled:
+            feeds["park"] = self._parks(center, radius_m)
         if not self.kakao.enabled:
             # 키가 없으면 호출 자체를 만들지 않는다. 상태는 missing 으로 내려간다.
             return feeds
@@ -1444,6 +1463,8 @@ class AmenityCollector:
                 continue
             feeds[name] = self._kakao_category(code, center, radius_m)
         for name, query in keyword.items():
+            if name in feeds:
+                continue  # 지정 원천이 이미 맡았다(공원 표준데이터).
             if name == "university" and _feed_enabled(self.safemap_universities):
                 feeds[name] = self._universities(query, center, radius_m)
                 continue
@@ -1487,6 +1508,45 @@ class AmenityCollector:
             return result
         alert = " ".join(filter(None, [standard_alert, result.alert]))
         return result._replace(degraded=True, alert=alert)
+
+    async def _parks(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """공원: 도시공원 표준데이터 → 실패 시 카카오 「공원」 검색(경고).
+
+        관리자 옵션(park_kakao_supplement)을 켜면 표준데이터에 없는 카카오 공원을 더한다.
+        """
+
+        assert self.park_client is not None
+        try:
+            records = await self.park_client.parks_around(center, radius_m)
+        except Exception:
+            logger.warning("도시공원 표준데이터 실패: 지도 검색으로 대체", exc_info=True)
+            if not self.kakao.enabled:
+                raise
+            fallback = await self._kakao_keyword("공원", center, radius_m)
+            return fallback._replace(degraded=True, alert=park_source.PARK_STANDARD_ALERT)
+        places = tuple(
+            RawPlace(r.name, r.address, park_source.standard_category(r.kind), r.coordinates)
+            for r in records
+        )
+        standard = FeedResult(places, park_source.PARK_STANDARD_SOURCE)
+        if not (
+            self.kakao.enabled and option_enabled(park_source.PARK_SUPPLEMENT_OPTION)
+        ):
+            return standard
+        try:
+            kakao = await self._kakao_keyword("공원", center, radius_m)
+        except Exception:
+            logger.warning("카카오 공원 보강 실패: 표준데이터만 사용", exc_info=True)
+            return standard._replace(degraded=True, alert=park_source.PARK_SUPPLEMENT_ALERT)
+        known = [(p.name, p.coordinates) for p in places]
+        extra = tuple(
+            p
+            for p in kakao.places
+            if _is_park(p) and not park_source.is_duplicate(p.name, p.coordinates, known)
+        )
+        return FeedResult(
+            places + extra, f"{park_source.PARK_STANDARD_SOURCE} + {KAKAO_PLACE_SOURCE}"
+        )
 
     # -- 생활안전지도 시설 레이어 ----------------------------------------------
     async def _layer_schools(self, center: Coordinates, radius_m: int) -> FeedResult:
@@ -2010,6 +2070,15 @@ class AmenityCollector:
         elif key.startswith("school_") and SAFEMAP_SCHOOL_SOURCE in sources:
             state = "connected"
             note = SCHOOL_LAYER_NOTE
+        if key == "park" and any(
+            src.startswith(park_source.PARK_STANDARD_SOURCE) for src in sources
+        ):
+            state = "connected"
+            note = (
+                park_source.PARK_SUPPLEMENT_NOTE
+                if any("+" in src for src in sources)
+                else park_source.PARK_STANDARD_NOTE
+            )
         if key == "public" and any(src.startswith(SAFEMAP_OFFICE_SOURCE) for src in sources):
             state = "connected"
             note = PUBLIC_LAYER_NOTE
