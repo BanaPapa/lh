@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/location/:path*",
+      "destination": "https://CLOUD_RUN_URL/:path*"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

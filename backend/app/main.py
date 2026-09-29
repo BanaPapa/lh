@@ -12,6 +12,7 @@ from app.screening.batch import router as screening_batch_router
 from app.screening.router import router as screening_router
 from app.services.demo import demo_geocode
 from app.services.kakao import KakaoAPIError, KakaoClient
+from app.rate_limit import rate_limit_middleware
 from app.settings_api.router import router as settings_router
 
 
@@ -36,7 +37,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     ensure_api_sources_warmup(service)
     ensure_local_sources_warmup(service)
     # 받은 지 하루가 넘은 인허가 원장(숙박·위락·대규모점포 등)을 백그라운드로 다시 받는다.
-    ensure_facility_sync(get_settings())
+    # 배포(Cloud Run)에서는 끈다 — 이미지에 구운 원장을 쓴다(FACILITY_SYNC_ON_STARTUP).
+    if get_settings().facility_sync_on_startup:
+        ensure_facility_sync(get_settings())
     yield
 
 
@@ -55,6 +58,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+
+# 누구나 접속하는 배포에서 심사 시작 요청을 접속자별로 제한한다(설정 0 이면 통과).
+app.middleware("http")(rate_limit_middleware)
 
 app.include_router(hazard_review_router)
 app.include_router(screening_router)

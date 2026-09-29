@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     demo_mode: bool = True
     allowed_origins: str = "http://localhost,http://localhost:5180,http://127.0.0.1:5180"
     cache_ttl_seconds: int = 600
+    # --- 배포(Cloud Run) 설정. 기본값은 로컬 동작 그대로다. -----------------------
+    # 기동 시 하루 지난 인허가 원장을 백그라운드로 다시 받을지. Cloud Run 은 서버가
+    # 수시로 새로 켜지고 디스크가 임시라, 켤 때마다 58MB 를 다시 받게 된다. 배포에서는
+    # 끄고 이미지를 만들 때 최신 원장을 구워 넣는다.
+    facility_sync_on_startup: bool = True
+    # 누구나 접속하는 배포에서 공공 API 쿼터를 지키는 접속자(IP)별 심사 시작 제한.
+    # 0 이면 제한하지 않는다(로컬 기본).
+    rate_limit_per_minute: int = 0
+    rate_limit_per_day: int = 0
+    # 일괄 심사 한 번에 올릴 수 있는 행 수 상한. 배포에서는 작게 둔다.
+    batch_max_rows: int = 500
 
     model_config = SettingsConfigDict(
         env_file=".env",

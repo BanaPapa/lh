@@ -1,0 +1,61 @@
+# LH 서류심사 백엔드를 Google Cloud Run 에 배포한다(docs/DEPLOY.md 3단계).
+#
+#   powershell -ExecutionPolicy Bypass -File deploy\deploy-backend.ps1 -Project <프로젝트ID>
+#
+# backend/.env 의 API 키를 읽어 Cloud Run 환경변수로 넘긴다. 키 파일은 저장소에 남기지
+# 않도록 임시 폴더에 만들었다가 지운다. 배포용 설정(기동 동기화 끄기·심사 횟수 제한 등)은
+# 아래 $deploySettings 에서 바꾼다.
+param(
+  [Parameter(Mandatory = $true)][string]$Project,
+  [string]$Region = "asia-northeast3",   # 서울
+  [string]$Service = "lh-screening-api"
+)
+
+$ErrorActionPreference = "Stop"
+$root = Split-Path -Parent $PSScriptRoot
+$envFile = Join-Path $root "backend\.env"
+if (-not (Test-Path $envFile)) { throw "backend\.env 가 없습니다. API 키가 든 .env 가 필요합니다." }
+
+# .env 에서 옮길 키(값이 있는 것만). 파일 경로류(로컬 전용)는 옮기지 않는다.
+$keyNames = @(
+  "KAKAO_REST_API_KEY", "TAGO_SERVICE_KEY", "PUBLIC_DATA_SERVICE_KEY",
+  "NAVER_SEARCH_CLIENT_ID", "NAVER_SEARCH_CLIENT_SECRET",
+  "VWORLD_API_KEY", "VWORLD_DOMAIN", "OPINET_API_KEY", "SAFEMAP_API_KEY",
+  "SEOUL_OPEN_DATA_KEY", "GG_OPEN_API_KEY", "HAZARD_CONTEXT_RADIUS_M"
+)
+$values = @{}
+foreach ($line in Get-Content $envFile -Encoding UTF8) {
+  if ($line -match '^\s*([A-Z0-9_]+)\s*=\s*(.*)$') {
+    $name = $Matches[1]; $value = $Matches[2].Trim().Trim('"').Trim("'")
+    if ($keyNames -contains $name -and $value) { $values[$name] = $value }
+  }
+}
+
+# 배포 전용 설정. 누구나 접속하는 테스트 서버라 공공 API 쿼터를 지키는 값을 둔다.
+$deploySettings = [ordered]@{
+  DEMO_MODE                 = "false"
+  FACILITY_SYNC_ON_STARTUP  = "false"  # 원장은 이미지에 구워 넣는다
+  RATE_LIMIT_PER_MINUTE     = "3"      # 접속자당 1분에 심사 시작 3건
+  RATE_LIMIT_PER_DAY        = "40"     # 접속자당 하루 40건
+  BATCH_MAX_ROWS            = "10"     # 일괄 심사 한 번에 10건
+}
+foreach ($k in $deploySettings.Keys) { $values[$k] = $deploySettings[$k] }
+
+$yaml = Join-Path $env:TEMP "lh-cloudrun-env.yaml"
+$lines = foreach ($k in $values.Keys) { "{0}: '{1}'" -f $k, ($values[$k] -replace "'", "''") }
+[System.IO.File]::WriteAllLines($yaml, $lines, (New-Object System.Text.UTF8Encoding $false))
+
+try {
+  gcloud run deploy $Service `
+    --project $Project `
+    --region $Region `
+    --source (Join-Path $root "backend") `
+    --env-vars-file $yaml `
+    --allow-unauthenticated `
+    --memory 1Gi --cpu 1 `
+    --min-instances 0 --max-instances 1 `
+    --timeout 900 `
+    --cpu-boost
+} finally {
+  Remove-Item $yaml -ErrorAction SilentlyContinue
+}

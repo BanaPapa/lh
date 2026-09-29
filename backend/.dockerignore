@@ -1,0 +1,16 @@
+# docker build 컨텍스트 제외 목록(.gcloudignore 와 같다).
+.gcloudignore
+.git
+.env
+*.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+tests/
+tools/
+data/cadastral_*
+data/front_doors.json

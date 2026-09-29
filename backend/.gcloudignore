@@ -1,0 +1,18 @@
+# gcloud run deploy --source 업로드 목록. .gitignore 대신 이 파일을 따른다.
+# 인허가 원장(data/facilities.db)·기준 편집값(data/rule_overrides.json)은 git 에는
+# 없지만 배포 이미지에는 들어가야 하므로 여기서는 제외하지 않는다.
+.gcloudignore
+.git
+.env
+*.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+tests/
+tools/
+data/cadastral_*
+data/front_doors.json

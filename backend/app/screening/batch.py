@@ -55,6 +55,14 @@ logger = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/api/screening/batch", tags=["screening-batch"])
 
 MAX_ROWS = 500
+
+
+def _batch_limit() -> int:
+    """이번 서버의 일괄 심사 행 상한. 배포(BATCH_MAX_ROWS)는 공공 API 쿼터 때문에 작게 둔다."""
+
+    from app.config import get_settings
+
+    return max(1, min(MAX_ROWS, get_settings().batch_max_rows))
 # 원천 API(카카오·TAGO·VWorld) 쿼터를 지키려고 한 번에 두 건까지만 돌린다.
 CONCURRENCY = 2
 
@@ -363,8 +371,9 @@ def _rows_from_table(table: list[list[object]], file_name: str, sheet: str = "")
         )
     if not rows:
         raise HTTPException(status_code=400, detail="소재지가 적힌 행이 없습니다.")
-    if len(rows) > MAX_ROWS:
-        raise HTTPException(status_code=400, detail=f"한 번에 {MAX_ROWS}건까지 올릴 수 있습니다({len(rows)}건).")
+    limit = _batch_limit()
+    if len(rows) > limit:
+        raise HTTPException(status_code=400, detail=f"한 번에 {limit}건까지 올릴 수 있습니다({len(rows)}건).")
     return BatchParseResponse(
         file_name=file_name,
         sheet=sheet,
@@ -713,6 +722,11 @@ async def start_batch(
 ) -> BatchStart:
     from app.screening.router import _await_warmup
 
+    limit = _batch_limit()
+    if len(payload.rows) > limit:
+        raise HTTPException(
+            status_code=400, detail=f"한 번에 {limit}건까지 심사할 수 있습니다({len(payload.rows)}건)."
+        )
     await _await_warmup(screening)
     batch_id = str(uuid4())
     batch = BatchStatus(

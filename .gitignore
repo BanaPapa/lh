@@ -108,3 +108,6 @@ backend/.env.bak.*
 
 # 관리자 「기준 편집」 저장값(로컬 설정)
 backend/data/rule_overrides.json
+
+# 테스트 배포 절차(Vercel + Cloud Run).
+!docs/DEPLOY.md
