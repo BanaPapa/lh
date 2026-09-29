@@ -205,6 +205,38 @@ DATASETS: tuple[LocalDataSet, ...] = (
         facility_type="high_pressure_gas",
         facility_type_label="특정고압가스업소",
     ),
+    # 2차 주거여건 문화시설. LH 최종 보고서의 문화시설은 이 세 원장뿐이다(전북 279곳,
+    # 내부망 앱 원천 38_performance_halls·39_museums_galleries·40_movie_theaters).
+    # 카카오 CT1 은 갤러리·공연단체가 섞이고 일부 LH 시설을 놓쳐, 지정 원천으로 바꾼다
+    # (screening/culture.py). 세 슬러그 모두 2026-09-30 실호출에서 403
+    # SERVICE_KEY_IS_NOT_REGISTERED 로 엔드포인트는 있고 활용신청만 남은 상태다.
+    # 승인 전에는 적재가 실패하고 문화시설은 카카오 CT1 로 대체하며 경고를 띄운다.
+    # 응답 스키마는 표준(BPLC_NM·CRD_INFO_X/Y·SALS_STTS_CD)이며, 시설 구분은
+    # 문화체육업종(CULTR_SPTS_TPBIZ_NM: 공연장·박물관·미술관·영화상영관)에 온다.
+    LocalDataSet(
+        key="performance_halls",
+        label="공연장",
+        slug="performance_halls",
+        facility_type="performance_hall",
+        facility_type_label="공연장",
+        category_fields=("CULTR_SPTS_TPBIZ_NM",),
+    ),
+    LocalDataSet(
+        key="museums_and_art_galleries",
+        label="박물관·미술관",
+        slug="museums_and_art_galleries",
+        facility_type="museum_gallery",
+        facility_type_label="박물관·미술관",
+        category_fields=("CULTR_SPTS_TPBIZ_NM", "MSM_ARTM_TYPE_NM"),
+    ),
+    LocalDataSet(
+        key="movie_theaters",
+        label="영화상영관",
+        slug="movie_theaters",
+        facility_type="movie_theater",
+        facility_type_label="영화상영관",
+        category_fields=("CULTR_SPTS_TPBIZ_NM",),
+    ),
     # 위락 마목 무도 2종. 둘 다 활용신청 승인 전까지 403 이 난다(2026-08-27 확인).
     LocalDataSet(
         key="dance_halls",
@@ -413,6 +445,13 @@ class LocalDataClient:
                 )
             await asyncio.sleep(RETRY_BASE_SECONDS * (2**attempt))
 
+        if response is not None and response.status_code == 403:
+            # 엔드포인트는 있고 인증키 활용신청이 승인되지 않은 상태다(재시도해도 같다).
+            raise LocalDataAPIError(
+                f"{dataset.label} 활용신청 미승인(403 SERVICE_KEY_IS_NOT_REGISTERED) — "
+                "공공데이터포털에서 활용신청 후 다시 받으세요.",
+                403,
+            )
         if response is None or response.status_code != 200:
             raise LocalDataAPIError(
                 f"{dataset.label} 응답 오류 "

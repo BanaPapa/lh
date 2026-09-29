@@ -74,6 +74,38 @@ class DisabledKakao:
         raise AssertionError("키가 없으면 호출하지 않아야 한다")
 
 
+def culture_record(dataset_key: str, name: str, offset_m: float, status: str = "영업/정상"):
+    from app.services.localdata import LocalDataRecord
+
+    point = offset_coordinates(CENTER, offset_m, 0)
+    return LocalDataRecord(
+        dataset_key=dataset_key,
+        record_id=f"{dataset_key}:{name}",
+        name=name,
+        address=f"{name} 지번주소",
+        road_address=f"{name} 도로명주소",
+        coordinates=point,
+        status=status,
+        category="",
+    )
+
+
+def culture_store(tmp_path, records=None, datasets=None):
+    """문화시설 인허가 원장 3종을 적재한 로컬 캐시. records 가 없으면 먼 곳 한 건씩 둔다."""
+
+    from app.screening.culture import CULTURE_DATASETS
+    from app.services.facility_store import FacilityStore
+
+    store = FacilityStore(db_path=tmp_path / "facilities.db")
+    by_key: dict[str, list] = {}
+    for record in records or []:
+        by_key.setdefault(record.dataset_key, []).append(record)
+    for key in datasets if datasets is not None else CULTURE_DATASETS:
+        rows = by_key.get(key) or [culture_record(key, f"먼{key}", 50_000)]
+        store.replace_dataset(key, rows)
+    return store
+
+
 class FakeTago:
     def __init__(self, rows: list[dict[str, Any]] | None = None, enabled: bool = True) -> None:
         self.rows = rows or []
@@ -124,8 +156,9 @@ async def test_group_states_and_notes_follow_the_source_map() -> None:
     assert result["subway"].state == "connected"
     # 연결된 원천이라도 기준점이 출입구가 아니면 그 사실을 밝힌다.
     assert "역 대표점" in result["subway"].note
-    assert result["culture"].state == "connected"
-    assert result["culture"].note == ""
+    # 문화시설 인허가 원장이 없으면 카카오 CT1 로 대신 채우되 근사·경고로 드러낸다.
+    assert result["culture"].state == "substituted"
+    assert "재심사" in result["culture"].source_alert
     assert result["hospital"].state == "substituted"
     assert "건강보험심사평가원" in result["hospital"].note
 
@@ -303,7 +336,7 @@ async def test_source_failure_becomes_missing_with_reason() -> None:
     assert result["subway"].state == "missing"
     assert result["subway"].note.startswith("원천 조회에 실패했습니다:")
     # 한 원천이 죽어도 나머지 시설군은 살아 있어야 한다.
-    assert result["culture"].state == "connected"
+    assert result["culture"].state != "missing"
 
 
 @pytest.mark.asyncio
@@ -366,13 +399,16 @@ async def test_distance_is_measured_from_the_parcel_boundary() -> None:
 
 
 @pytest.mark.asyncio
-async def test_repeated_collection_uses_the_cache() -> None:
+async def test_repeated_collection_uses_the_cache(tmp_path) -> None:
     kakao = FakeKakao(
         categories={"SW8": [place("판교역", 400)]},
         # 정류장이 0곳이면 응답 이상 경고가 붙어 캐시하지 않는다. 정상 결과를 만든다.
         keywords={"버스정류장": [place("판교역정류장", 120)]},
     )
-    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]))
+    # 문화시설 원장이 없으면 대체 경고가 붙어 캐시하지 않는다. 원장을 적재해 둔다.
+    collector = AmenityCollector(
+        kakao=kakao, tago=FakeTago([]), facility_store=culture_store(tmp_path)
+    )
 
     await collector.collect([], CENTER)
     first_calls = len(kakao.calls)
