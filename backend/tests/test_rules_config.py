@@ -80,7 +80,7 @@ def test_pass_threshold_follows_relaxed_flag() -> None:
     assert pass_threshold_for(True) == PASS_THRESHOLD_RELAXED == 65
 
 
-def test_rules_api_roundtrip_is_loopback_only() -> None:
+def test_rules_api_read_is_public_but_save_is_loopback_only() -> None:
     import os
 
     os.environ["DEMO_MODE"] = "true"
@@ -88,8 +88,11 @@ def test_rules_api_roundtrip_is_loopback_only() -> None:
 
     from app.main import app
 
+    # 배포 테스트 서버의 「관리자 설정」 화면이 기준을 보여야 하므로 읽기는 누구나 된다.
+    # 저장은 여전히 이 서버 자신(루프백)에서만 된다.
     outsider = TestClient(app, client=("203.0.113.9", 51000))
-    assert outsider.get("/api/settings/rules").status_code == 403
+    assert outsider.get("/api/settings/rules").status_code == 200
+    assert outsider.put("/api/settings/rules", json={"relaxed_2027": True}).status_code == 403
 
     client = TestClient(app, client=("127.0.0.1", 51000))
     initial = client.get("/api/settings/rules").json()

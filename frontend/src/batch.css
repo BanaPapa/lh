@@ -534,3 +534,42 @@
 .batch-row-progress small {
   white-space: nowrap;
 }
+
+/* 배포 테스트 서버에서 일괄 심사 전에 띄우는 안내(테스트 중 · 건수 제한). */
+.test-notice-modal {
+  box-sizing: border-box;
+  width: min(420px, 100%);
+  padding: 26px 26px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--fg);
+  background: var(--raise);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.test-notice-modal p {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.test-notice-modal p:first-child {
+  font-weight: 800;
+}
+
+.test-notice-modal button {
+  align-self: flex-end;
+  margin-top: 16px;
+  min-width: 96px;
+  height: 40px;
+  color: #fff;
+  background: var(--blue);
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}

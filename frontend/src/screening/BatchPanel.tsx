@@ -248,11 +248,6 @@ export function BatchPanel({
               <FileSpreadsheet size={22} aria-hidden="true" />
               일괄 심사
             </h2>
-            <p>
-              LH 「심사지 리스트 양식」(.xlsx·.csv)을 올리면 소재지마다 1차 매입제외 판정과 2차
-              배점을 차례로 냅니다. 「분류」「신청유형」 열이 있으면 행마다 그 값을 쓰고, 비어
-              있으면 아래 기본값을 씁니다. 실행 전에 올린 목록을 확인 창에서 고칠 수 있습니다.
-            </p>
           </div>
           <button type="button" className="api-keys-close" onClick={onClose} aria-label="닫기">
             <X size={18} />

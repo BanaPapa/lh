@@ -37,7 +37,7 @@ $deploySettings = [ordered]@{
   FACILITY_SYNC_ON_STARTUP  = "false"  # 원장은 이미지에 구워 넣는다
   RATE_LIMIT_PER_MINUTE     = "3"      # 접속자당 1분에 심사 시작 3건
   RATE_LIMIT_PER_DAY        = "40"     # 접속자당 하루 40건
-  BATCH_MAX_ROWS            = "10"     # 일괄 심사 한 번에 10건
+  BATCH_MAX_ROWS            = "20"     # 일괄 심사 한 번에 20건 (frontend TEST_BATCH_LIMIT 와 같게)
 }
 foreach ($k in $deploySettings.Keys) { $values[$k] = $deploySettings[$k] }
 

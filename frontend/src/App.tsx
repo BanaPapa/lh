@@ -14,6 +14,7 @@ import {
 import { BatchPanel } from "./screening/BatchPanel";
 import { ScreeningProgressModal } from "./screening/ScreeningProgressModal";
 import { ringCentroid } from "./hazard-review/mapViewport";
+import { IS_LOCAL_APP, TEST_BATCH_LIMIT } from "./deployment";
 import { isNonFacilityParcel } from "./hazard-review/cadastralTiles";
 import type {
   CadastralParcel,
@@ -145,6 +146,8 @@ function App() {
   const [screeningRunning, setScreeningRunning] = useState(false);
   const [screeningError, setScreeningError] = useState("");
   const [batchOpen, setBatchOpen] = useState(false);
+  // 배포 테스트 서버에서는 일괄 심사 전에 테스트·건수 제한 안내를 먼저 띄운다.
+  const [batchNoticeOpen, setBatchNoticeOpen] = useState(false);
   const [selectedHazardFindingId, setSelectedHazardFindingId] =
     useState<string | null>(null);
   const [selectedHazardFacilityId, setSelectedHazardFacilityId] =
@@ -829,7 +832,7 @@ function App() {
         running={screeningRunning}
         runAttention={runAttention}
         canPrint={Boolean(screeningResult)}
-        onOpenBatch={() => setBatchOpen(true)}
+        onOpenBatch={() => (IS_LOCAL_APP ? setBatchOpen(true) : setBatchNoticeOpen(true))}
         siteSummary={siteSummary}
         applicationTypes={hazardApplicationTypes}
         housingType={hazardHousingType}
@@ -932,6 +935,36 @@ function App() {
           </div>
         )}
       </div>
+
+      {batchNoticeOpen && (
+        <div
+          className="api-keys-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setBatchNoticeOpen(false);
+          }}
+        >
+          <section
+            className="test-notice-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-label="테스트 안내"
+          >
+            <p>현재 접속하신 앱은 테스트중입니다.</p>
+            <p>따라서, 일괄등록은 {TEST_BATCH_LIMIT}건으로 제한중입니다.</p>
+            <button
+              type="button"
+              autoFocus
+              onClick={() => {
+                setBatchNoticeOpen(false);
+                setBatchOpen(true);
+              }}
+            >
+              확인
+            </button>
+          </section>
+        </div>
+      )}
 
       <BatchPanel
         open={batchOpen}

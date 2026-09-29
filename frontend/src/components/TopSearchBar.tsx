@@ -22,15 +22,14 @@ import type {
 import { TypeSelector } from "./TypeSelector";
 import type { ThemeMode } from "../theme";
 import { ApiKeysPanel } from "./ApiKeysPanel";
+import { IS_LOCAL_APP } from "../deployment";
 
 /**
  * API 연결(키 입력·연결 점검) 패널은 이 PC(localhost)에서 띄울 때만 보인다. 배포 사이트는
  * 누구나 들어오므로 브라우저 키 입력칸에 카카오 키가 그대로 보이면 안 된다. 서버 키
  * 설정 API 는 원래 루프백에서만 열려 있어 배포 서버에서는 어차피 쓸 수 없다.
  */
-const API_PANEL_ENABLED =
-  import.meta.env.DEV ||
-  ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+const API_PANEL_ENABLED = IS_LOCAL_APP;
 import { SettingsMenu } from "./SettingsMenu";
 import { RulebookModal } from "../rulebook/RulebookModal";
 import { RulesPanel } from "./RulesPanel";
@@ -322,8 +321,8 @@ export function TopSearchBar({
             type="button"
             className={`solo-icon-button ${rulesOpen ? "is-active" : ""}`}
             onClick={() => setRulesOpen(true)}
-            aria-label="기준 편집"
-            title="기준 편집 — 임계거리 · 2027 완화 기준 · LH 개별 확인 제외"
+            aria-label="관리자 설정"
+            title="관리자 설정 — 임계거리 · 2027 완화 기준 · LH 개별 확인 제외"
           >
             <SlidersHorizontal size={18} />
           </button>

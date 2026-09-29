@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File deploy\deploy-backend.ps1 -Project <프
   | `FACILITY_SYNC_ON_STARTUP` | false | 켤 때 원장 재다운로드 안 함 |
   | `RATE_LIMIT_PER_MINUTE` | 3 | 접속자(IP)당 1분에 심사 시작 3건 |
   | `RATE_LIMIT_PER_DAY` | 40 | 접속자당 하루 40건 |
-  | `BATCH_MAX_ROWS` | 10 | 일괄 심사 한 번에 10건 |
+  | `BATCH_MAX_ROWS` | 20 | 일괄 심사 한 번에 20건 |
 
 - `backend/` 를 올려 Cloud Build 가 `Dockerfile` 로 이미지를 만든다. 업로드 목록은
   `backend/.gcloudignore` 를 따르므로 git 에 없는 `data/facilities.db`·`data/rule_overrides.json`

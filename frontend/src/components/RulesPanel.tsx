@@ -8,6 +8,7 @@ import {
   type RulesResponse,
 } from "../api";
 import "../rules.css";
+import { IS_LOCAL_APP } from "../deployment";
 
 interface RulesPanelProps {
   open: boolean;
@@ -150,16 +151,17 @@ export function RulesPanel({ open, onClose }: RulesPanelProps) {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="rules-modal" role="dialog" aria-modal="true" aria-label="기준 편집">
+      <section className="rules-modal" role="dialog" aria-modal="true" aria-label="관리자 설정">
         <header className="rules-head">
           <div>
             <h2>
               <SlidersHorizontal size={22} aria-hidden="true" />
-              기준 편집
+              관리자 설정
             </h2>
             <p>
-              거리 숫자와 완화 기준을 여기서 고칩니다. 룰북 정본 값은 늘 보관되며 「기본값」으로
-              되돌릴 수 있습니다. 저장한 값은 다음 심사부터 적용됩니다(로컬 전용).
+              {IS_LOCAL_APP
+                ? "거리 숫자와 완화 기준을 여기서 고칩니다. 룰북 정본 값은 늘 보관되며 「기본값」으로 되돌릴 수 있습니다. 저장한 값은 다음 심사부터 적용됩니다(로컬 전용)."
+                : "테스트 서버에서는 지금 적용 중인 기준을 볼 수만 있습니다. 기준 저장은 로컬 앱에서만 합니다."}
             </p>
           </div>
           <button type="button" className="api-keys-close" onClick={onClose} aria-label="닫기">
@@ -389,7 +391,8 @@ export function RulesPanel({ open, onClose }: RulesPanelProps) {
               type="button"
               className="rules-save"
               onClick={() => void handleSave()}
-              disabled={!data || saving || invalidKeys.length > 0}
+              disabled={!IS_LOCAL_APP || !data || saving || invalidKeys.length > 0}
+              title={IS_LOCAL_APP ? undefined : "테스트 서버에서는 저장할 수 없습니다(로컬 앱 전용)."}
             >
               {saving ? "저장 중…" : "저장"}
             </button>

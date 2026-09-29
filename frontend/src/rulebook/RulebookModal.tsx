@@ -1,4 +1,4 @@
-import { BookOpen, ShieldCheck, X } from "lucide-react";
+import { BookOpen, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -157,17 +157,6 @@ export function RulebookModal({ open, onClose, rulePack = null }: RulebookModalP
             <h2>
               <BookOpen size={18} aria-hidden="true" /> 심사 룰북
             </h2>
-            <p>LH 가 판단하는 항목마다 LH 기준 · 이 앱의 적용 · 데이터 원천을 적었습니다.</p>
-            {rulePack && (
-              <p className="rulebook-pack">
-                <ShieldCheck size={14} aria-hidden="true" />
-                <strong>{rulePack.title}</strong>
-                <span>v{rulePack.version}</span>
-                <span>{rulePack.effective_from} 적용</span>
-                <span>{rulePack.status === "approved" ? "승인본" : rulePack.status}</span>
-                <em>현재 규칙팩</em>
-              </p>
-            )}
           </div>
           <button
             type="button"

@@ -159,7 +159,9 @@ class RulesUpdateRequest(BaseModel):
     excluded_facilities: list[ExcludedFacility] = []
 
 
-@router.get("/rules", response_model=RulesResponse, dependencies=[Depends(require_loopback)])
+# 읽기는 누구나 된다 — 지금 적용 중인 임계거리·완화 기준은 비밀이 아니고, 배포 테스트
+# 서버의 「관리자 설정」 화면도 로컬과 같은 내용을 보여야 한다. 저장(PUT)은 루프백 전용이다.
+@router.get("/rules", response_model=RulesResponse)
 async def read_rules() -> RulesResponse:
     return _rules_response()
 
