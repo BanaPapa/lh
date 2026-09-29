@@ -46,13 +46,46 @@ function splitSentences(text: string): string[] {
   return out;
 }
 
+/**
+ * 한 문장 안에서도 뜻이 끊기는 자리에서 줄을 바꾼다 — 「#5:」 같은 결정 번호 앞,
+ * 「;」 뒤, 「 — 」 앞. 괄호 안은 건드리지 않는다.
+ */
+function splitClauses(sentence: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (let i = 0; i < sentence.length; i += 1) {
+    const ch = sentence[i];
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth = Math.max(0, depth - 1);
+    const breakBefore =
+      depth === 0 &&
+      current.trim().length > 0 &&
+      ((ch === "#" && /^#\d+:/.test(sentence.slice(i))) ||
+        (ch === "—" && sentence[i - 1] === " "));
+    if (breakBefore) {
+      out.push(current.trim());
+      current = "";
+    }
+    current += ch;
+    if (ch === ";" && depth === 0) {
+      out.push(current.trim());
+      current = "";
+    }
+  }
+  if (current.trim()) out.push(current.trim());
+  return out;
+}
+
 function Paragraph({ value }: { value: RulebookParagraph }) {
   if (typeof value === "string") {
     return (
       <div className="rulebook-para">
-        {splitSentences(value).map((sentence, index) => (
-          <p key={index}>{sentence}</p>
-        ))}
+        {splitSentences(value)
+          .flatMap(splitClauses)
+          .map((line, index) => (
+            <p key={index}>{line}</p>
+          ))}
       </div>
     );
   }

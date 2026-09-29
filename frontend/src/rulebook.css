@@ -4,9 +4,9 @@
 
 .rulebook-modal {
   box-sizing: border-box;
-  /* 화면 가로 60% · 세로 70%(좁은 화면은 꽉 채운다). */
-  width: max(80vw, min(900px, 100%));
-  height: max(70vh, min(640px, calc(100vh - 48px)));
+  /* 화면 가로 88% · 세로 77%(좁은 화면은 꽉 채운다). 2026-09-30 가로·세로 10% 키움. */
+  width: max(88vw, min(990px, 100%));
+  height: max(77vh, min(704px, calc(100vh - 48px)));
   max-width: 100%;
   max-height: calc(100vh - 48px);
   display: flex;
@@ -33,7 +33,7 @@
   align-items: center;
   gap: 8px;
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
 }
 
 .rulebook-head h2 > svg {
@@ -43,7 +43,7 @@
 .rulebook-head p {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 19.5px;
+  font-size: 17.5px;
 }
 
 .rulebook-body {
@@ -69,7 +69,7 @@
   margin: 0 0 6px;
   padding: 0 10px;
   color: var(--muted);
-  font-size: 17.5px;
+  font-size: 15.5px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -95,14 +95,14 @@
   border: 1px solid transparent;
   border-radius: 9px;
   font: inherit;
-  font-size: 19.5px;
+  font-size: 17.5px;
   text-align: left;
   cursor: pointer;
 }
 
 .rulebook-nav button small {
   color: var(--muted);
-  font-size: 17.5px;
+  font-size: 15.5px;
 }
 
 .rulebook-nav button:hover {
@@ -134,12 +134,12 @@
 
 .rulebook-content-head h3 {
   margin: 0;
-  font-size: 26px;
+  font-size: 24px;
 }
 
 .rulebook-tag {
   color: var(--muted);
-  font-size: 18.5px;
+  font-size: 16.5px;
 }
 
 .rulebook-section {
@@ -157,7 +157,7 @@
   align-items: center;
   gap: 10px;
   margin: 0 0 12px;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--muted);
@@ -167,16 +167,21 @@
 /* 문장마다 한 줄(.rulebook-para 안 p), 문단(.rulebook-para) 사이는 더 넓게. */
 .rulebook-section p {
   margin: 0;
-  font-size: 20.5px;
+  font-size: 18.5px;
   line-height: 1.7;
 }
 
 .rulebook-para + .rulebook-para {
-  margin-top: 22px;
+  margin-top: 24px;
 }
 
 .rulebook-para p + p {
-  margin-top: 6px;
+  margin-top: 10px;
+}
+
+/* 한 줄이 너무 길면 눈이 다음 줄을 놓친다. 넓어진 모달에서도 읽기 좋은 폭으로 자른다. */
+.rulebook-para {
+  max-width: 68em;
 }
 
 .rulebook-list {
@@ -185,7 +190,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 20.5px;
+  font-size: 18.5px;
   line-height: 1.7;
 }
 
@@ -198,7 +203,7 @@
   align-items: center;
   padding: 2px 9px;
   border-radius: 999px;
-  font-size: 17.5px;
+  font-size: 15.5px;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -248,20 +253,20 @@
 }
 
 .rulebook-source-head strong {
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .rulebook-kind {
   padding: 1px 7px;
   border-radius: 6px;
-  font-size: 17px;
+  font-size: 15px;
   color: var(--muted);
   background: var(--surface-2);
   border: 1px solid var(--border);
 }
 
 .rulebook-sources p {
-  font-size: 19.5px;
+  font-size: 17.5px;
   line-height: 1.6;
   color: var(--muted);
 }
@@ -287,7 +292,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin: 8px 0 0;
-  font-size: 15px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -304,7 +309,7 @@
   color: var(--teal);
   background: color-mix(in srgb, var(--teal) 12%, transparent);
   border-radius: 999px;
-  font-size: 12.5px;
+  font-size: 10.5px;
   font-style: normal;
   font-weight: 800;
 }
