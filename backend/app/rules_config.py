@@ -65,6 +65,29 @@ OPTION_DEFS: tuple[OptionDef, ...] = (
         default=False,
         group="2차 주거여건",
     ),
+    OptionDef(
+        key="gas_product_manufacturers",
+        label="가스제품 제조업소를 위험물 시설(50m)로 판정",
+        description=(
+            "LH 내부망 앱처럼 가스안전공사 「가스제품 제조업소정보」(압력용기·연소기·밸브 등 "
+            "제조공장)를 위험물 저장·처리시설 50m 로 판정합니다. 끄면 법 정의상 도시가스 "
+            "제조시설(아목)이 아니라는 이 앱 해석대로 판정하지 않고 지도에 참고로만 올립니다."
+        ),
+        default=True,
+        group="1차 유해시설",
+    ),
+    OptionDef(
+        key="factory_geocode_vworld_fallback",
+        label="등록공장 주소를 VWorld 주소검색으로 한 번 더 찾기",
+        description=(
+            "산단공 등록공장 주소를 카카오가 못 찾으면(없어진 옛 지번 등) VWorld 주소검색으로 "
+            "다시 찾습니다. LH 표준 데이터셋이 같은 방식으로 위치를 잡아 「공장 검토」 목록이 "
+            "같아집니다(예: 전주 효자동2가 368번지 현대콘크리트 → 쑥고개로 368). 끄면 "
+            "카카오로 찾은 공장만 싣습니다."
+        ),
+        default=True,
+        group="1차 유해시설",
+    ),
 )
 OPTION_BY_KEY: dict[str, OptionDef] = {option.key: option for option in OPTION_DEFS}
 

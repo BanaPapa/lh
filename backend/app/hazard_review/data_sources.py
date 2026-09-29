@@ -21,6 +21,7 @@ from app.services.city_gas_registry import CITY_GAS_REGISTRY_URL
 from app.services.logistics_warehouse import WAREHOUSE_DETAIL_URL
 from app.services.lpg_municipal import ODCLOUD_BASE
 from app.services.lpg_retailer_file import LPG_RETAILER_URL
+from app.services.gas_product_file import GAS_PRODUCT_DATASET_PAGE_URL
 from app.services.lpg_seoul import SEOUL_LPG_PAGE_URL
 from app.services.safemap_layers import LAYER_BY_ID
 from app.services.lpg_station_file import LPG_FILE_URL
@@ -70,6 +71,7 @@ API_SOURCE_REGISTRY: dict[str, tuple[str, str]] = {
     # 도시가스 제조시설도 코드 명단(H-02-아 §8). 원천 링크는 민간LNG산업협회 터미널 현황.
     "city_gas_registry": ("도시가스 제조시설 명단 · LNG 생산기지·터미널·바이오가스 12곳", CITY_GAS_REGISTRY_URL),
     "lpg_retailer_file": ("가스안전공사 전국 LPG 판매소 현황(파일 · 2024-03)", LPG_RETAILER_URL),
+    "gas_product_file": ("가스안전공사 가스제품 제조업소정보(파일 · 2025-09)", GAS_PRODUCT_DATASET_PAGE_URL),
     "lpg_municipal": ("시군구 액화석유가스업 인허가 파일", ODCLOUD_BASE),
     "lpg_seoul": ("서울 열린데이터광장 액화석유가스업 현황", SEOUL_LPG_PAGE_URL),
     # 원천 링크는 사람이 읽는 데이터셋 페이지로. 엔드포인트를 그대로 열면 키가 없어 접근 거부가 뜬다.

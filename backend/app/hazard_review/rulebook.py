@@ -328,6 +328,9 @@ class Category(NamedTuple):
     # 후보 조회·거리 계산·종합상태 승격·status_counts 집계에 일절 참여하지 않는다.
     # not_applicable + 판정제외 사유로만 표기한다.
     judgment_excluded: bool = False
+    # 관리자 설정 「판정 옵션」 스위치 키(rules_config.OPTION_DEFS). 스위치가 꺼져 있으면
+    # 이 종류는 「판정 미적용」으로 두고 후보는 지도 참고 핀으로만 싣는다.
+    option_key: str = ""
 
 
 CATEGORIES: tuple[Category, ...] = (
@@ -483,13 +486,36 @@ CATEGORIES: tuple[Category, ...] = (
         note=(
             "도시가스사업법 §2 5호·시행규칙 §2⑤ 「가스제조시설」(하역·저장·기화·송출)에 맞는 "
             "시설을 코드 명단으로 둔다(H-02-아 §8, 2026-09-18). 종전 「가스제품 제조업소」"
-            "(압력용기·연소기 제조공장)는 법 정의상 아목이 아니어서 쓰지 않는다(§7-1). "
+            "(압력용기·연소기 제조공장)는 법 정의상 아목이 아니어서 여기 넣지 않고, LH 앱 "
+            "기준에 맞춰 별도 줄 「가스제품 제조업소」로 판정한다(2026-09-30). "
             "도시가스사 LNG 위성기지·LPG-Air 제조소·나프타부생가스제조사업소는 시도 허가 "
             "대장 비공개로 미확보 — 건축물대장 층별개요 「도시가스제조시설」 참고 핀으로 보완"
         ),
         doc_ref="H-02-아",
         # 명단 판정 시설 + 건축물대장 용도 스캔 참고 핀이 같은 유형을 쓴다.
         facility_types=("city_gas_plant",),
+    ),
+    # LH 내부망 앱은 표준 데이터셋 원천 22번 「가스제품 제조업소정보」를 「위험물 저장 및
+    # 처리 시설」 50m 로 판정한다(JB_22_GAS_PRODUCT_MANUFACTURERS · 기준 충족). 이 앱은
+    # 법 정의상 아목이 아니라 빼 두었으나 「LH 앱과 같은 결과」 방침(2026-09-30)에 따라
+    # 같은 원천(가스안전공사 ODcloud 15152505)을 API 로 받아 같은 50m 로 판정한다.
+    # 관리자 설정 스위치 gas_product_manufacturers 로 끌 수 있다(끄면 참고 핀).
+    Category(
+        key="gas_product_manufacturer",
+        label="가스제품 제조업소 (LH 기준)",
+        rule_id="RB14-HAZMAT",
+        source_label=(
+            "한국가스안전공사 가스제품 제조업소정보(ODcloud 15152505 · 2025-09 · 주소 지오코딩)"
+        ),
+        data_state="applied",
+        note=(
+            "LH 내부망 앱과 같게 가스용품 제조공장(압력용기·연소기·밸브·용기 등)을 위험물 "
+            "저장·처리시설 50m 로 본다. 법상 도시가스 제조시설(아목)은 아니어서 LH 의 목 "
+            "배정 확인이 남아 있다(H-02-아 §7-1). 같은 업소의 생산품목별 행은 한 곳으로 합친다"
+        ),
+        doc_ref="H-02-아",
+        facility_types=("gas_product_manufacturer",),
+        option_key="gas_product_manufacturers",
     ),
     Category(
         key="explosive_storage",
@@ -829,7 +855,8 @@ PENDING_ITEMS: tuple[PendingItem, ...] = (
     ),
     PendingItem(
         "「가스제품 제조업소」를 「도시가스 제조시설」로 볼 수 있는가 (28건 전부)",
-        "LH 확인 대기 · 현재 근사로 판정 (H-02-아 §7-1)",
+        "LH 확인 대기 · LH 앱과 같게 별도 줄 「가스제품 제조업소」 50m 로 판정 "
+        "(관리자 스위치 · H-02-아 §7-1)",
     ),
     PendingItem(
         "단란주점·테마파크 제2종 근린생활시설 판별 (건축물대장 용도·면적)",

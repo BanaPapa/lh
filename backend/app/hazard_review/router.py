@@ -120,6 +120,7 @@ API_WARMUP_SOURCES: tuple[tuple[str, str, str], ...] = (
     ("casino_registry", "카지노영업소 명단(문체부 허가 18곳)", "all_casinos"),
     ("city_gas_registry", "도시가스 제조시설 명단(LNG 생산기지·터미널 12곳)", "all_plants"),
     ("lpg_retailer_file", "LPG 판매소(가스안전공사 파일 15091481)", "all_retailers"),
+    ("gas_product_file", "가스제품 제조업소(가스안전공사 파일 15152505)", "all_manufacturers"),
     ("gg_chemical", "경기 유해화학물질 취급사업장(경기데이터드림)", "all_facilities"),
     ("lpg_seoul", "서울 액화석유가스업(열린데이터광장)", "all_facilities"),
     # 생활안전지도 참고 핀·주석 레이어. 콜드 로드가 20초씩이라 심사 중에 일어나지 않게 예열.

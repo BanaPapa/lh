@@ -21,6 +21,7 @@ from app.services.city_gas_registry import CITY_GAS_REGISTRY_URL
 from app.services.logistics_warehouse import WAREHOUSE_DATASET_PAGE_URL
 from app.services.lpg_municipal import LPG_MUNICIPAL_DATASETS
 from app.services.lpg_retailer_file import LPG_RETAILER_DATASET_PAGE_URL
+from app.services.gas_product_file import GAS_PRODUCT_DATASET_PAGE_URL
 from app.services.lpg_seoul import SEOUL_LPG_PAGE_URL
 from app.services.safemap_layers import SAFEMAP_LAYERS, SafemapLayerClient
 
@@ -191,6 +192,16 @@ async def _probe_lpg_retailer_file(hazard: Any, screening: Any) -> str:
         stamp = client.synced_at.astimezone().strftime("%m-%d %H:%M")
         origin = f" · 저장분 재사용({stamp} 수집)"
     return f"판매소 {len(rows):,}건" + (f" · 지오코딩 실패 {failed}건" if failed else "") + origin
+
+
+async def _probe_gas_product_file(hazard: Any, screening: Any) -> str:
+    client = hazard.gas_product_file
+    if not client.is_warm:
+        total = await client.probe_total()
+        return f"원천 응답 정상(제조업소 원장 {total:,}행) · 지오코딩 예열 중(백그라운드)"
+    rows = await client.all_manufacturers()
+    failed = len(client.geocode_failures)
+    return f"제조업소 {len(rows):,}곳" + (f" · 지오코딩 실패 {failed}곳" if failed else "")
 
 
 async def _probe_lpg_municipal(hazard: Any, screening: Any) -> str:
@@ -386,6 +397,14 @@ CONNECTION_SPECS: tuple[ConnectionSpec, ...] = (
         "PUBLIC_DATA_SERVICE_KEY", lambda h, s: getattr(h, "lpg_retailer_file", None),
         _probe_lpg_retailer_file,
         "공공데이터포털", LPG_RETAILER_DATASET_PAGE_URL,
+    ),
+    ConnectionSpec(
+        "gas_product_file", "가스안전공사 가스제품 제조업소정보(ODcloud 15152505)",
+        "1차 위험물 50m 가스제품 제조업소(LH 앱 기준) — 전국 1,549행(2025-09 일회성), "
+        "업소 단위로 합쳐 주소를 카카오로 지오코딩. 활용신청 필요",
+        "PUBLIC_DATA_SERVICE_KEY", lambda h, s: getattr(h, "gas_product_file", None),
+        _probe_gas_product_file,
+        "공공데이터포털", GAS_PRODUCT_DATASET_PAGE_URL,
     ),
     ConnectionSpec(
         "lpg_municipal", "시군구 액화석유가스업 인허가 파일(ODcloud 51종)",

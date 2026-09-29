@@ -34,7 +34,7 @@ from app.hazard_review.models import (
     HazardSourceState,
     HazardSourceStatus,
 )
-from app.rules_config import excluded_reason
+from app.rules_config import excluded_reason, option_enabled
 from app.hazard_review.rulebook import (
     APPLICATION_TYPE_LABELS,
     CATEGORIES,
@@ -83,6 +83,7 @@ from app.services.lpg_municipal import LpgMunicipalClient
 from app.services.lpg_seoul import SeoulLpgClient
 from app.services.building_use_scan import COVERED_KINDS, BuildingUseScanner
 from app.services.lpg_retailer_file import LPG_RETAILER_AS_OF, LpgRetailerFileClient
+from app.services.gas_product_file import GAS_PRODUCT_AS_OF, GasProductFileClient
 from app.services.lpg_station_file import LpgStationFileClient
 from app.services.safemap_facilities import SafemapFacilityFeed
 from app.services.factory_registry import FactoryRegistryClient
@@ -205,6 +206,7 @@ SOURCE_FAILURE_LABELS: dict[str, str] = {
     "casino_registry": CASINO_REGISTRY_LABEL,
     "city_gas_registry": CITY_GAS_REGISTRY_LABEL,
     "lpg_retailer_file": "한국가스안전공사 전국 LPG 판매소 현황(파일 15091481)",
+    "gas_product_file": "한국가스안전공사 가스제품 제조업소정보(파일 15152505)",
     "lpg_municipal": "시군구 액화석유가스업 인허가 파일(ODcloud)",
     "lpg_seoul": "서울 열린데이터광장 액화석유가스업 현황",
     "building_use_scan": "건축물대장 용도 스캔(브이월드 필지 + 표제부)",
@@ -346,6 +348,16 @@ def _is_refrigeration(row: Any) -> bool:
     return any(
         word in str(extra.get("MNFTR_SE_NM") or "") for word in GAS_SELF_USE_KEYWORDS
     )
+
+
+# 관리자 설정 「판정 옵션」에서 끈 종류의 not_applicable 사유(예: 가스제품 제조업소).
+SWITCHED_OFF_REASON = "판정 미적용 — 관리자 설정에서 끔 (후보는 지도 참고 핀)"
+
+
+def _category_switch_on(category: Category) -> bool:
+    """이 종류의 관리자 스위치가 켜져 있는가. 스위치 없는 종류는 늘 켜짐."""
+
+    return not category.option_key or option_enabled(category.option_key)
 
 
 def _split_institutional(
@@ -532,6 +544,7 @@ class HazardReviewService:
         casino_registry: CasinoRegistryClient | None = None,
         city_gas_registry: CityGasRegistryClient | None = None,
         lpg_retailer_file: LpgRetailerFileClient | None = None,
+        gas_product_file: GasProductFileClient | None = None,
         lpg_municipal: LpgMunicipalClient | None = None,
         lpg_seoul: SeoulLpgClient | None = None,
         building_scan: BuildingUseScanner | None = None,
@@ -590,6 +603,8 @@ class HazardReviewService:
         self.city_gas_registry = city_gas_registry
         # 전국 LPG 판매소 파일(15091481, 주소 지오코딩) — 나목 판매소 판정 원천.
         self.lpg_retailer_file = lpg_retailer_file
+        # 가스안전공사 가스제품 제조업소정보(15152505). LH 앱 기준 위험물 50m(스위치로 끔).
+        self.gas_product_file = gas_product_file
         # 시군구 액화석유가스업 파일 레지스트리 — 판매 행은 나목 판정 후보, 저장 행은 참고 핀.
         self.lpg_municipal = lpg_municipal
         # 서울 열린데이터광장 액화석유가스업(실시간). 서울 사업지에서만 시군구 파일 대신 쓴다.
@@ -697,6 +712,11 @@ class HazardReviewService:
             # 후보 조회·거리 계산·종합상태 승격·status_counts 에 참여하지 않는다.
             judged_categories = [c for c in rule_categories if not c.judgment_excluded]
             excluded_categories = [c for c in rule_categories if c.judgment_excluded]
+            # 관리자 스위치로 끈 종류(예: 가스제품 제조업소)는 후보는 그대로 조회하되
+            # 판정에서 빼고 「판정 미적용」 줄 + 지도 참고 핀으로만 싣는다.
+            switched_off = [c for c in judged_categories if not _category_switch_on(c)]
+            query_categories = judged_categories
+            judged_categories = [c for c in judged_categories if c not in switched_off]
 
             # 판정창 밖·참고 반경 이내 시설. 판정·집계에는 불참하고 지도에만 얹는다.
             nearby: list[HazardFacility] = []
@@ -714,15 +734,24 @@ class HazardReviewService:
                 # 2026-09-27: 「판정에 적용되지 않더라도 전부 지도에 올려는 줘야지」).
                 # 참고 핀으로만 싣고 판정·status·집계에는 넣지 않는다.
                 nearby = await self._find_reference_facilities(
-                    request, rule, judged_categories, safemap_snapshot, safemap_failed,
+                    request, rule, query_categories, safemap_snapshot, safemap_failed,
                 )
                 _, nearby, _ = _split_institutional(rule, [], nearby)
             else:
                 facilities, nearby, rule_failed = await self._find_rule_facilities(
-                    request, rule, judged_categories, threshold,
+                    request, rule, query_categories, threshold,
                     safemap_snapshot, safemap_failed,
                 )
                 failed_sources |= rule_failed
+                if switched_off:
+                    # 꺼진 종류에만 속하는 후보는 판정창 안이어도 참고 핀으로 옮긴다.
+                    moved = [
+                        f for f in facilities
+                        if any(self._in_category(f, c) for c in switched_off)
+                        and not any(self._in_category(f, c) for c in judged_categories)
+                    ]
+                    facilities = [f for f in facilities if f not in moved]
+                    nearby = sorted(nearby + moved, key=lambda item: item.distance_m)
                 facilities, nearby, exempted = _split_institutional(
                     rule, facilities, nearby
                 )
@@ -741,6 +770,10 @@ class HazardReviewService:
             excluded_summaries = [
                 self._judgment_excluded_category(cat) for cat in excluded_categories
             ]
+            summaries.extend(
+                self._not_applicable_category(cat, SWITCHED_OFF_REASON)
+                for cat in switched_off
+            )
             categories.extend(summaries)
             categories.extend(excluded_summaries)
             # finding(rule 종합상태)에는 판정된 종류만 넘기고, 참고 시설은 지도
@@ -2076,6 +2109,52 @@ class HazardReviewService:
                     )
                 )
 
+        # 가스제품 제조업소(LH 앱 기준 위험물 50m). 스위치가 꺼져도 후보는 만든다 —
+        # 판정 루프가 그 종류를 「판정 미적용」으로 돌리고 후보를 참고 핀으로 옮긴다.
+        if want_lpg_retail and self._gas_product_ready():
+            try:
+                makers = await self.gas_product_file.manufacturers_around(
+                    request.site.coordinates, search_radius_m
+                )
+            except Exception:  # noqa: BLE001 — 원천·지오코더 장애는 이 요청의 원천 실패로 기록
+                failed_sources.add("gas_product_file")
+                makers = []
+            for maker in makers:
+                distance = self._measure_distance(request, maker.coordinates, None)
+                if distance > search_limit_m:
+                    continue
+                facilities.append(
+                    HazardFacility(
+                        facility_id=f"gas-product:{maker.record_id}",
+                        facility_type="gas_product_manufacturer",
+                        facility_type_label="가스제품 제조업소",
+                        name=maker.name,
+                        coordinates=maker.coordinates,
+                        distance_m=distance,
+                        nearest_boundary_point=self._boundary_anchor(
+                            request, maker.coordinates
+                        ),
+                        address=maker.address,
+                        business_status=maker.status,
+                        provider="gas_product_file",
+                        source_label="한국가스안전공사 가스제품 제조업소정보(파일 15152505)",
+                        source_record_id=maker.record_id,
+                        source_as_of=now,
+                        geometry_quality="D",
+                        geometry_note="주소 지오코딩 점 좌표 · 필지 경계로 재측정",
+                        classification_note=(
+                            f"가스용품 제조업소(생산품목 {maker.products or '미상'} · "
+                            f"{maker.law or '법구분 미상'}). LH 내부망 앱과 같게 위험물 "
+                            f"저장·처리시설 50m 로 본다(기준일 {GAS_PRODUCT_AS_OF}, 일회성 자료)."
+                        ),
+                        metadata={
+                            "as_of": GAS_PRODUCT_AS_OF,
+                            "products": maker.products,
+                            "law": maker.law,
+                        },
+                    )
+                )
+
         if want_casino and self._casino_ready():
             try:
                 casinos = await self.casino_registry.casinos_around(
@@ -2711,6 +2790,15 @@ class HazardReviewService:
             and getattr(self.lpg_retailer_file, "has_fast_path", True)
         )
 
+    def _gas_product_ready(self) -> bool:
+        # 지오코딩(업소 수백 곳)이 심사 중에 일어나지 않게, 캐시·저장분이 있을 때만 준비로 본다.
+        return bool(
+            self.gas_product_file
+            and self.gas_product_file.enabled
+            and not self.demo_mode
+            and getattr(self.gas_product_file, "has_fast_path", True)
+        )
+
     def _lpg_municipal_providers(self) -> list[tuple[str, Any]]:
         """사업지 시군구 원장을 주는 지역 원천들(시군구 파일 레지스트리 · 서울 열린데이터광장)."""
 
@@ -2871,6 +2959,9 @@ class HazardReviewService:
         # 도시가스 제조시설: LNG 생산기지·터미널·바이오가스 제조소 명단 + 카카오 지오코딩(H-02-아 §8).
         if category.key == "city_gas_plant":
             return self._city_gas_ready()
+        # 가스제품 제조업소(LH 앱 기준): 가스안전공사 파일(15152505) + 카카오 지오코딩.
+        if category.key == "gas_product_manufacturer":
+            return self._gas_product_ready()
         # LPG 판매소: 전국 파일(15091481) 또는 시군구 파일 레지스트리가 붙어 있으면 판정.
         if category.key == "lpg_retailer":
             return self._lpg_retailer_ready() or bool(self._lpg_municipal_providers())
@@ -2992,6 +3083,10 @@ class HazardReviewService:
             if self._city_gas_ready():
                 sources.add("city_gas_registry")
             return sources
+        if category.key == "gas_product_manufacturer":
+            if self._gas_product_ready():
+                sources.add("gas_product_file")
+            return sources
         if category.key == "lpg_retailer":
             if self._lpg_retailer_ready():
                 sources.add("lpg_retailer_file")
@@ -3006,7 +3101,12 @@ class HazardReviewService:
             return sources
         # 공장 있음(등록공장): 후보는 로컬 원천(factoryON 표준본 공장)이라 localdata
         # 실패와 무관하다. 활성 원천으로 집계하지 않는다(대기·소음은 주석 전용).
+        # 단, 산단공 API 가 후보 원천이면(로컬 표준본 없음) 그 API 는 활성 원천이다 —
+        # 2026-09-30 실측: API 가 「04 HTTP 에러」·시간초과로 죽었는데 이 종류가 「스냅샷 내
+        # 충돌 없음」으로 나왔다. 장애는 「조회 실패 — 재심사 필요」로 드러내야 한다.
         if category.key == "factory_registered":
+            if self._factory_api_ready() and not self.local_sources.factory_registry_loaded:
+                sources.add("factory_registry")
             return sources
         if category.datasets:
             ready = self._ready_datasets()
@@ -3096,6 +3196,9 @@ class HazardReviewService:
         elif category.key == "city_gas_plant":
             if self._city_gas_ready() and "city_gas_registry" not in failed_sources:
                 sources.append(api_source("city_gas_registry"))  # type: ignore[arg-type]
+        elif category.key == "gas_product_manufacturer":
+            if self._gas_product_ready() and "gas_product_file" not in failed_sources:
+                sources.append(api_source("gas_product_file"))  # type: ignore[arg-type]
         elif category.key == "lpg_retailer":
             if self._lpg_retailer_ready() and "lpg_retailer_file" not in failed_sources:
                 sources.append(api_source("lpg_retailer_file"))  # type: ignore[arg-type]
@@ -4113,6 +4216,22 @@ class HazardReviewService:
                 ),
                 required_for=[rule.rule_id for rule in RULES],
             ),
+            # 위 고정 목록 밖의 원천(산단공 등록공장·가스안전공사 파일 등)도 이번 심사에서
+            # 조회가 실패했으면 「실패」 줄로 싣는다. 심사 결과 경고(source_alerts)가 이
+            # 목록을 읽어 재심사 안내를 띄운다(2026-09-30: 산단공 API 장애가 조용히 지나갔다).
+            *[
+                HazardSourceStatus(
+                    source_id=f"failed-{key}",
+                    label=SOURCE_FAILURE_LABELS.get(key, key),
+                    state="failed",
+                    retrieved_at=now,
+                    as_of=None,
+                    coverage_note="이번 심사에서 조회가 실패했습니다. 복구 후 재심사가 필요합니다.",
+                    geometry_note="",
+                    required_for=[],
+                )
+                for key in sorted(failed_sources - {"localdata", "opinet", "kgs"})
+            ],
         ]
 
     @staticmethod

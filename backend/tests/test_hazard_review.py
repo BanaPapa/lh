@@ -120,7 +120,7 @@ def test_demo_hazard_job_never_promotes_point_candidates_to_exclusion() -> None:
     result = body["result"]
     assert result["housing_type"] == "house"
     assert result["application_type"] == "multi_child"
-    assert len(result["categories"]) == 26
+    assert len(result["categories"]) == 27
     # 데모는 임시 필지라 경계 미확보다. 점 좌표 후보를 매입제외로 올리면 안 된다.
     assert all(
         category["status"] != "exclusion_match" for category in result["categories"]
