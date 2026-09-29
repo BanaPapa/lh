@@ -36,6 +36,7 @@ from app.screening.front_door import (
     normalize_key,
     university_base,
 )
+from app.screening.address_parcels import AddressParcelResolver
 from app.screening.bus_headway import BusHeadwayResolver, StopHeadway
 from app.screening.scorebook import FACILITY_GROUPS
 from app.rules_config import option_enabled, options_fingerprint
@@ -55,6 +56,7 @@ from app.services.kakao import KakaoClient
 from app.services.naver_search import NaverSearchClient
 from app.services.seoul_bus import SeoulBusStopClient
 from app.services.parcel_sanity import parcel_rejection_reason
+from app.services.pnu_resolver import LegalDongIndex
 from app.services.safemap_facilities import (
     SafemapFacility,
     SafemapFacilityFeed,
@@ -110,6 +112,12 @@ BOUNDARY_LOOKUP_PER_GROUP = MAX_HITS_PER_GROUP
 # 필지 조회 동시 요청 수. 시설군 10개 × 20곳을 순서대로 부르면 수십 초가 걸린다.
 BOUNDARY_LOOKUP_CONCURRENCY = 8
 BOUNDARY_FALLBACK_NOTICE = "시설 경계(필지)를 확인하지 못해 시설 좌표로 쟀습니다."
+# 시설 필지를 좌표가 아니라 시설 지번주소(PNU)로 먼저 찾는 시설군. LH앱은 학교 지번주소로
+# 필지를 만든다. 좌표 필지는 옆 필지·도로라 50~150m 길었다(address_parcels 참조).
+ADDRESS_PARCEL_GROUPS: frozenset[str] = frozenset(
+    {"school_elementary", "school_middle", "school_high"}
+)
+ADDRESS_PARCEL_NOTICE = "학교 지번주소 필지"
 
 # 역 출입구 조회(카카오 「{역명} N번출구」). 네이버 지역검색은 한 질의에 5건(무작위)만
 # 돌려줘 출구가 여섯 이상인 역에서 가장 가까운 출구가 빠졌다(2026-09-14 건대입구역:
@@ -770,6 +778,10 @@ class AmenityCollector:
         # 로컬 지적도는 읽기 전용 SQLite 연결 하나를 쓴다. 필지 조회를 동시에 돌려도
         # 로컬 폴백은 한 번에 하나씩만 들어가게 막는다.
         self._cadastral_lock = asyncio.Lock()
+        # 학교 지번주소 → 필지(PNU). 주소별로 기억해 같은 학교를 다시 찾지 않는다.
+        self.address_parcels = AddressParcelResolver(
+            kakao, self._parcel_by_pnu, LegalDongIndex.from_env()
+        )
         # 대학 정문 좌표를 확보할 지역검색. 표준 데이터셋이 대학 정문·역 출구를
         # 같은 API 로 확보했으므로(2026-09-08 회신) 기준점이 어긋나지 않는다.
         self.naver = naver
@@ -883,12 +895,30 @@ class AmenityCollector:
             ][:BOUNDARY_LOOKUP_PER_GROUP]
             head += institutional
             tail = [f for f in tail if f not in institutional]
+            by_address = can_fetch and key in ADDRESS_PARCEL_GROUPS
+            address_parcels: dict[int, ParcelFeature | None] = (
+                await self._prefetch_address_parcels(head) if by_address else {}
+            )
             if can_fetch:
-                await self._prefetch_parcels(head, parcel_cache)
+                await self._prefetch_parcels(
+                    [f for i, f in enumerate(head) if address_parcels.get(i) is None],
+                    parcel_cache,
+                )
             measured: list[CollectedFacility] = []
             # 경계로 잰(채택된) 시설 필지. 뒤쪽 시설이 같은 필지 안이면 조회 없이 재사용한다.
             accepted: list[ParcelFeature] = []
-            for facility in head:
+            for index, facility in enumerate(head):
+                # 학교는 지번주소 필지가 우선이다(LH앱과 같은 필지). 못 찾으면 아래 좌표 경로.
+                own = address_parcels.get(index)
+                if own is not None:
+                    result = _measure_to_parcel(facility, own, rings, center)
+                    if result.measurement_tier == "site_boundary":
+                        accepted.append(own)
+                        result = result._replace(
+                            front_door_notice=f"{ADDRESS_PARCEL_NOTICE} · {result.front_door_notice}"
+                        )
+                        measured.append(result)
+                        continue
                 shared = _containing_parcel(accepted, facility.coordinates)
                 if shared is not None:
                     measured.append(_measure_to_parcel(facility, shared, rings, center))
@@ -941,6 +971,52 @@ class AmenityCollector:
                 await self._facility_parcel(point, cache)
 
         await asyncio.gather(*(fetch(f.coordinates) for f in facilities))
+
+    async def _prefetch_address_parcels(
+        self, facilities: Sequence[CollectedFacility]
+    ) -> dict[int, ParcelFeature | None]:
+        """시설 지번주소 필지를 동시에 찾는다(순번 → 필지, 못 찾으면 None)."""
+
+        semaphore = asyncio.Semaphore(BOUNDARY_LOOKUP_CONCURRENCY)
+
+        async def fetch(facility: CollectedFacility) -> ParcelFeature | None:
+            async with semaphore:
+                try:
+                    return await self.address_parcels.parcel_for(
+                        facility.address, facility.coordinates
+                    )
+                except Exception:
+                    return None
+
+        found = await asyncio.gather(*(fetch(f) for f in facilities))
+        return dict(enumerate(found))
+
+    async def _parcel_by_pnu(self, pnu: str) -> ParcelFeature | None:
+        """PNU 로 필지를 받는다. VWorld 우선, 로컬 지적도 폴백(_facility_parcel 과 같은 순서)."""
+
+        if self.vworld is not None and self.vworld.enabled:
+            try:
+                parcel = await self.vworld.parcel_by_pnu(pnu)
+            except Exception:
+                parcel = None
+            if parcel is not None:
+                return parcel
+        if not self._cadastral_ready():
+            return None
+        try:
+            async with self._cadastral_lock:
+                local = await asyncio.to_thread(self.cadastral_store.parcel_by_pnu, pnu)
+        except Exception:
+            return None
+        if local is None:
+            return None
+        return ParcelFeature(
+            pnu=local.pnu,
+            address=local.address,
+            jibun=local.jibun,
+            ring=list(local.ring),
+            area_m2=local.area_m2,
+        )
 
     def _boundary_source_ready(self) -> bool:
         if self.vworld is not None and self.vworld.enabled:
