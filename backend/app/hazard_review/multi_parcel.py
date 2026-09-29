@@ -12,6 +12,7 @@
     제내리 1243, 1244                         → 1243 · 1244
     우아동3가 734-16 외 4필지(11,13,15,25)      → 734-16 · 734-11 · 734-13 · 734-15 · 734-25
     산8-15                                   → 산 8-15 (단일)
+    서완산동2가 339-6, -39 334-33              → 339-6 · 339-39 · 334-33(쉼표 빠진 공백 구분)
 
 「외 N필지」만 있고 목록이 없으면 대표만 펼치고 note 로 담당자 추가 선택을 요구한다.
 """
@@ -32,6 +33,8 @@ _OESILJI = re.compile(r"외\s*(\d+)\s*필지\s*(?:\(\s*([^)]*)\))?")
 
 # 쉼표로 분리한 지번 토큰 하나: (산)? (본번)? (-부번)?.
 _TOKEN = re.compile(r"^\s*(산)?\s*(\d+)?\s*(?:-\s*(\d+))?\s*$")
+# 쉼표 없이 공백으로만 이어 적은 지번(「-39 334-33」)을 낱개로 뽑는다.
+_INLINE_TOKEN = re.compile(r"산?\s*\d+(?:\s*-\s*\d+)?|-\s*\d+")
 
 OESILJI_NO_LIST_NOTE = "외 N필지 목록 없음 — 담당자 추가 선택 필요"
 
@@ -83,10 +86,18 @@ def parse_multi_parcel_address(address: str) -> ParsedParcels:
     parsed: list[tuple[bool, int, int]] = []
     cur_bonbun: int | None = None
     cur_mountain = False
+    tokens: list[str] = []
     for raw in re.split(r"[,，]", rest):
-        token = raw.strip()
-        if not token:
+        piece = raw.strip()
+        if not piece:
             continue
+        if _TOKEN.match(piece):
+            tokens.append(piece)
+        else:
+            # 원장에는 쉼표를 빠뜨린 표기가 있다(「339-6, -23, -24, -36, -39 334-33」).
+            # 공백으로 이어진 지번도 하나씩 읽는다 — LH앱도 7개 지번으로 읽었다.
+            tokens.extend(_INLINE_TOKEN.findall(piece))
+    for token in tokens:
         match = _TOKEN.match(token)
         if match is None:
             continue

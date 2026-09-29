@@ -76,3 +76,12 @@ def test_dong_with_digit_is_not_mistaken_for_jibun() -> None:
 
 def test_empty_address() -> None:
     assert parse_multi_parcel_address("").jibun_addresses == []
+
+
+def test_space_separated_jibuns_without_comma() -> None:
+    # 원장 058 「339-6, -23, -24, -36, -39 334-33, 산79-5」 — -39 와 334-33 사이 쉼표가
+    # 빠졌다. 둘 다 읽어야 LH앱과 같은 대지 경계가 된다(LH앱도 7개 지번으로 읽음).
+    parsed = parse_multi_parcel_address("전주시 서완산동2가 339-6, -23, -24, -36, -39 334-33, 산79-5")
+    assert [a.split()[-1] for a in parsed.jibun_addresses] == [
+        "339-6", "339-23", "339-24", "339-36", "339-39", "334-33", "산79-5",
+    ]

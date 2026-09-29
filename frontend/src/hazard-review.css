@@ -4,42 +4,90 @@
 
 /* ── 룰 그룹핑 / data_state / 근거 (검토 드로어) ─────────────── */
 
-/* 지도 범례 — 화면 우측 하단 가로 막대. 설명은 도움말(마우스 올림)로만. */
+/* 지도 범례 — 좌측 도크의 레이어 스위치 바로 아래 카드(도크 폭을 따른다). 「시설」·「판정 거리」 두 묶음이고, 머리를
+   누르면 네 색 점만 남는 칩으로 접힌다. 가로 막대는 항목이 늘며 화면 폭을 다 먹었다. */
 .hazard-map-legend {
-  position: absolute;
-  right: 18px;
-  bottom: 18px;
-  z-index: 9;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px 12px;
-  max-width: calc(100% - 36px);
-  padding: 8px 12px;
-  cursor: help;
+  flex: 0 0 auto;
+  padding: 6px 12px 10px;
   color: var(--fg-2);
-  background: color-mix(in srgb, var(--raise) 93%, transparent);
+  background: color-mix(in srgb, var(--raise) 94%, transparent);
   border: 1px solid var(--border-2);
-  border-radius: 9px;
+  border-radius: 12px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(14px);
 }
 
-.hazard-map-legend strong {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 14px;
-  color: var(--muted);
+.hazard-map-legend.is-folded {
+  padding: 4px 12px;
 }
 
-.hazard-map-legend > span {
-  display: inline-flex;
+.hazard-map-legend-head {
+  width: 100%;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14.2px;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.hazard-map-legend-head > svg {
+  margin-left: auto;
+  transition: transform 150ms ease;
+}
+
+.hazard-map-legend.is-folded .hazard-map-legend-head > svg {
+  transform: rotate(180deg);
+}
+
+.hazard-map-legend-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.hazard-map-legend strong {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--fg-2);
+}
+
+/* 좁은 화면에서 범례 small 을 숨기는 옛 규칙보다 우선한다 — 묶음 제목은 늘 보인다. */
+.hazard-map-legend .hazard-map-legend-title {
+  display: block;
+  margin: 8px 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.hazard-map-legend ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 5px;
+}
+
+.hazard-map-legend li,
+.hazard-map-legend-bands > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
   white-space: nowrap;
+}
+
+.hazard-map-legend li[title] {
+  cursor: help;
+}
+
+.hazard-map-legend-bands {
+  display: flex;
+  gap: 12px;
 }
 
 .hazard-map-legend i {
@@ -303,13 +351,7 @@
   }
 }
 
-@media (max-width: 760px) {.hazard-map-legend {
-    right: 12px;
-    bottom: 12px;
-    left: 12px;
-    flex-wrap: wrap;
-  }
-}
+
 
 /* ── 2차 배점 근거 시설 ───────────────────────────────────────────
    1차(빨강)와 색으로 구분되도록 파랑 채움 핀 + 흰 테두리로 둔다.

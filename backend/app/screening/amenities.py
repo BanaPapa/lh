@@ -58,6 +58,8 @@ from app.services.safemap_facilities import (
     SafemapFacility,
     SafemapFacilityFeed,
 )
+from app.services.hira_hospital import HiraHospitalClient
+from app.services.school_locations import SchoolLocationClient
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
 from app.services.transfer_center import TransferCenterClient
@@ -99,9 +101,13 @@ BOUNDARY_GROUPS: frozenset[str] = frozenset(
         "school_high",
     }
 )
-# 시설군마다 필지를 조회할 최근접 시설 수. 경계로 재면 거리는 줄기만 하므로
-# 등급 판정에 쓰이는 최근접 몇 곳만 정확히 재면 되고, 그 뒤는 점 거리로 둔다.
-BOUNDARY_LOOKUP_PER_GROUP = 5
+# 시설군마다 필지 경계로 재는 시설 수 — 화면에 보이는 시설 전부다. 예전에는 좌표 기준
+# 최근접 5곳만 경계로 쟀는데, 큰 공원은 중심 좌표가 멀어 5곳 밖으로 밀리고 경계로 재면
+# 훨씬 가까웠다(2026-09-29 전주 서완산동2가: 완산공원 좌표 917m, LH앱 경계 557.8m).
+# LH앱은 모든 시설을 경계(POLYGON_TO_POLYGON)로 잰다.
+BOUNDARY_LOOKUP_PER_GROUP = MAX_HITS_PER_GROUP
+# 필지 조회 동시 요청 수. 시설군 10개 × 20곳을 순서대로 부르면 수십 초가 걸린다.
+BOUNDARY_LOOKUP_CONCURRENCY = 8
 BOUNDARY_FALLBACK_NOTICE = "시설 경계(필지)를 확인하지 못해 시설 좌표로 쟀습니다."
 
 # 역 출입구 조회(카카오 「{역명} N번출구」). 네이버 지역검색은 한 질의에 5건(무작위)만
@@ -227,8 +233,10 @@ BUS_STOP_NO_HEADWAY_NOTE = (
 SEOUL_BUS_SOURCE = "서울 열린데이터광장 버스정류소 위치정보"
 LOCALDATA_SOURCE = "행정안전부 지방행정인허가 대규모점포"
 NCMC_HOSPITAL_SOURCE = "국립중앙의료원 전국 병·의원 찾기(종합병원)"
+HIRA_HOSPITAL_SOURCE = "건강보험심사평가원 병원정보서비스(종별 종합병원·상급종합)"
 # 생활안전지도 시설 레이어(2026-09-17 데이터 사용신청 승인). 레이어별 지정 원천.
 SAFEMAP_SCHOOL_SOURCE = "교육부 학교알리미 초·중·고 위치(생활안전지도 IF_0035)"
+SCHOOL_STANDARD_SOURCE = "전국초중등학교위치표준데이터(한국교육시설안전원)"
 SAFEMAP_UNIVERSITY_SOURCE = "교육부 대학교 위치(생활안전지도 IF_0034)"
 SAFEMAP_OFFICE_SOURCE = "행정안전부 민원행정기관 전자지도(생활안전지도 IF_0031)"
 SAFEMAP_HOSPITAL_SOURCE = "국립중앙의료원 종합병원(생활안전지도 IF_0022)"
@@ -246,9 +254,18 @@ HOSPITAL_NCMC_NOTE = (
     "국립중앙의료원 전국 병·의원 원장에서 종류=종합병원·상급종합병원을 산정했습니다 "
     "(상급종합병원은 종합병원에 포함해 인정 — 2026-09-18 확정)."
 )
+# 심사표 지정 원천. LH 표준 데이터셋(JB_00_HOSPITALS)도 이 목록이다.
+HOSPITAL_HIRA_NOTE = (
+    "건강보험심사평가원 병원정보서비스에서 종별=종합병원·상급종합병원을 산정했습니다 "
+    "(심사표 지정 원천 · 상급종합병원은 종합병원에 포함해 인정 — 2026-09-18 확정)."
+)
 HOSPITAL_LAYER_NOTE = (
     "국립중앙의료원 종합병원 원장의 전국본(생활안전지도 IF_0022)으로 산정했습니다. "
     "종류=종합병원 381곳 · 일 단위 갱신."
+)
+SCHOOL_STANDARD_NOTE = (
+    "전국초중등학교위치표준데이터(한국교육시설안전원 · 운영 중 학교)로 산정했습니다. "
+    "이전한 학교도 현재 위치로 잽니다."
 )
 SCHOOL_LAYER_NOTE = (
     "교육부 학교알리미 초·중·고 위치(생활안전지도 IF_0035)로 산정했습니다. "
@@ -504,7 +521,8 @@ def _is_public(place: RawPlace) -> bool:
 
 
 def _school_filter(token: str) -> Callable[[RawPlace], bool]:
-    return lambda place: token in place.name
+    # 표준데이터는 학교급을 분류로 준다(이름에 급이 없는 학교도 있다). 지도·레이어는 이름으로 가린다.
+    return lambda place: token in place.name or _category_leaf(place) == token
 
 
 def _is_university(place: RawPlace) -> bool:
@@ -689,6 +707,8 @@ class AmenityCollector:
         cache_ttl_seconds: int = 600,
         facility_store: FacilityStore | None = None,
         hospital_client: NcmcHospitalClient | None = None,
+        hira_client: HiraHospitalClient | None = None,
+        school_client: SchoolLocationClient | None = None,
         front_door_store: FrontDoorStore | None = None,
         cadastral_store: CadastralLocalStore | None = None,
         naver: NaverSearchClient | None = None,
@@ -737,11 +757,18 @@ class AmenityCollector:
         self.facility_store = facility_store
         # 의료시설(종합병원) 지정 원천. 있으면 카카오 근사 대신 이걸 쓴다.
         self.hospital_client = hospital_client
+        # 종합병원 1순위 원천(심사표 지정). 국립중앙의료원은 갱신이 늦어 뒤로 둔다.
+        self.hira_client = hira_client
+        # 초·중·고 1순위 원천(현재 위치). 생활안전지도 레이어는 이전 학교가 옛 부지다.
+        self.school_client = school_client
         # 대학 정문 수기 지정 저장소. 없으면 자동 채택/좌표 폴백만 쓴다.
         self.front_door_store = front_door_store
         # 정문 필지경계를 조회할 로컬 지적도. 인덱스가 없으면 필지
         # 기준을 못 쓰고 좌표 기준으로 폴백한다(그 사실을 고지한다).
         self.cadastral_store = cadastral_store
+        # 로컬 지적도는 읽기 전용 SQLite 연결 하나를 쓴다. 필지 조회를 동시에 돌려도
+        # 로컬 폴백은 한 번에 하나씩만 들어가게 막는다.
+        self._cadastral_lock = asyncio.Lock()
         # 대학 정문 좌표를 확보할 지역검색. 표준 데이터셋이 대학 정문·역 출구를
         # 같은 API 로 확보했으므로(2026-09-08 회신) 기준점이 어긋나지 않는다.
         self.naver = naver
@@ -855,6 +882,8 @@ class AmenityCollector:
             ][:BOUNDARY_LOOKUP_PER_GROUP]
             head += institutional
             tail = [f for f in tail if f not in institutional]
+            if can_fetch:
+                await self._prefetch_parcels(head, parcel_cache)
             measured: list[CollectedFacility] = []
             # 경계로 잰(채택된) 시설 필지. 뒤쪽 시설이 같은 필지 안이면 조회 없이 재사용한다.
             accepted: list[ParcelFeature] = []
@@ -897,6 +926,21 @@ class AmenityCollector:
             )
         return updated
 
+    async def _prefetch_parcels(
+        self,
+        facilities: Sequence[CollectedFacility],
+        cache: dict[str, ParcelFeature | None],
+    ) -> None:
+        """시설 필지를 동시에 받아 캐시에 채운다. 뒤의 측정 루프는 캐시만 읽는다."""
+
+        semaphore = asyncio.Semaphore(BOUNDARY_LOOKUP_CONCURRENCY)
+
+        async def fetch(point: Coordinates) -> None:
+            async with semaphore:
+                await self._facility_parcel(point, cache)
+
+        await asyncio.gather(*(fetch(f.coordinates) for f in facilities))
+
     def _boundary_source_ready(self) -> bool:
         if self.vworld is not None and self.vworld.enabled:
             return True
@@ -931,9 +975,10 @@ class AmenityCollector:
                 parcel = None
         if parcel is None and self._cadastral_ready():
             try:
-                local = await asyncio.to_thread(
-                    self.cadastral_store.parcel_at, coordinates.lat, coordinates.lng
-                )
+                async with self._cadastral_lock:
+                    local = await asyncio.to_thread(
+                        self.cadastral_store.parcel_at, coordinates.lat, coordinates.lng
+                    )
             except Exception:
                 local = None
             if local is not None:
@@ -1266,8 +1311,9 @@ class AmenityCollector:
             "transfer": self._transfer_centers(center, radius_m),
         }
         # 지정 원천 레이어가 있는 시설군은 카카오 키와 무관하게 조회한다(실패 시 지도 폴백).
-        if _feed_enabled(self.safemap_schools):
-            feeds["school"] = self._layer_schools(center, radius_m)
+        school_standard_ready = self.school_client is not None and self.school_client.enabled
+        if school_standard_ready or _feed_enabled(self.safemap_schools):
+            feeds["school"] = self._schools(center, radius_m)
         if _feed_enabled(self.safemap_offices):
             feeds["public"] = self._layer_offices(center, radius_m)
         if not self.kakao.enabled:
@@ -1296,8 +1342,10 @@ class AmenityCollector:
         # 카카오 HP8 근사 대신 그걸 쓴다. 코루틴을 만들었다가 덮으면 await 되지 않아
         # 경고가 나므로 지정 원천이 있는 시설군은 미리 뺀다.
         use_designated_hospital = (
-            self.hospital_client is not None and self.hospital_client.enabled
-        ) or _feed_enabled(self.safemap_hospitals)
+            (self.hira_client is not None and self.hira_client.enabled)
+            or (self.hospital_client is not None and self.hospital_client.enabled)
+            or _feed_enabled(self.safemap_hospitals)
+        )
         for name, code in category.items():
             if name == "hospital" and use_designated_hospital:
                 continue
@@ -1312,6 +1360,42 @@ class AmenityCollector:
         if use_designated_hospital:
             feeds["hospital"] = self._designated_hospitals(center, radius_m)
         return feeds
+
+    async def _schools(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """초·중·고: 학교 위치 표준데이터 → 실패 시 생활안전지도 레이어 → 지도 분류.
+
+        생활안전지도 레이어는 이전한 학교를 옛 부지로 갖고 있어(전라중학교) 표준데이터가
+        응답하지 않을 때만 쓰고, 그 사실을 원천 장애 경고로 올린다.
+        """
+
+        if self.school_client is not None and self.school_client.enabled:
+            try:
+                records = await self.school_client.schools_around(center, radius_m)
+                return FeedResult(
+                    tuple(
+                        RawPlace(r.name, r.address, f"교육,학문 > 학교 > {r.kind}", r.coordinates)
+                        for r in records
+                    ),
+                    SCHOOL_STANDARD_SOURCE,
+                )
+            except Exception:
+                logger.warning("학교 위치 표준데이터 실패: 생활안전지도 레이어로 대체", exc_info=True)
+                standard_alert = (
+                    "전국초중등학교위치표준데이터가 응답하지 않아 다른 원천으로 학교를 "
+                    "찾았습니다. 이전한 학교가 옛 위치로 잡혔을 수 있습니다."
+                )
+        else:
+            standard_alert = ""
+        if _feed_enabled(self.safemap_schools):
+            result = await self._layer_schools(center, radius_m)
+        else:
+            if not self.kakao.enabled:
+                raise RuntimeError("학교 위치 원천이 모두 응답하지 않았습니다.")
+            result = await self._kakao_category("SC4", center, radius_m)
+        if not standard_alert:
+            return result
+        alert = " ".join(filter(None, [standard_alert, result.alert]))
+        return result._replace(degraded=True, alert=alert)
 
     # -- 생활안전지도 시설 레이어 ----------------------------------------------
     async def _layer_schools(self, center: Coordinates, radius_m: int) -> FeedResult:
@@ -1403,22 +1487,56 @@ class AmenityCollector:
     async def _designated_hospitals(
         self, center: Coordinates, radius_m: int
     ) -> FeedResult:
-        """종합병원 지정 원천: 국립중앙의료원 시도 조회 → 실패 시 전국본 레이어(IF_0022)."""
+        """종합병원 지정 원천: 심평원 반경 조회 → 국립중앙의료원 시도 조회 → 전국본 레이어.
 
+        심평원이 심사표 지정 원천이고 LH 데이터셋과 같은 목록이다. 국립중앙의료원은
+        갱신이 늦어(「정읍한국병원」 누락) 심평원이 응답하지 않을 때만 쓰고, 그 사실을
+        원천 장애 경고로 올린다.
+        """
+
+        hira_ready = self.hira_client is not None and self.hira_client.enabled
         ncmc_ready = self.hospital_client is not None and self.hospital_client.enabled
         layer_ready = _feed_enabled(self.safemap_hospitals)
+        hira_alert = ""
+        if hira_ready:
+            assert self.hira_client is not None
+            try:
+                records = await self.hira_client.hospitals_around(center, radius_m)
+                return FeedResult(
+                    tuple(
+                        RawPlace(r.name, r.address, r.div_name, r.coordinates)
+                        for r in records
+                    ),
+                    HIRA_HOSPITAL_SOURCE,
+                )
+            except Exception:
+                logger.warning("심평원 병원정보 조회 실패: 국립중앙의료원으로 대체", exc_info=True)
+                if not (ncmc_ready or layer_ready):
+                    raise
+                hira_alert = (
+                    "건강보험심사평가원 병원정보 조회가 응답하지 않아 국립중앙의료원 원장으로 "
+                    "대체했습니다. 갱신이 늦어 최근 지정된 종합병원이 빠졌을 수 있습니다."
+                )
         ncmc_alert = ""
         if ncmc_ready:
             try:
-                return await self._ncmc_hospitals(center, radius_m)
+                result = await self._ncmc_hospitals(center, radius_m)
+                return result._replace(degraded=bool(hira_alert), alert=hira_alert)
             except Exception:
                 logger.warning("국립중앙의료원 조회 실패: 생활안전지도 레이어로 대체", exc_info=True)
                 if not layer_ready:
                     raise
-                ncmc_alert = (
-                    "국립중앙의료원 병원 조회가 응답하지 않아 생활안전지도 병원 레이어로 "
-                    "대체했습니다."
+                ncmc_alert = " ".join(
+                    filter(
+                        None,
+                        [
+                            hira_alert,
+                            "국립중앙의료원 병원 조회가 응답하지 않아 생활안전지도 병원 "
+                            "레이어로 대체했습니다.",
+                        ],
+                    )
                 )
+        ncmc_alert = ncmc_alert or hira_alert
         assert self.safemap_hospitals is not None
         rows = await self.safemap_hospitals.facilities_around(center, radius_m)
         return FeedResult(
@@ -1783,14 +1901,20 @@ class AmenityCollector:
         state = spec.state
         note = spec.note
         # 의료시설을 국립중앙의료원 지정 원천으로 채웠으면 근사가 아니라 연결이다.
-        if key == "hospital" and NCMC_HOSPITAL_SOURCE in sources:
+        if key == "hospital" and HIRA_HOSPITAL_SOURCE in sources:
+            state = "connected"
+            note = HOSPITAL_HIRA_NOTE
+        elif key == "hospital" and NCMC_HOSPITAL_SOURCE in sources:
             state = "connected"
             note = HOSPITAL_NCMC_NOTE
         elif key == "hospital" and SAFEMAP_HOSPITAL_SOURCE in sources:
             state = "connected"
             note = HOSPITAL_LAYER_NOTE
         # 초·중·고·공공도 생활안전지도 지정 원천이 답했으면 연결이다.
-        if key.startswith("school_") and SAFEMAP_SCHOOL_SOURCE in sources:
+        if key.startswith("school_") and SCHOOL_STANDARD_SOURCE in sources:
+            state = "connected"
+            note = SCHOOL_STANDARD_NOTE
+        elif key.startswith("school_") and SAFEMAP_SCHOOL_SOURCE in sources:
             state = "connected"
             note = SCHOOL_LAYER_NOTE
         if key == "public" and any(src.startswith(SAFEMAP_OFFICE_SOURCE) for src in sources):

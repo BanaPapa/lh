@@ -205,12 +205,25 @@ function App() {
   // 검색하면 옛 후보의 결과가 현재 사업지와 달라진다. 최신 요청만 반영해 화면이
   // 옛 필지로 튀는 것을 막는다.
   const siteParcelRunRef = useRef(0);
+  // 진행 중인 검색 직후 필지 로드. 다필지 주소는 몇 초 걸려, 그 사이 심사를 누르면
+  // 필지가 비어 있어 대표 필지 1개로만 심사됐다(2026-09-29 서완산동2가: 칩은 6필지,
+  // 심사는 339-6 1필지 → 떨어진 필지 334-33 기준 거리를 놓침). 심사가 이것을 기다린다.
+  const siteParcelLoadRef = useRef<Promise<HazardParcel[] | null> | null>(null);
 
-  /** 검색 직후 지적도 필지를 받아 지도에 경계를 그린다. 분석 실행과 무관하다. */
-  const loadSiteParcel = async (
+  /** 검색 직후 지적도 필지를 받아 지도에 경계를 그린다. 심사는 이 로드를 기다린다. */
+  const loadSiteParcel = (candidate: GeocodeCandidate, typedQuery: string) => {
+    const load = loadSiteParcelNow(candidate, typedQuery);
+    siteParcelLoadRef.current = load;
+    void load.finally(() => {
+      if (siteParcelLoadRef.current === load) siteParcelLoadRef.current = null;
+    });
+    return load;
+  };
+
+  const loadSiteParcelNow = async (
     candidate: GeocodeCandidate,
     typedQuery: string,
-  ) => {
+  ): Promise<HazardParcel[] | null> => {
     const runId = siteParcelRunRef.current + 1;
     siteParcelRunRef.current = runId;
     try {
@@ -220,7 +233,7 @@ function App() {
         isMultiParcelQuery(typedQuery) ? typedQuery : undefined,
       );
       // 이미 다른 검색이 이 요청을 밀어냈으면 옛 결과를 버린다.
-      if (siteParcelRunRef.current !== runId) return;
+      if (siteParcelRunRef.current !== runId) return null;
       // 대표 필지만 쓰던 것을 응답 필지 전부로 넓힌다(#9 다필지 합집합).
       // 검색으로 얻은 대표 필지를 기억해, 다른 필지가 대표가 되면 검색창을 그
       // 필지 주소로 바꾸고 되돌아오면 원래 검색어로 복원한다.
@@ -239,11 +252,13 @@ function App() {
       if (hasParcelGeometry) {
         setViewportRequest((seq) => seq + 1);
       }
+      return resolved.parcels;
     } catch {
       // 지적도를 못 받아도 검색 자체는 성공이므로 조용히 넘어간다.
-      if (siteParcelRunRef.current !== runId) return;
+      if (siteParcelRunRef.current !== runId) return null;
       setHazardParcels([]);
       setParcelNote("");
+      return null;
     }
   };
 
@@ -466,10 +481,22 @@ function App() {
     // 일반 실행은 직전 차이 줄을 지운다. 기준점 변경 실행만 새 차이를 남긴다.
     if (!diffFacility) setScreeningDiff(null);
     try {
-      // 사용자가 지도에서 고른 필지를 그대로 쓴다. 없으면 자동 확보한다.
+      // 사용자가 지도에서 고른 필지를 그대로 쓴다. 검색 직후 필지 로드가 아직 진행
+      // 중이면 끝날 때까지 기다린다 — 기다리지 않으면 다필지 주소가 대표 필지 하나로
+      // 심사되고, 뒤늦게 도착한 필지로 칩만 바뀌어 칩과 결과가 어긋난다.
       let parcels = hazardParcels;
+      if (parcels.length === 0 && siteParcelLoadRef.current) {
+        const loaded = await siteParcelLoadRef.current;
+        if (screeningRunRef.current !== runId) return;
+        if (loaded) parcels = loaded;
+      }
       if (parcels.length === 0) {
-        const resolved = await resolveHazardParcel(selectedCandidate);
+        // 그래도 없으면 직접 확보한다. 검색어에 지번이 여럿이면 그 원문으로 합친다.
+        const typed = isMultiParcelQuery(query) ? query : searchedRef.current.query;
+        const resolved = await resolveHazardParcel(
+          selectedCandidate,
+          isMultiParcelQuery(typed) ? typed : undefined,
+        );
         if (screeningRunRef.current !== runId) return;
         parcels = resolved.parcels;
         setHazardParcels(parcels);

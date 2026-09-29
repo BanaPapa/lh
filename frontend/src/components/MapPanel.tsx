@@ -1,5 +1,4 @@
 import {
-  Info,
   AlertCircle,
   ChevronRight,
   ArrowLeftRight,
@@ -919,6 +918,25 @@ export function MapPanel({
   // 필지 토글·타일 로드를 하지 않는다(영역 클릭은 시설 선택이다).
   const facilityRingsRef = useRef<Array<{ lat: number; lng: number }[]>>([]);
   // 영역 시설의 링·이름표 쌍. 지도 mousemove 가 이걸로 호버를 판정한다.
+  // 지도 범례 펼침 여부. 사람마다 선호가 달라 이 브라우저에 기억한다(없으면 펼침).
+  const [legendOpen, setLegendOpenState] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem("lh-map-legend-open") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const setLegendOpen = (update: (open: boolean) => boolean) => {
+    setLegendOpenState((open) => {
+      const next = update(open);
+      try {
+        window.localStorage.setItem("lh-map-legend-open", next ? "1" : "0");
+      } catch {
+        // 저장소를 못 쓰면 이번 화면에서만 유지한다.
+      }
+      return next;
+    });
+  };
   const hoverAreasRef = useRef<HoverArea[]>([]);
   const mapHoverListenerRef = useRef<any>(null);
   const onCadastralReviveRef = useRef(onCadastralRevive);
@@ -2631,6 +2649,84 @@ export function MapPanel({
           </div>
         )}
 
+        {hazardMode && (
+          <div
+            className={`hazard-map-legend${legendOpen ? "" : " is-folded"}`}
+            title={[
+              "점 마커는 공식 경계가 아닌 시설 후보입니다.",
+              cadastralNote,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {/* 레이어 스위치 바로 아래(좌측 도크)에 둔다 — 도크를 끌면 함께 옮겨진다.
+                가로 막대가 항목이 늘며 너무 길어져 세로 카드로 바꿨다. 접으면 네 색 점만 남는
+                칩이 된다 — 네 가지 영역 색(빨강·초록·파랑·보라)은 접어도 늘 보인다. */}
+            <button
+              type="button"
+              className="hazard-map-legend-head"
+              aria-expanded={legendOpen}
+              onClick={() => setLegendOpen((open) => !open)}
+              title={legendOpen ? "범례 접기" : "범례 펼치기"}
+            >
+              <strong>지도 범례</strong>
+              {!legendOpen && (
+                <span className="hazard-map-legend-dots" aria-hidden="true">
+                  <i className="marker-primary" />
+                  <i className="marker-screening is-basis" />
+                  <i className="marker-screening" />
+                  <i className="marker-institution" />
+                </span>
+              )}
+              <ChevronDown size={15} aria-hidden="true" />
+            </button>
+            {legendOpen && (
+              <>
+                <small className="hazard-map-legend-title">시설</small>
+                <ul>
+                  <li>
+                    <i className="marker-primary" /> 1차 유해시설
+                  </li>
+                  <li>
+                    <i className="marker-screening is-basis" /> 2차 점수 근거
+                  </li>
+                  <li title="왼쪽 레일에서 시설군을 누르면 그 군의 편의시설이 파랑으로 펼쳐집니다.">
+                    <i className="marker-screening" /> 2차 편의시설
+                  </li>
+                  <li title="편의시설과 유해시설이 한 부지에 섞인 곳입니다. 사업장명에 병원·소방서·대학교가 들어간 고압가스(기관 자가설비)는 유해시설 판정에서 뺐고(납품 앱과 같은 기준), 대학 캠퍼스 입주 공장처럼 편의시설 부지 안에 등록된 유해시설은 판정 결과를 그대로 두고 색만 보라로 표시합니다.">
+                    <i className="marker-institution" /> 편의·유해 혼재
+                  </li>
+                  <li>
+                    <i className="marker-nearby" /> 기준거리 밖 (통과)
+                  </li>
+                  {candidateHitRef && (
+                    <li>
+                      <i className="marker-door" /> 문·출구 후보
+                    </li>
+                  )}
+                  {zoningLayerOn && (
+                    <li>
+                      <i className="marker-zoning" /> 용도지역 레이어
+                    </li>
+                  )}
+                </ul>
+                <small className="hazard-map-legend-title">판정 거리</small>
+                <div className="hazard-map-legend-bands">
+                  <span>
+                    <i className="buffer-25" /> 25m
+                  </span>
+                  <span>
+                    <i className="buffer-50" /> 50m
+                  </span>
+                  <span>
+                    <i className="buffer-500" /> 500m
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {hazardMode && (railFindings.length > 0 || railGroups.length > 0) && (
           <nav className="map-facility-rail" aria-label="판정·배점 시설군">
             {railFindings.length > 0 && (
@@ -2791,57 +2887,7 @@ export function MapPanel({
           </button>
         </div>
 
-        {hazardMode && (
-          <div
-            className="hazard-map-legend"
-            title={[
-              "점 마커는 공식 경계가 아닌 시설 후보입니다.",
-              cadastralNote,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            {/* 읽는 순서대로: 1차(빨강) → 2차 점수 근거(초록) → 2차 펼친 시설군(파랑) → 기관 자가설비·판정 제외(보라) → 기준 밖(빨강 점선) → 거리 밴드. 설명은 도움말로. */}
-            <strong>
-              지도 범례 <Info size={13} aria-hidden="true" />
-            </strong>
-            {/* 네 가지 영역 색(빨강·초록·파랑·보라)은 지도에 없어도 항상 뜻을 적는다. */}
-            <span>
-              <i className="marker-primary" /> 1차 유해시설
-            </span>
-            <span>
-              <i className="marker-screening is-basis" /> 2차 점수 근거
-            </span>
-            <span>
-              <i className="marker-screening" /> 2차 펼친 시설군
-            </span>
-            <span title="편의시설과 유해시설이 한 부지에 섞인 곳입니다. 사업장명에 병원·소방서·대학교가 들어간 고압가스(기관 자가설비)는 유해시설 판정에서 뺐고(납품 앱과 같은 기준), 대학 캠퍼스 입주 공장처럼 편의시설 부지 안에 등록된 유해시설은 판정 결과를 그대로 두고 색만 보라로 표시합니다.">
-              <i className="marker-institution" /> 편의·유해 혼재 (기관 부지)
-            </span>
-            <span>
-              <i className="marker-nearby" /> 기준거리 밖 (통과)
-            </span>
-            <span>
-              <i className="buffer-25" /> 25m
-            </span>
-            <span>
-              <i className="buffer-50" /> 50m
-            </span>
-            <span>
-              <i className="buffer-500" /> 500m
-            </span>
-            {candidateHitRef && (
-              <span>
-                <i className="marker-door" /> 문·출구 후보
-              </span>
-            )}
-            {zoningLayerOn && (
-              <span>
-                <i className="marker-zoning" /> 용도지역 레이어 켜짐
-              </span>
-            )}
-          </div>
-        )}
+
 
 
 

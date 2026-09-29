@@ -803,8 +803,12 @@ async def test_vworld_failure_falls_back_to_coordinate_measurement() -> None:
 
 
 @pytest.mark.asyncio
-async def test_boundary_lookup_is_limited_to_nearest_facilities() -> None:
-    from app.screening.amenities import BOUNDARY_LOOKUP_PER_GROUP
+async def test_every_shown_facility_is_measured_to_its_boundary() -> None:
+    # 2026-09-29 전주 서완산동2가: 완산공원은 좌표로 6번째 밖(917m)이라 경계로 안 쟀는데
+    # LH앱은 경계로 557.8m 였다. 화면에 보이는 시설은 전부 경계로 잰다.
+    from app.screening.amenities import BOUNDARY_LOOKUP_PER_GROUP, MAX_HITS_PER_GROUP
+
+    assert BOUNDARY_LOOKUP_PER_GROUP == MAX_HITS_PER_GROUP
 
     site = square_ring(CENTER, 20.0)
     rows = [
@@ -819,11 +823,11 @@ async def test_boundary_lookup_is_limited_to_nearest_facilities() -> None:
 
     group = result["park"]
     assert len(vworld.calls) == BOUNDARY_LOOKUP_PER_GROUP
+    # 배점용 거리 목록은 화면 밖(21번째~) 시설까지 전부 담는다.
     assert len(group.distances_m) == len(rows)
     assert list(group.distances_m) == sorted(group.distances_m)
     tiers = [f.measurement_tier for f in group.facilities]
-    assert tiers[:BOUNDARY_LOOKUP_PER_GROUP] == ["site_boundary"] * BOUNDARY_LOOKUP_PER_GROUP
-    assert tiers[BOUNDARY_LOOKUP_PER_GROUP:] == ["coordinate"] * 3
+    assert tiers == ["site_boundary"] * MAX_HITS_PER_GROUP
 
 
 @pytest.mark.asyncio
@@ -1255,9 +1259,8 @@ async def test_public_office_campus_parcel_is_measured_to_its_boundary() -> None
         assert by_name[name].measurement_tier == "site_boundary"
         assert by_name[name].distance_m == pytest.approx(office.distance_m, abs=0.5)
     assert by_name["효자0동주민센터"].measurement_tier == "site_boundary"
-    # 청사는 최근접 5곳 밖이어도 조회하고, 이미 잰 필지 안의 시설(복지관1~4 · 전라북도청·
-    # 전북도청출장소)은 새로 조회하지 않고 그 필지를 나눠 쓴다 — 복지관0 + 도청 2회.
-    assert len(vworld.calls) == 2
+    # 보이는 시설은 전부 필지를 조회한다(동시 조회). 시설마다 한 번을 넘지 않는다.
+    assert len(vworld.calls) <= len(rows)
 
 
 @pytest.mark.asyncio
