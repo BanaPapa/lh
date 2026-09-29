@@ -642,6 +642,90 @@ interface HoverArea {
   /** 이름표를 세울 때 거리 라벨(zIndex 10·11) 위로 올릴 오버레이. */
   overlay: any;
   baseZIndex: number;
+  /** 영역 호버가 바뀔 때 함께 부를 콜백(그 시설의 거리선·라벨 강조). */
+  listeners?: Array<(hovered: boolean) => void>;
+}
+
+type LinkedLine = ((active: boolean) => void) & {
+  /** 같은 선을 나눠 쓰는 다른 시설 핀도 이 선을 강조하게 잇는다. */
+  bindMarker?: (marker: HTMLElement, overlay: any, baseZ: number) => void;
+};
+
+/**
+ * 시설 하나의 거리선·거리 라벨·핀을 한 묶음으로 강조한다. 선이 여러 개 겹치면 어느
+ * 거리가 어느 시설인지 알 수 없어서, 셋 중 어디(또는 시설 영역)에 마우스를 올려도
+ * 그 선만 굵게 빛나고 라벨에 시설 이름이 붙고 핀 이름표가 선다.
+ */
+function linkDistanceLine(parts: {
+  line: any;
+  baseWeight: number;
+  baseOpacity: number;
+  label: HTMLElement;
+  labelOverlay: any;
+  labelBaseZ: number;
+  distanceText: string;
+  /** 같은 선을 나눠 쓰는 시설이 늘면 이름이 바뀌므로 함수로도 받는다. */
+  name: string | (() => string);
+  marker?: HTMLElement | null;
+  markerOverlay?: any;
+  markerBaseZ?: number;
+  /** 레일에서 펼친 시설군의 시설. 평소에도 선을 굵게, 라벨에 이름을 붙여 둔다. */
+  focused?: boolean;
+}): LinkedLine {
+  const { line, label, labelOverlay, marker, markerOverlay } = parts;
+  const restWeight = parts.focused ? parts.baseWeight + 1.5 : parts.baseWeight;
+  const restOpacity = parts.focused ? 1 : parts.baseOpacity;
+  const nameOf = () =>
+    (typeof parts.name === "function" ? parts.name() : parts.name) || "이름 미확보";
+  if (parts.focused) {
+    label.classList.add("is-focus");
+    line.setOptions?.({ strokeWeight: restWeight, strokeOpacity: restOpacity });
+    // 펼친 시설군은 이름을 늘 적는다 — 초록(근거)이어도 이 군의 시설임이 읽힌다.
+    label.dataset.restText = `${label.textContent ?? parts.distanceText} · ${nameOf()}`;
+    label.textContent = label.dataset.restText;
+  }
+  let current = false;
+  const setActive = (active: boolean) => {
+    if (active === current) return;
+    current = active;
+    line.setOptions?.({
+      strokeWeight: active ? parts.baseWeight + 3 : restWeight,
+      strokeOpacity: active ? 1 : restOpacity,
+      zIndex: active ? 20 : parts.focused ? 10 : 0,
+    });
+    label.classList.toggle("is-linked", active);
+    // 평소 문구(「254m ×2」 등)는 호버 전에 적어 두었다가 그대로 되돌린다.
+    if (active && !parts.focused) {
+      label.dataset.restText = label.textContent ?? parts.distanceText;
+    }
+    label.textContent = active
+      ? `${parts.distanceText} · ${nameOf()}`
+      : (label.dataset.restText ?? parts.distanceText);
+    labelOverlay?.setZIndex?.(active ? HOVER_Z_INDEX + 1 : parts.labelBaseZ);
+    if (marker) {
+      marker.classList.toggle("is-linked", active);
+      markerOverlay?.setZIndex?.(active ? HOVER_Z_INDEX : (parts.markerBaseZ ?? 6));
+    }
+  };
+  const bind = (element: HTMLElement | null | undefined) => {
+    element?.addEventListener("mouseenter", () => setActive(true));
+    element?.addEventListener("mouseleave", () => setActive(false));
+  };
+  bind(label);
+  bind(marker);
+  (setActive as LinkedLine).bindMarker = (extra, extraOverlay, extraBaseZ) => {
+    extra.addEventListener("mouseenter", () => {
+      setActive(true);
+      extra.classList.add("is-linked");
+      extraOverlay?.setZIndex?.(HOVER_Z_INDEX);
+    });
+    extra.addEventListener("mouseleave", () => {
+      setActive(false);
+      extra.classList.remove("is-linked");
+      extraOverlay?.setZIndex?.(extraBaseZ);
+    });
+  };
+  return setActive as LinkedLine;
 }
 
 // 호버 중 이름표가 거리 라벨(zIndex 10·11) 위에 서도록 올리는 값.
@@ -664,11 +748,12 @@ function applyHover(
   areas: readonly HoverArea[],
   point: { lat: number; lng: number } | null,
 ) {
-  areas.forEach(({ ring, node, overlay, baseZIndex }) => {
+  areas.forEach(({ ring, node, overlay, baseZIndex, listeners }) => {
     const hovered = point !== null && pointInRing(point, ring);
     if (node.classList.contains("is-hover") === hovered) return;
     node.classList.toggle("is-hover", hovered);
     overlay?.setZIndex?.(hovered ? HOVER_Z_INDEX : baseZIndex);
+    listeners?.forEach((listener) => listener(hovered));
   });
 }
 
@@ -1808,6 +1893,11 @@ export function MapPanel({
     );
     // 편의시설 부지와 섞인 유해시설 id → 편의시설군 이름. 아래 거리선도 이 색을 쓴다.
     const mixedAmenityOf = new Map<string, string>();
+    // 1차 시설 id → 핀·영역. 아래 거리선을 그 시설의 핀·영역 호버와 잇는 데 쓴다.
+    const hazardNodes = new Map<
+      string,
+      { marker: HTMLElement; overlay: any; baseZ: number; area: HoverArea | null }
+    >();
     hazardMarkers.forEach(({ finding, facility, nearby }) => {
       const position = toMapPosition(
         runtime,
@@ -1942,14 +2032,22 @@ export function MapPanel({
         zIndex: selected ? 9 : nearby ? 4 : 6,
       });
       // 영역으로 그린 시설은 핀이 없어 호버할 곳이 없다. 영역 호버가 이름표를 세운다.
-      if (facilityHoverRing) {
-        hoverAreasRef.current.push({
-          ring: facilityHoverRing,
-          node: markerNode,
-          overlay: marker,
-          baseZIndex: selected ? 9 : nearby ? 4 : 6,
-        });
-      }
+      const facilityArea: HoverArea | null = facilityHoverRing
+        ? {
+            ring: facilityHoverRing,
+            node: markerNode,
+            overlay: marker,
+            baseZIndex: selected ? 9 : nearby ? 4 : 6,
+            listeners: [],
+          }
+        : null;
+      if (facilityArea) hoverAreasRef.current.push(facilityArea);
+      hazardNodes.set(facility.facility_id, {
+        marker: markerNode,
+        overlay: marker,
+        baseZ: selected ? 9 : nearby ? 4 : 6,
+        area: facilityArea,
+      });
       markerNode.addEventListener("click", (event) => {
         event.stopPropagation();
         onSelectHazardFinding?.(finding.finding_id);
@@ -1991,20 +2089,40 @@ export function MapPanel({
           label.className = `hazard-distance-label is-many${
             institution ? " is-institution" : ""
           }`;
-          label.textContent = `${Math.round(facility.distance_m).toLocaleString()}m`;
+          const lineDistanceText = `${Math.round(facility.distance_m).toLocaleString()}m`;
+          label.textContent = lineDistanceText;
           const originLat = origin ? origin.lat : site.coordinates.lat;
           const originLng = origin ? origin.lng : site.coordinates.lng;
           const endLat = end ? end.lat : facility.coordinates.lat;
           const endLng = end ? end.lng : facility.coordinates.lng;
-          overlaysRef.current.push(
-            createHtmlOverlay(
-              runtime,
-              map,
-              toMapPosition(runtime, (originLat + endLat) / 2, (originLng + endLng) / 2),
-              label,
-              { yAnchor: 0.5, zIndex: 7 },
-            ),
+          const labelOverlay = createHtmlOverlay(
+            runtime,
+            map,
+            toMapPosition(runtime, (originLat + endLat) / 2, (originLng + endLng) / 2),
+            label,
+            { yAnchor: 0.5, zIndex: 7 },
           );
+          overlaysRef.current.push(labelOverlay);
+          const nodes = hazardNodes.get(facility.facility_id);
+          const setLinked = linkDistanceLine({
+            line,
+            baseWeight: 2,
+            baseOpacity: 0.75,
+            label,
+            labelOverlay,
+            labelBaseZ: 7,
+            distanceText: lineDistanceText,
+            name: facility.name,
+            marker: nodes?.marker,
+            markerOverlay: nodes?.overlay,
+            markerBaseZ: nodes?.baseZ,
+          });
+          nodes?.area?.listeners?.push(setLinked);
+          label.addEventListener("click", (event) => {
+            event.stopPropagation();
+            onSelectHazardFinding?.(selectedHazardFinding.finding_id);
+            onSelectHazardFacility?.(facility.facility_id);
+          });
         });
     }
 
@@ -2048,7 +2166,7 @@ export function MapPanel({
       labelNode.className = `hazard-distance-label${
         selectedPurple ? " is-institution" : ""
       }`;
-      labelNode.textContent = `${
+      const selectedDistanceText = `${
         facilityRing.length >= 4
           ? "대지경계간"
           : anchor
@@ -2057,6 +2175,7 @@ export function MapPanel({
       }거리 ${Math.round(
         selectedHazardFacility.distance_m,
       ).toLocaleString()}m`;
+      labelNode.textContent = selectedDistanceText;
       const originLat = anchor ? anchor.lat : site.coordinates.lat;
       const originLng = anchor ? anchor.lng : site.coordinates.lng;
       const endLat = facilityEnd
@@ -2078,6 +2197,21 @@ export function MapPanel({
         { yAnchor: 1.3, zIndex: 10 },
       );
       overlaysRef.current.push(distanceLabel);
+      const selectedNodes = hazardNodes.get(selectedHazardFacility.facility_id);
+      const setLinked = linkDistanceLine({
+        line: distanceLine,
+        baseWeight: 3,
+        baseOpacity: 0.95,
+        label: labelNode,
+        labelOverlay: distanceLabel,
+        labelBaseZ: 10,
+        distanceText: selectedDistanceText,
+        name: selectedHazardFacility.name,
+        marker: selectedNodes?.marker,
+        markerOverlay: selectedNodes?.overlay,
+        markerBaseZ: selectedNodes?.baseZ,
+      });
+      selectedNodes?.area?.listeners?.push(setLinked);
     }
 
     // ── 2차 배점 근거 시설(교통·주거·교육·가점) ────────────────────────
@@ -2086,6 +2220,13 @@ export function MapPanel({
     // 색은 두 가지다. 평가항목별 점수를 결정한 최근접 시설(자동, 항상 표시)은
     // 초록, 사용자가 시설군을 펼쳐서 본 나머지 시설(수동)은 파랑. 같은 파랑이면
     // "왜 안 사라지느냐"는 혼동이 생긴다 — 자동 근거 시설은 무엇을 눌러도 남는다.
+    // 같은 건물·필지의 시설(「익산아트센터 고백스타·인생사진관」)은 같은 점까지 재져 선이
+    // 정확히 겹친다. 그러면 시설군 건수만큼 선이 안 보인다. 겹치는 선은 하나로 긋고
+    // 라벨에 「×2」처럼 몇 곳인지 적고, 호버하면 이름을 모두 보여준다.
+    const sharedLines = new Map<
+      string,
+      { names: string[]; label: HTMLElement; distanceText: string; link: LinkedLine }
+    >();
     visibleScreeningHitRefs.forEach((ref) => {
       const hit = ref.hit;
       if (!hit.coordinates) return;
@@ -2183,17 +2324,39 @@ export function MapPanel({
         onSelectScreeningHit?.(selected ? null : hit.name);
       });
       overlaysRef.current.push(screeningMarker);
-      if (hitHoverRing) {
-        hoverAreasRef.current.push({
-          ring: hitHoverRing,
-          node: markerNode,
-          overlay: screeningMarker,
-          baseZIndex: selected ? 9 : 6,
-        });
-      }
+      const hitHoverArea: HoverArea | null = hitHoverRing
+        ? {
+            ring: hitHoverRing,
+            node: markerNode,
+            overlay: screeningMarker,
+            baseZIndex: selected ? 9 : 6,
+            listeners: [],
+          }
+        : null;
+      if (hitHoverArea) hoverAreasRef.current.push(hitHoverArea);
 
       // 최단거리선 + 거리 라벨. nearest_boundary_point 가 없으면 사업지 중심에서 긋는다.
       const origin = hit.nearest_boundary_point;
+      const lineEnd = hit.nearest_facility_point ?? hit.coordinates;
+      const lineKey = [
+        tone,
+        origin?.lat.toFixed(6),
+        origin?.lng.toFixed(6),
+        lineEnd.lat.toFixed(6),
+        lineEnd.lng.toFixed(6),
+      ].join("|");
+      const shared = sharedLines.get(lineKey);
+      if (shared) {
+        shared.names.push(hit.name || "이름 미확보");
+        const restText = shared.label.classList.contains("is-focus")
+          ? `${shared.distanceText} ×${shared.names.length} · ${shared.names.join(", ")}`
+          : `${shared.distanceText} ×${shared.names.length}`;
+        shared.label.dataset.restText = restText;
+        shared.label.textContent = restText;
+        shared.link.bindMarker?.(markerNode, screeningMarker, selected ? 9 : 6);
+        hitHoverArea?.listeners?.push(shared.link);
+        return;
+      }
       const originPosition = origin
         ? toMapPosition(runtime, origin.lat, origin.lng)
         : center;
@@ -2227,6 +2390,27 @@ export function MapPanel({
         { yAnchor: 1.3, zIndex: selected ? 10 : 7 },
       );
       overlaysRef.current.push(labelOverlay);
+      const names = [hit.name || "이름 미확보"];
+      const setLinked = linkDistanceLine({
+        line,
+        baseWeight: selected ? 3 : 2,
+        baseOpacity: selected ? 0.95 : 0.7,
+        label: lineLabel,
+        labelOverlay,
+        labelBaseZ: selected ? 10 : 7,
+        distanceText,
+        name: () => names.join(", "),
+        marker: markerNode,
+        markerOverlay: screeningMarker,
+        markerBaseZ: selected ? 9 : 6,
+        focused: ref.groupKey === expandedScreeningGroupKey,
+      });
+      sharedLines.set(lineKey, { names, label: lineLabel, distanceText, link: setLinked });
+      hitHoverArea?.listeners?.push(setLinked);
+      lineLabel.addEventListener("click", (event) => {
+        event.stopPropagation();
+        onSelectScreeningHit?.(selected ? null : hit.name);
+      });
     });
 
     // 후보 문·출구 핀(#7·#11). 선택된 시설에 후보가 2개 이상일 때만 펼친다.
@@ -2340,6 +2524,7 @@ export function MapPanel({
     site,
     visibleScreeningHitRefs,
     screeningHitRefs,
+    expandedScreeningGroupKey,
     candidateHitRef,
     selectedScreeningHitName,
     onSelectScreeningHit,

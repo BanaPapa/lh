@@ -477,9 +477,18 @@ class TestCategoryLeafFilters:
 
         keep = GROUP_SPECS["public"].keep
         assert keep is not None
-        assert keep(self._place("장동푸른작은도서관", "작은도서관"))
+        # 공공도서관만 센다 — 작은도서관·스마트도서관은 내부망 앱 목록에 없다.
+        assert not keep(self._place("장동푸른작은도서관", "작은도서관"))
+        assert not keep(self._place("전북특별자치도청 스마트도서관", "도서관"))
+        assert not keep(self._place("전주대학교 도서관", "도서관"))
         assert keep(self._place("전주시립도서관", "국공립도서관"))
-        assert keep(self._place("전주시청", "시청"))  # PO3 공공기관은 그대로 통과
+        # 청사는 도청·시군구청 본청만, 그 밖에는 행정복지센터(주민센터)만.
+        assert keep(self._place("전주시청", "시청"))
+        assert keep(self._place("전라북도청", "관공서"))
+        assert keep(self._place("효자4동주민센터", "관공서"))
+        assert keep(self._place("삼천1동 행정복지센터", "행정복지센터"))
+        for name in ("전북도청출장소", "종합상황실", "전주효자동우체국", "전주완산효자지구대", "완산소방서"):
+            assert not keep(self._place(name, "관공서")), name
         assert not keep(self._place("리드앤톡 영어도서관학원 전주여의센터", "영어학원"))
         assert not keep(self._place("쪽구름도서관 화장실", "화장실"))
 
@@ -1044,13 +1053,15 @@ async def test_school_layer_failure_falls_back_to_kakao_as_substituted() -> None
 
 
 @pytest.mark.asyncio
-async def test_public_uses_office_layer_plus_fire_stations() -> None:
+async def test_public_uses_office_layer_without_fire_stations() -> None:
     kakao = FakeKakao(
         categories={"PO3": [place("지도주민센터", 300, "공공기관 > 주민센터")]},
         keywords={"도서관": [place("시립도서관", 700, "문화,예술 > 도서관 > 국공립도서관")]},
     )
-    offices = FakeLayerFeed([("전주시청", 500, "관공서"), ("전주시립도서관", 900, "관공서")])
-    fire = FakeLayerFeed([("완산소방서", 800, "소방서"), ("효자119지역대", 850, "소방기타"), ("전주시청", 500, "소방기관")])
+    offices = FakeLayerFeed(
+        [("전주시청", 500, "관공서"), ("전주시립도서관", 900, "관공서"), ("전주우체국", 600, "관공서")]
+    )
+    fire = FakeLayerFeed([("완산소방서", 800, "소방서")])
     collector = AmenityCollector(
         kakao=kakao, tago=FakeTago([]), safemap_offices=offices, safemap_fire=fire
     )
@@ -1060,8 +1071,9 @@ async def test_public_uses_office_layer_plus_fire_stations() -> None:
     group = result["public"]
     assert group.state == "connected"
     names = {f.name for f in group.facilities}
-    # 관공서 레이어 + 소방서(지역대 제외, 시청과 겹치는 소방기관 행은 40m 중복 제거) + 도서관 검색.
-    assert names == {"전주시청", "전주시립도서관", "완산소방서", "시립도서관"}
+    # 관공서 레이어(본청·공공도서관만, 우체국 제외) + 도서관 검색. 소방서는 세지 않는다
+    # (내부망 앱 공공시설에 소방서가 없다).
+    assert names == {"전주시청", "전주시립도서관", "시립도서관"}
     assert "PO3" not in kakao.calls
 
 
@@ -1224,10 +1236,10 @@ async def test_public_office_campus_parcel_is_measured_to_its_boundary() -> None
     # 점까지 선이 그어졌다. 상한을 없애고, 청사는 최근접 5곳 밖이어도 조회하며, 같은
     # 필지 안 뒤쪽 시설도 그 경계를 나눠 쓴다.
     site = square_ring(CENTER, 20.0)
-    rows = [place(f"효자복지관{i}", 400 + 10 * i, "공공기관") for i in range(5)] + [
+    rows = [place(f"효자{i}동주민센터", 400 + 10 * i, "공공기관") for i in range(5)] + [
         place("전북특별자치도청", 700, "공공기관 > 도청"),
         place("전라북도청", 720, "공공기관 > 도청"),
-        place("전북도청출장소", 730, "공공기관 > 도청"),
+        place("전북특별자치도청 도서관", 730, "문화,예술 > 도서관 > 국공립도서관"),
     ]
     kakao = FakeKakao(categories={"PO3": rows})
     vworld = FakeVWorld(half=150.0, area_m2=101_019.0)
@@ -1239,10 +1251,10 @@ async def test_public_office_campus_parcel_is_measured_to_its_boundary() -> None
     office = by_name["전북특별자치도청"]
     assert office.measurement_tier == "site_boundary"
     assert office.distance_m == pytest.approx(530, abs=3)
-    for name in ("전라북도청", "전북도청출장소"):
+    for name in ("전라북도청", "전북특별자치도청 도서관"):
         assert by_name[name].measurement_tier == "site_boundary"
         assert by_name[name].distance_m == pytest.approx(office.distance_m, abs=0.5)
-    assert by_name["효자복지관0"].measurement_tier == "site_boundary"
+    assert by_name["효자0동주민센터"].measurement_tier == "site_boundary"
     # 청사는 최근접 5곳 밖이어도 조회하고, 이미 잰 필지 안의 시설(복지관1~4 · 전라북도청·
     # 전북도청출장소)은 새로 조회하지 않고 그 필지를 나눠 쓴다 — 복지관0 + 도청 2회.
     assert len(vworld.calls) == 2
@@ -1272,3 +1284,39 @@ async def test_zero_bus_stops_is_flagged() -> None:
     result = await collector.collect([], CENTER)
 
     assert "버스정류장을 한 곳도" in result["bus_stop"].source_alert
+
+
+def test_freight_stations_are_not_railway_stations() -> None:
+    from app.screening.amenities import GROUP_SPECS, RawPlace
+
+    keep = GROUP_SPECS["railway"].keep
+    assert keep is not None
+    assert keep(RawPlace("익산역", "", "교통,수송 > 기차역", CENTER))
+    assert not keep(RawPlace("동익산화물역", "", "교통,수송 > 기차역", CENTER))
+
+
+def test_university_units_sharing_a_gate_collapse_to_one() -> None:
+    # 2026-09-28 익산 창인동: 「전북대학교 특성화캠퍼스·대학원·환경생명자원대학」이 같은
+    # 정문으로 재져 선이 겹쳤다. 시설군 건수와 지도 선 수가 같아야 한다.
+    from app.screening.amenities import CollectedFacility, _collapse_same_gate
+
+    gate = offset_coordinates(CENTER, 1286, 0)
+    other = offset_coordinates(CENTER, 2832, 0)
+
+    def uni(name: str, distance: float, point: Coordinates) -> CollectedFacility:
+        return CollectedFacility(
+            name=name, address="", coordinates=point, distance_m=distance, source_label="",
+            measurement_tier="front_door_point", nearest_facility_point=point,
+        )
+
+    result = _collapse_same_gate(
+        [
+            uni("전북대학교 대학원", 1286, gate),
+            uni("전북대학교 특성화캠퍼스", 1286, gate),
+            uni("전북대학교 환경생명자원대학", 1286, gate),
+            uni("원광대학교 경영대학원", 2832, other),
+            uni("원광대학교", 2832, other),
+        ]
+    )
+
+    assert [f.name for f in result] == ["전북대학교 특성화캠퍼스", "원광대학교"]

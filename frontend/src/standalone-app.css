@@ -66,7 +66,9 @@
 .solo-run-slot { grid-column: 5; grid-row: 1; }
 .solo-reset-slot { grid-column: 5; grid-row: 2; }
 .solo-bar-actions { grid-column: 6; grid-row: 1; justify-self: end; }
-.solo-site-slot { grid-column: 4; grid-row: 2; justify-self: start; min-width: 0; max-width: 100%; min-height: 24px; }
+/* 칩이 검색창 열 폭 안에서 줄어들게 flex 로 둔다. 블록이면 칩이 내용 폭만큼 늘어나
+   다필지일 때 옆 열의 「다시 검색」 버튼을 덮는다. 넘치는 지번은 칩 안에서 가로로 민다. */
+.solo-site-slot { grid-column: 4; grid-row: 2; justify-self: stretch; display: flex; min-width: 0; max-width: 100%; min-height: 24px; }
 
 /* 실행(또는 검색·결과 상세)과 다시 검색은 같은 열에서 같은 크기다. */
 .solo-run-slot > button,
@@ -1673,8 +1675,10 @@
 
 .solo-site-chip {
   min-width: 0;
+  max-width: 100%;
   flex: 0 1 auto;
   overflow-x: auto;
+  scrollbar-width: thin;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1687,6 +1691,11 @@
   font-size: 14.5px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* 칩 안 요소는 줄어들지 않는다 — 넘치면 칩이 가로 스크롤한다. */
+.solo-site-chip > * {
+  flex-shrink: 0;
 }
 
 .solo-site-chip > b {

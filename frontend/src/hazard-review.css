@@ -192,6 +192,7 @@
 /* 이름표는 호버(포인터가 영역 안)에서만 선다. 선택은 채움·테두리로만 드러난다. */
 .hazard-map-marker:hover .hazard-map-card,
 .hazard-map-marker.is-hover .hazard-map-card,
+.hazard-map-marker.is-linked .hazard-map-card,
 .hazard-map-marker:focus-visible .hazard-map-card {
   opacity: 1;
   visibility: visible;
@@ -223,7 +224,7 @@
 
 /* 호버 중인 마커는 이름표가 서 있으므로 다른 마커 위로 올린다. */
 
-.hazard-map-marker.is-selected, .hazard-map-marker.is-hover {
+.hazard-map-marker.is-selected, .hazard-map-marker.is-hover, .hazard-map-marker.is-linked {
   z-index: 2;
 }
 
@@ -415,6 +416,111 @@
 
 .hazard-distance-label.is-institution {
   background: #7c3aed;
+}
+
+/* 레일에서 펼친 시설군의 거리 라벨 — 이름을 붙이고 테두리로 도드라지게 한다.
+   초록(점수 근거)이어도 펼친 군의 시설이면 함께 표시돼 레일 건수와 선 수가 맞는다. */
+.hazard-distance-label.is-focus {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -2px 4px rgba(15, 23, 42, 0.18),
+    0 0 0 3px rgba(255, 255, 255, 0.95),
+    0 0 0 5px color-mix(in srgb, #2563eb 55%, transparent),
+    0 0 18px 2px color-mix(in srgb, #60a5fa 45%, transparent),
+    0 6px 16px -6px rgba(15, 23, 42, 0.55);
+}
+
+/* 유리 광택 — 위쪽 절반에 밝은 반사면. 라벨 색(초록·파랑·빨강)은 그대로 비친다. */
+.hazard-distance-label.is-focus::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 50% 0;
+  z-index: -1;
+  border-radius: 999px 999px 40% 40% / 999px 999px 60% 60%;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.55),
+    rgba(255, 255, 255, 0.08)
+  );
+  pointer-events: none;
+}
+
+/* 빛줄기 — 비스듬한 흰 띠가 몇 초마다 라벨을 가로질러 지나간다. */
+.hazard-distance-label.is-focus::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: -60%;
+  width: 45%;
+  z-index: 1;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.65) 50%,
+    transparent
+  );
+  transform: skewX(-18deg);
+  animation: hazard-distance-shine 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes hazard-distance-shine {
+  0% {
+    left: -60%;
+  }
+  55%,
+  100% {
+    left: 130%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hazard-distance-label.is-focus::after {
+    animation: none;
+    display: none;
+  }
+}
+
+/* 거리선 묶음 강조 — 라벨·핀·시설 영역 중 하나에 마우스를 올리면 그 시설의 거리
+   라벨이 커지고 빛나며 시설 이름이 붙는다. 선이 겹쳐도 어느 거리가 어느 시설인지
+   바로 읽힌다. 라벨은 눌러서 그 시설을 고를 수 있다. */
+.hazard-distance-label {
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.hazard-distance-label.is-linked {
+  transform: scale(1.12);
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.95),
+    0 0 0 7px color-mix(in srgb, #facc15 70%, transparent),
+    0 8px 22px -6px rgba(15, 23, 42, 0.6);
+  animation: hazard-distance-pulse 900ms ease-in-out infinite alternate;
+}
+
+@keyframes hazard-distance-pulse {
+  from {
+    box-shadow:
+      0 0 0 3px rgba(255, 255, 255, 0.95),
+      0 0 0 5px color-mix(in srgb, #facc15 45%, transparent),
+      0 8px 22px -6px rgba(15, 23, 42, 0.6);
+  }
+  to {
+    box-shadow:
+      0 0 0 3px rgba(255, 255, 255, 0.95),
+      0 0 0 10px color-mix(in srgb, #facc15 75%, transparent),
+      0 8px 22px -6px rgba(15, 23, 42, 0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hazard-distance-label.is-linked {
+    animation: none;
+  }
 }
 
 .hazard-map-legend .marker-door {

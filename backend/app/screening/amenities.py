@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import logging
 import time
 from collections.abc import Awaitable, Callable, Sequence
@@ -54,7 +55,6 @@ from app.services.naver_search import NaverSearchClient
 from app.services.seoul_bus import SeoulBusStopClient
 from app.services.parcel_sanity import parcel_rejection_reason
 from app.services.safemap_facilities import (
-    FIRE_PUBLIC_KINDS,
     SafemapFacility,
     SafemapFacilityFeed,
 )
@@ -231,7 +231,6 @@ NCMC_HOSPITAL_SOURCE = "국립중앙의료원 전국 병·의원 찾기(종합�
 SAFEMAP_SCHOOL_SOURCE = "교육부 학교알리미 초·중·고 위치(생활안전지도 IF_0035)"
 SAFEMAP_UNIVERSITY_SOURCE = "교육부 대학교 위치(생활안전지도 IF_0034)"
 SAFEMAP_OFFICE_SOURCE = "행정안전부 민원행정기관 전자지도(생활안전지도 IF_0031)"
-SAFEMAP_FIRE_SOURCE = "소방청 소방서·119안전센터(생활안전지도 IF_0038)"
 SAFEMAP_HOSPITAL_SOURCE = "국립중앙의료원 종합병원(생활안전지도 IF_0022)"
 
 # 정문을 어느 원천에서도 못 찾은 대학에 붙이는 지정 대기 고지(국장님 §3-3). 좌표
@@ -438,9 +437,16 @@ def _name_has(place: RawPlace, tokens: Sequence[str]) -> bool:
     return any(token in haystack for token in tokens)
 
 
+# 여객을 받지 않는 역. 「동익산화물역」처럼 이름이 「역」으로 끝나도 타고 내릴 수 없어
+# 철도역으로 세지 않는다(내부망 앱 철도역·KTX역 목록에 없다).
+_NON_PASSENGER_STATION_TOKENS: tuple[str, ...] = ("화물", "신호장", "조차장", "기지")
+
+
 def _is_railway(place: RawPlace) -> bool:
     # "기차역" 키워드 검색은 역 앞 상가까지 물어 온다. 이름이 '역'으로 끝나는 것만 남긴다.
-    return place.name.endswith("역")
+    return place.name.endswith("역") and not any(
+        token in place.name for token in _NON_PASSENGER_STATION_TOKENS
+    )
 
 
 def _category_leaf(place: RawPlace) -> str:
@@ -463,20 +469,38 @@ def _is_terminal(place: RawPlace) -> bool:
     return _category_leaf(place).endswith(TERMINAL_LEAF_SUFFIX)
 
 
-def _is_public(place: RawPlace) -> bool:
-    """공공시설 = PO3 공공기관 전부 + 도서관 분류만.
+# 공공시설로 세는 청사 — 도청과 시·군·구청 본청만(내부망 앱 JB_43 관공서 17건과 같다).
+# 「전북도청출장소」·「종합상황실」·「○○사업소」처럼 청사 부속·산하기관은 이름 끝이
+# 달라 걸러진다.
+_MAIN_OFFICE_RE = re.compile(r"(도청|시청|군청|구청)$")
+# 공공도서관이 아닌 도서관 — 내부망 앱 공공도서관 목록(JB_45)에 없다.
+# 대학·학교 도서관도 공공도서관이 아니다(「전주대학교 도서관」).
+_NON_PUBLIC_LIBRARY_TOKENS: tuple[str, ...] = (
+    "작은도서관", "스마트도서관", "무인도서관", "대학", "학교",
+)
 
-    '도서관' 키워드 검색은 영어학원·화장실까지 물어 온다. 공공기관 카테고리
-    검색분은 분류가 제각각(시청·파출소·행정복지센터)이라 통과시키고, 도서관
-    키워드에서 온 것만 분류로 거른다.
+
+def _is_public(place: RawPlace) -> bool:
+    """공공시설 = 도청·시군구청 본청 + 공공도서관 + 행정복지센터(주민센터).
+
+    내부망 앱 표준 데이터셋의 공공시설은 관공서(JB_43, 도청·시군청 본청 17건)·
+    공공도서관(JB_45)·행정복지센터(JB_44) 세 목록뿐이다(2026-09-28 대조). 관공서
+    레이어·지도 공공기관 분류를 그대로 받으면 「전북도청출장소」·「종합상황실」·
+    파출소·소방서까지 공공시설로 세어 결과가 갈린다. 그래서 세 종류만 남긴다.
     """
 
+    name = place.name.replace(" ", "")
     leaf = _category_leaf(place)
     if leaf in LIBRARY_CATEGORIES:
+        return leaf != "작은도서관" and not any(
+            token in name for token in _NON_PUBLIC_LIBRARY_TOKENS
+        )
+    # 도서관 키워드로만 걸린 오탐(영어도서관학원·도서관 화장실)은 분류가 도서관이 아니다.
+    if "도서관" in name:
+        return False
+    if "행정복지센터" in name or "주민센터" in name:
         return True
-    # 도서관 키워드로만 걸리는 오탐을 막는다. 이름에 '도서관' 이 있는데 분류가
-    # 도서관이 아니면 학원·화장실 계열이다.
-    return "도서관" not in place.name
+    return bool(_MAIN_OFFICE_RE.search(name))
 
 
 def _school_filter(token: str) -> Callable[[RawPlace], bool]:
@@ -1329,38 +1353,8 @@ class AmenityCollector:
                 lambda r: ("문화,예술 > 도서관" if "도서관" in r.name else "공공기관 > 관공서"),
             )
         )
-        sources = [SAFEMAP_OFFICE_SOURCE]
-        fire_alert = ""
-        # 소방서·119안전센터 보강. 실패해도 관공서 결과는 그대로 쓴다(보강 원천).
-        if _feed_enabled(self.safemap_fire):
-            assert self.safemap_fire is not None
-            try:
-                fire_rows = await self.safemap_fire.facilities_around(center, radius_m)
-            except Exception:
-                logger.warning("생활안전지도 소방서 레이어 실패", exc_info=True)
-                fire_rows = []
-                fire_alert = (
-                    "생활안전지도 소방서 레이어가 응답하지 않아 소방서·119안전센터가 "
-                    "공공시설에서 빠졌을 수 있습니다."
-                )
-            added = 0
-            for row in fire_rows:
-                if row.kind not in FIRE_PUBLIC_KINDS:
-                    continue
-                if any(haversine_meters(row.coordinates, p.coordinates) <= 40 for p in places):
-                    continue
-                places.append(
-                    RawPlace(row.name, row.address, f"공공기관 > {row.kind}", row.coordinates)
-                )
-                added += 1
-            if added:
-                sources.append(SAFEMAP_FIRE_SOURCE)
-        return FeedResult(
-            tuple(places),
-            " + ".join(sources),
-            degraded=bool(fire_alert),
-            alert=fire_alert,
-        )
+        # 소방서(IF_0038)는 보강하지 않는다 — 내부망 앱 공공시설에 소방서가 없다.
+        return FeedResult(tuple(places), SAFEMAP_OFFICE_SOURCE)
 
     async def _universities(
         self, query: str, center: Coordinates, radius_m: int
@@ -1764,6 +1758,7 @@ class AmenityCollector:
                 ),
                 key=lambda facility: facility.distance_m,
             )
+            facilities = _collapse_same_gate(facilities)
             group_notice = _front_door_group_notice(facilities)
         else:
             is_station = key in ("railway", "subway")
@@ -2209,6 +2204,46 @@ def _dedupe_doors(
             continue
         kept.append((label, coords))
     return kept
+
+
+def _collapse_same_gate(
+    facilities: Sequence[CollectedFacility],
+) -> list[CollectedFacility]:
+    """같은 정문으로 잰 대학 시설(본교·대학원·단과대학)을 한 곳으로 합친다.
+
+    지도 검색은 「전북대학교 대학원」·「전북대학교 환경생명자원대학」처럼 한 캠퍼스의
+    부속을 따로 준다. 정문을 공유하므로 거리선이 정확히 겹쳐 시설군 건수(7)와 지도에
+    보이는 선(3)이 어긋났다. 내부망 앱도 대학은 캠퍼스 정문 하나로 센다. 대표 이름은
+    캠퍼스 단위 이름(university_base 가 그대로인 것)을, 없으면 가장 짧은 이름을 쓴다.
+    """
+
+    groups: dict[tuple[float, float], list[CollectedFacility]] = {}
+    order: list[tuple[float, float] | int] = []
+    singles: dict[int, CollectedFacility] = {}
+    for index, facility in enumerate(facilities):
+        point = facility.nearest_facility_point
+        if facility.measurement_tier.startswith("front_door") and point is not None:
+            key = (round(point.lat, 5), round(point.lng, 5))
+            if key not in groups:
+                groups[key] = []
+                order.append(key)
+            groups[key].append(facility)
+        else:
+            singles[index] = facility
+            order.append(index)
+    collapsed: list[CollectedFacility] = []
+    for key in order:
+        if isinstance(key, int):
+            collapsed.append(singles[key])
+            continue
+        members = groups[key]
+        nearest = min(members, key=lambda f: f.distance_m)
+        label = min(
+            members,
+            key=lambda f: (university_base(f.name) != f.name.strip(), len(f.name)),
+        )
+        collapsed.append(nearest._replace(name=label.name, address=label.address))
+    return sorted(collapsed, key=lambda facility: facility.distance_m)
 
 
 def _with_source_alert(

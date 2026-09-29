@@ -92,11 +92,23 @@ export function visibleScreeningHits(
   refs: ScreeningHitRef[],
   expandedGroupKey: string | null,
 ): ScreeningHitRef[] {
-  return refs.filter(
+  const shown = refs.filter(
     (ref) =>
       ref.hit.coordinates != null &&
       (ref.isCriterionNearest || ref.groupKey === expandedGroupKey),
   );
+  // 같은 시설군이 여러 평가항목에 걸리면(철도역: 대중교통·역세권 가점) 같은 시설이 두 번
+  // 들어와 선과 라벨이 정확히 겹친다. 시설 하나에 선 하나만 긋고, 근거(초록)를 우선한다.
+  const byFacility = new Map<string, ScreeningHitRef>();
+  for (const ref of shown) {
+    const point = ref.hit.nearest_facility_point ?? ref.hit.coordinates;
+    const key = `${ref.groupKey}|${ref.hit.name}|${point?.lat}|${point?.lng}`;
+    const seen = byFacility.get(key);
+    if (!seen || (ref.isCriterionNearest && !seen.isCriterionNearest)) {
+      byFacility.set(key, ref);
+    }
+  }
+  return [...byFacility.values()];
 }
 
 /** 측정 기준을 이름표에 넣을 짧은 표기로 바꾼다(정문 좌표 / 시설 좌표 / 필지경계). */
