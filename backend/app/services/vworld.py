@@ -139,42 +139,6 @@ class VWorldClient:
     def enabled(self) -> bool:
         return bool(self.api_key)
 
-    async def cadastral_image(
-        self, south: float, west: float, north: float, east: float, width: int, height: int
-    ) -> bytes:
-        """연속지적도(본번·부번 경계) WMS 이미지 한 장(투명 PNG).
-
-        화면 영역 하나를 이미지 한 장으로 받는다(실측 0.1~0.15초). 필지 도형을 받아 수천
-        개를 그리던 방식보다 훨씬 빨라, 지도의 「지적도」 레이어를 이것으로 그린다.
-        WMS 1.3.0 의 EPSG:4326 은 BBOX 축 순서가 위도·경도다.
-        """
-
-        async with httpx.AsyncClient(
-            timeout=self.timeout, transport=self._transport, verify=shared_verify()
-        ) as client:
-            response = await client.get(
-                "https://api.vworld.kr/req/wms",
-                params={
-                    "SERVICE": "WMS",
-                    "REQUEST": "GetMap",
-                    "VERSION": "1.3.0",
-                    "LAYERS": "lp_pa_cbnd_bubun,lp_pa_cbnd_bonbun",
-                    "STYLES": "lp_pa_cbnd_bubun_line,lp_pa_cbnd_bonbun_line",
-                    "CRS": "EPSG:4326",
-                    "BBOX": f"{south},{west},{north},{east}",
-                    "WIDTH": str(width),
-                    "HEIGHT": str(height),
-                    "FORMAT": "image/png",
-                    "TRANSPARENT": "true",
-                    "KEY": self.api_key,
-                    "DOMAIN": self.domain,
-                },
-            )
-        content_type = response.headers.get("content-type", "")
-        if response.status_code != 200 or not content_type.startswith("image/"):
-            raise VWorldAPIError(f"VWorld 지적도 이미지 실패({response.status_code})")
-        return response.content
-
     async def zoning_at(self, lat: float, lng: float) -> ZoningInfo | None:
         """좌표의 용도지역(지적편집도)을 조회한다. 미확인·실패·키없음은 None.
 

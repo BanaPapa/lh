@@ -5,7 +5,7 @@ import logging
 from functools import lru_cache
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.config import get_settings
 from app.hazard_review.models import (
@@ -260,45 +260,6 @@ async def resolve_parcels(
 def get_vworld_client() -> VWorldClient:
     config = get_settings()
     return VWorldClient(config.vworld_api_key, domain=config.vworld_domain)
-
-
-# 지적도 이미지 한 장의 상한. 화면 크기 × 기기 배율이 이 안에 든다. 영역은 레벨 4
-# 화면(약 3km)을 넉넉히 덮는 폭까지만 받는다 — 더 축소하면 경계가 뭉개져 쓸모가 없다.
-MAX_CADASTRAL_IMAGE_PX = 2048
-MAX_CADASTRAL_IMAGE_SPAN_DEG = 0.08
-
-
-@router.get("/cadastral-image")
-async def cadastral_image(
-    south: float = Query(ge=-90, le=90),
-    west: float = Query(ge=-180, le=180),
-    north: float = Query(ge=-90, le=90),
-    east: float = Query(ge=-180, le=180),
-    width: int = Query(ge=16, le=MAX_CADASTRAL_IMAGE_PX),
-    height: int = Query(ge=16, le=MAX_CADASTRAL_IMAGE_PX),
-    vworld: VWorldClient = Depends(get_vworld_client),
-) -> Response:
-    """지도 화면 영역의 연속지적도 이미지(투명 PNG). VWorld 키는 서버에만 둔다.
-
-    필지 도형 수천 개를 받아 그리던 것을 이미지 한 장으로 바꿔 지적도가 바로 뜬다.
-    """
-
-    if north <= south or east <= west:
-        raise HTTPException(status_code=422, detail="조회 영역이 올바르지 않습니다.")
-    if north - south > MAX_CADASTRAL_IMAGE_SPAN_DEG or east - west > MAX_CADASTRAL_IMAGE_SPAN_DEG:
-        raise HTTPException(status_code=422, detail="지도를 더 확대해 주세요.")
-    if not vworld.enabled:
-        raise HTTPException(status_code=503, detail="VWorld 지적도 키가 설정되지 않았습니다.")
-    try:
-        image = await vworld.cadastral_image(south, west, north, east, width, height)
-    except VWorldAPIError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    # 같은 화면으로 돌아오면 브라우저가 다시 받지 않게 한다(지적은 하루 안에 바뀌지 않는다).
-    return Response(
-        content=image,
-        media_type="image/png",
-        headers={"Cache-Control": "public, max-age=86400"},
-    )
 
 
 @router.get("/parcels/in-bounds", response_model=CadastralParcelsResponse)
