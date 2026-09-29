@@ -1351,9 +1351,8 @@ export function MapPanel({
   const runCadastralRefresh = useCallback(() => {
     const map = mapRef.current;
     const runtime = runtimeRef.current;
-    if (!runtime || !map || !mapReady) return;
-    // 검색 전: 사용자가 지적도를 켰을 때만 지금 보이는 화면의 필지를 받는다.
-    if (!site && !cadastralAutoRef.current) return;
+    // 지적도는 검색한 뒤에만 쓴다. 검색 전에 화면 전체 타일을 받으면 너무 느렸다.
+    if (!runtime || !map || !mapReady || !site) return;
 
     // 확대 수준 게이트: 필지가 읽히는 수준(정규화 레벨 ≤ 4)에서만 조회·표시하고,
     // 더 축소되면 오버레이를 내린 뒤 안내만 남긴다.
@@ -1368,22 +1367,6 @@ export function MapPanel({
     const box = readMapBounds(runtime, map);
     if (!box) return;
 
-    if (!site) {
-      // 검색 전에는 사업지가 없으니 화면 가운데를 기준으로 보이는 타일만 받는다.
-      // 캐시가 겹치는 타일은 다시 받지 않으므로 지도를 옮길 때마다 새 자리만 받는다.
-      const viewCenter = boxCenter(box);
-      cadastralCenterRef.current = viewCenter;
-      cadastralViewportRef.current = box;
-      enqueueTiles(
-        tilesForViewport(box).filter((tile) =>
-          tileWithinRadius(viewCenter, tile, CADASTRAL_MAX_RADIUS_M),
-        ),
-        cadastralGenRef.current,
-      );
-      recomputeVisibleParcels();
-      return;
-    }
-
     const center = site.coordinates;
     // 뷰포트 전체가 사업지 3km 밖이면 조회하지 않는다.
     if (viewportOutsideRadius(center, box, CADASTRAL_MAX_RADIUS_M)) {
@@ -1397,7 +1380,7 @@ export function MapPanel({
     // 지도를 옮긴다고 새로 받지 않는다. 타일은 검색 직후 사업지 주변 350m 와
     // 빈 자리 클릭 주변 350m 에서만 받고, 여기서는 받아 둔 것을 뷰포트에 맞춰 그린다.
     recomputeVisibleParcels();
-  }, [mapReady, site, recomputeVisibleParcels, enqueueTiles]);
+  }, [mapReady, site, recomputeVisibleParcels]);
 
   /** 누른 자리 주변 350m 타일만 따로 받는다(스위치 상태와 무관). */
   const loadCadastralAround = useCallback(
@@ -1453,7 +1436,7 @@ export function MapPanel({
     cadastralCenterRef.current = null;
     setCadastralParcels([]);
     setCadastralNote("");
-    // 검색 전에는 꺼 둔다 — 켜면 그때 보이는 화면의 필지를 받는다. 검색하면 켠다.
+    // 검색 전에는 꺼 두고 스위치도 막는다. 검색하면 켠다.
     setCadastralAutoOn(Boolean(site));
     cadastralAutoRef.current = Boolean(site);
     facilityRingsRef.current = [];
@@ -2649,7 +2632,12 @@ export function MapPanel({
               className={`map-zoning-toggle${cadastralAutoOn ? " is-on" : ""}`}
               role="switch"
               aria-checked={cadastralAutoOn}
-              title="지적도(필지 경계) 레이어 켜기/끄기 — 받아 둔 필지를 보이거나 숨긴다"
+              disabled={!site}
+              title={
+                site
+                  ? "지적도(필지 경계) 레이어 켜기/끄기 — 받아 둔 필지를 보이거나 숨긴다"
+                  : "사업지를 검색한 뒤 켤 수 있습니다"
+              }
               onClick={() => {
                 const next = !cadastralAutoOn;
                 setCadastralAutoOn(next);

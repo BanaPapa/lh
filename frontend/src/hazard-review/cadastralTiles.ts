@@ -45,7 +45,8 @@ export const METERS_PER_DEGREE_LAT = 111_320;
 export const MAX_CADASTRAL_POLYGONS = 2500;
 
 /** 필지 경계가 읽히는 정규화 레벨 상한. 이보다 축소되면 조회·표시하지 않는다. */
-export const CADASTRAL_MAX_LEVEL = 4;
+/** 4 에서는 한 화면에 필지가 너무 많아 그리기가 느렸다(2026-09-30). 한 단계 더 확대해야 그린다. */
+export const CADASTRAL_MAX_LEVEL = 3;
 
 /**
  * 타일 분할 최대 깊이. truncated(응답 상한 초과) 타일을 폭 절반의 하위 4타일로

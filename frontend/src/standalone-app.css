@@ -1816,7 +1816,8 @@
   pointer-events: none;
   right: 0;
   z-index: 50;
-  width: 420px;
+  /* 긴 항목 이름(주유소·석유판매 취급소…)과 「미적용」이 한 줄에 들어가는 폭. */
+  width: 560px;
   max-width: calc(100vw - 32px);
   padding: 12px 14px;
   background: var(--raise);
@@ -1931,4 +1932,11 @@
    줄(한 줄 높이 + 줄 간격 6px) 아래로 내려 띄운다. */
 .solo-housing-slot .solo-type-popover {
   top: calc(200% + 6px + 14px);
+}
+
+/* 오른쪽 값(50m·미적용)은 줄바꿈하지 않는다 — 「미적/용」으로 잘리던 문제. */
+.solo-type-popover > ul > li > b,
+.solo-type-popover > ul > li > em {
+  flex: none;
+  white-space: nowrap;
 }
