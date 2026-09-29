@@ -32,6 +32,26 @@ PAUSE_BETWEEN_DATASETS_SECONDS = 3.0
 RETRY_FAILED_AFTER_SECONDS = 60.0
 
 
+def localdata_client(settings: Settings) -> LocalDataClient:
+    """좌표 없는 영업 중 행을 주소로 살리는 지오코더(카카오)를 붙인 인허가 클라이언트."""
+
+    from app.services.address_candidates import address_candidates
+    from app.services.kakao import KakaoClient
+
+    kakao = KakaoClient(settings.kakao_rest_api_key)
+
+    async def geocode(address: str):
+        if not kakao.enabled:
+            return None
+        for candidate in address_candidates(address):
+            found = await kakao.geocode(candidate)
+            if found:
+                return found[0].coordinates
+        return None
+
+    return LocalDataClient(settings.public_data_key, geocode=geocode)
+
+
 def stale_datasets(
     store: FacilityStore,
     now: datetime | None = None,
@@ -90,7 +110,7 @@ async def sync(dataset_keys: list[str]) -> int:
 
     store = FacilityStore()
     datasets = [DATASET_BY_KEY[key] for key in dataset_keys]
-    await refresh(LocalDataClient(settings.public_data_key), store, datasets, report=print)
+    await refresh(localdata_client(settings), store, datasets, report=print)
     total = sum(state.record_count for state in store.sync_states() if state.dataset_key in dataset_keys)
     print(f"\n합계 {total:,}건 · {store.db_path}")
     return 0
@@ -109,7 +129,7 @@ async def refresh_stale(
     if not stale:
         logger.info("인허가 원장 최신: 자동 갱신 건너뜀")
         return
-    client = client or LocalDataClient(settings.public_data_key)
+    client = client or localdata_client(settings)
     logger.info(
         "인허가 원장 자동 갱신 시작: %d종(%s)",
         len(stale),

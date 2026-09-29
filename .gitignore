@@ -111,3 +111,6 @@ backend/data/rule_overrides.json
 
 # 테스트 배포 절차(Vercel + Cloud Run).
 !docs/DEPLOY.md
+
+# 인허가 원장 좌표 없는 행의 주소 지오코딩 캐시(동기화 때 재생성). 배포 업로드에는 들어간다.
+backend/data/localdata_geocode_cache.json

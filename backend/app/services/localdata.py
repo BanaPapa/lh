@@ -19,7 +19,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -275,6 +278,13 @@ EXTRA_FIELDS: tuple[str, ...] = (
 )
 
 
+# 좌표 없는 행의 주소 → 좌표 캐시. 매일 동기화마다 같은 주소를 다시 묻지 않는다.
+GEOCODE_CACHE_PATH = Path(__file__).resolve().parents[2] / "data" / "localdata_geocode_cache.json"
+GEOCODE_CONCURRENCY = 8
+
+Geocoder = Callable[[str], Awaitable[Coordinates | None]]
+
+
 class LocalDataRecord(NamedTuple):
     """인허가 사업장 한 곳."""
 
@@ -305,22 +315,42 @@ def _to_wgs84() -> Transformer:
     return Transformer.from_crs(LOCALDATA_CRS, "EPSG:4326", always_xy=True)
 
 
+def lacks_coordinates(row: dict[str, Any]) -> bool:
+    """영업 중인데 좌표 칸이 비어 있는 행인가. 주소로 좌표를 찾아 살릴 대상이다."""
+
+    if str(row.get("SALS_STTS_CD") or "").strip() not in INGESTED_STATUS_CODES:
+        return False
+    return row.get("CRD_INFO_X") in (None, "") or row.get("CRD_INFO_Y") in (None, "")
+
+
 def parse_record(
     dataset: LocalDataSet,
     row: dict[str, Any],
+    fallback_coordinates: Coordinates | None = None,
 ) -> LocalDataRecord | None:
-    """응답 한 행을 좌표까지 변환해 담는다. 좌표가 없거나 폐업이면 버린다."""
+    """응답 한 행을 좌표까지 변환해 담는다. 폐업이면 버린다.
+
+    좌표 칸이 비었으면 fallback_coordinates(주소 지오코딩 결과)를 쓰고, 그것도 없으면
+    버린다. 원장에는 영업 중인데 좌표가 빈 행이 적지 않다(2026-09-30 실측 전국 6천여 건,
+    전북 대규모점포 83곳 중 25곳 · 고압가스 81곳 · 석유판매 32곳). LH 표준 데이터셋은 이런
+    행을 「필지 대표점 · 주소 검색」으로 위치를 부여해 살렸다(성락시장 등).
+    """
 
     if str(row.get("SALS_STTS_CD") or "").strip() not in INGESTED_STATUS_CODES:
         return None
     x = row.get("CRD_INFO_X")
     y = row.get("CRD_INFO_Y")
+    geocoded = False
     if x in (None, "") or y in (None, ""):
-        return None
-    try:
-        lng, lat = _to_wgs84().transform(float(x), float(y))
-    except (TypeError, ValueError):
-        return None
+        if fallback_coordinates is None:
+            return None
+        lat, lng = fallback_coordinates.lat, fallback_coordinates.lng
+        geocoded = True
+    else:
+        try:
+            lng, lat = _to_wgs84().transform(float(x), float(y))
+        except (TypeError, ValueError):
+            return None
     # 변환 결과가 한반도 밖이면 원본 좌표 오류로 보고 버린다.
     if not (33.0 <= lat <= 39.5 and 124.0 <= lng <= 132.0):
         return None
@@ -340,9 +370,12 @@ def parse_record(
         # 대기배출사업장은 종별(BTP_NM)이 판정 키라 업태보다 앞선다.
         category=_first_field(row, dataset.category_fields),
         extra={
-            key: str(row.get(key) or "").strip()
-            for key in EXTRA_FIELDS
-            if str(row.get(key) or "").strip()
+            **{
+                key: str(row.get(key) or "").strip()
+                for key in EXTRA_FIELDS
+                if str(row.get(key) or "").strip()
+            },
+            **({"coord_source": "주소 지오코딩(원장 좌표 없음)"} if geocoded else {}),
         },
     )
 
@@ -354,11 +387,17 @@ class LocalDataClient:
         timeout: float = 40.0,
         transport: httpx.AsyncBaseTransport | None = None,
         concurrency: int = CONCURRENCY,
+        geocode: Geocoder | None = None,
+        geocode_cache_path: Path | None = GEOCODE_CACHE_PATH,
     ) -> None:
         self.service_key = service_key
         self.timeout = timeout
         self._transport = transport
         self.concurrency = max(1, concurrency)
+        # 좌표가 빈 영업 중 행을 살리는 주소 지오코더. 없으면 종전처럼 그런 행은 버린다.
+        self._geocode = geocode
+        self._geocode_cache_path = geocode_cache_path
+        self._geocode_cache: dict[str, list[float] | None] | None = None
 
     @property
     def enabled(self) -> bool:
@@ -396,13 +435,71 @@ class LocalDataClient:
                 *[one(page) for page in range(1, pages + 1)]
             )
 
+        rows = [row for batch in batches for row in batch]
+        located = await self._geocode_missing([row for row in rows if lacks_coordinates(row)])
         records: list[LocalDataRecord] = []
-        for rows in batches:
-            for row in rows:
-                record = parse_record(dataset, row)
-                if record:
-                    records.append(record)
+        for row in rows:
+            record = parse_record(dataset, row, located.get(id(row)))
+            if record:
+                records.append(record)
         return records
+
+    async def _geocode_missing(self, rows: list[dict[str, Any]]) -> dict[int, Coordinates]:
+        """좌표 없는 행의 주소(지번 → 도로명 순)를 지오코딩한다. 결과는 파일에 남겨 재사용."""
+
+        if not rows or self._geocode is None:
+            return {}
+        cache = self._load_geocode_cache()
+        semaphore = asyncio.Semaphore(GEOCODE_CONCURRENCY)
+        found: dict[int, Coordinates] = {}
+
+        async def locate(row: dict[str, Any]) -> None:
+            for field in ("LOTNO_ADDR", "ROAD_NM_ADDR"):
+                address = " ".join(str(row.get(field) or "").split())
+                if not address:
+                    continue
+                if address in cache:
+                    hit = cache[address]
+                    if hit:
+                        found[id(row)] = Coordinates(lat=hit[0], lng=hit[1])
+                        return
+                    continue
+                async with semaphore:
+                    try:
+                        point = await self._geocode(address)  # type: ignore[misc]
+                    except Exception:  # noqa: BLE001 — 일시 장애는 캐시하지 않고 다음 동기화에 다시 묻는다
+                        continue
+                cache[address] = [point.lat, point.lng] if point else None
+                if point:
+                    found[id(row)] = point
+                    return
+
+        await asyncio.gather(*(locate(row) for row in rows))
+        self._save_geocode_cache(cache)
+        return found
+
+    def _load_geocode_cache(self) -> dict[str, list[float] | None]:
+        if self._geocode_cache is not None:
+            return self._geocode_cache
+        cache: dict[str, list[float] | None] = {}
+        path = self._geocode_cache_path
+        if path is not None and path.exists():
+            try:
+                cache = json.loads(path.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                cache = {}
+        self._geocode_cache = cache
+        return cache
+
+    def _save_geocode_cache(self, cache: dict[str, list[float] | None]) -> None:
+        path = self._geocode_cache_path
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            return
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
