@@ -211,7 +211,7 @@ class VWorldClient:
                 return name
         return ""
 
-    async def search_address_point(self, query: str) -> Coordinates | None:
+    async def search_address_point(self, query: str, strict: bool = False) -> Coordinates | None:
         """VWorld 검색 API(주소)로 좌표 한 점을 찾는다. 모호하면 None.
 
         카카오 주소검색이 못 찾는 옛 지번(분할·합병으로 사라진 번지)의 보조다. 실측
@@ -244,6 +244,9 @@ class VWorldClient:
                     response = await client.get(VWORLD_SEARCH_URL, params=params)
                     body = response.json().get("response") or {}
                 except (httpx.HTTPError, ValueError):
+                    # strict: 통신 오류를 「못 찾음」과 구분해 올린다(캐시에 없음으로 굳지 않게).
+                    if strict:
+                        raise
                     return None
                 if body.get("status") != "OK":
                     continue

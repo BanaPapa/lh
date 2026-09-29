@@ -280,7 +280,8 @@ EXTRA_FIELDS: tuple[str, ...] = (
 
 # 좌표 없는 행의 주소 → 좌표 캐시. 매일 동기화마다 같은 주소를 다시 묻지 않는다.
 GEOCODE_CACHE_PATH = Path(__file__).resolve().parents[2] / "data" / "localdata_geocode_cache.json"
-GEOCODE_CONCURRENCY = 8
+# 동시 조회 수. 8 이면 주소마다 후보를 여러 번 물어 이 PC 임시 포트가 바닥났다(2026-09-30).
+GEOCODE_CONCURRENCY = 4
 
 Geocoder = Callable[[str], Awaitable[Coordinates | None]]
 

@@ -65,6 +65,10 @@ class KakaoClient:
             {"query": query, "size": 10},
         )
         results = await asyncio.gather(address_task, keyword_task, return_exceptions=True)
+        # 둘 다 통신 오류면 「결과 없음」이 아니라 조회 실패다. 빈 목록으로 돌려주면 호출 쪽이
+        # 「주소 없음」으로 캐시해 멀쩡한 시설이 영구히 빠진다(2026-09-30 포트 고갈).
+        if all(isinstance(result, BaseException) for result in results):
+            raise results[0]
 
         candidates: list[GeocodeCandidate] = []
         seen: set[tuple[str, str]] = set()

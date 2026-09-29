@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -107,5 +108,9 @@ async def geocode(
                 detail="카카오 API 쿼터를 초과했습니다.",
             ) from exc
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502, detail="카카오 주소 검색에 연결하지 못했습니다. 잠시 후 다시 검색해 주세요."
+        ) from exc
 
     return GeocodeResponse(query=query, candidates=candidates, demo=False)
