@@ -70,10 +70,10 @@
    다필지일 때 옆 열의 「다시 검색」 버튼을 덮는다. 넘치는 지번은 칩 안에서 가로로 민다. */
 .solo-site-slot { grid-column: 4; grid-row: 2; justify-self: stretch; display: flex; min-width: 0; max-width: 100%; min-height: 24px; }
 
-/* 넓은 화면(일반 모니터)은 주택유형 오른쪽에 신청유형을 붙여 한 줄로 쓴다. 노트북처럼
+/* 넓은 화면(일반 모니터, 1900px 이상)은 주택유형 오른쪽에 신청유형을 붙여 한 줄로 쓴다. 노트북처럼
    좁으면 위 기본 배치(두 줄)로 돌아간다. 2행은 검색 뒤 판정·필지 칩·다시 검색이 생길
    때만 높이를 가진다. */
-@media (min-width: 1800px) {
+@media (min-width: 1900px) {
   .solo-topbar {
     grid-template-columns: max-content max-content max-content 18px minmax(200px, 448px) max-content minmax(min-content, 1fr);
   }
@@ -410,12 +410,15 @@
 }
 /* 아이콘은 줄지 않고, 폭이 모자라면 상태 안내 글자만 말줄임으로 줄인다. */
 .solo-bar-actions > * { flex: none; }
-.solo-bar-actions > .server-status-notes {
-  /* 글자 폭이 열 최소 폭 계산에 들어가지 않게 가둔다(아이콘이 먼저, 남는 폭만 안내). */
-  contain: inline-size;
-  flex: 0 1 360px;
-  min-width: 0;
-  overflow: hidden;
+/* 상태 안내는 보통 온전히 보이고(검색창이 먼저 줄어든다), 아주 좁은 화면에서만 글자
+   폭을 열 최소 폭 계산에서 빼 말줄임으로 줄인다(아이콘이 잘리지 않게). */
+@media (max-width: 1539px) {
+  .solo-bar-actions > .server-status-notes {
+    contain: inline-size;
+    flex: 0 1 340px;
+    min-width: 0;
+    overflow: hidden;
+  }
 }
 
 .solo-icon-button {
