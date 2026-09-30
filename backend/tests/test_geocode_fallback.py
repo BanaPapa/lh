@@ -239,6 +239,20 @@ async def test_naver_set_searches_naver_first_without_notice() -> None:
     assert kakao.calls == []
 
 
+@pytest.mark.asyncio
+async def test_typo_address_is_not_found_not_kakao_quota_error() -> None:
+    # 네이버·VWorld 가 정상으로 「없음」이라 답하면 주소 오타다(송천동 → 송전동). 막힌
+    # 카카오의 한도 초과 오류를 내세우지 않고 결과 없음으로 돌려준다.
+    naver, _ = naver_client(lambda request: httpx.Response(
+        200, json={"status": "OK", "meta": {"totalCount": 0}, "addresses": []}
+    ))
+    candidates, notice = await search_address_candidates(
+        "덕진구 송전동1가 626-74",
+        kakao=FakeKakao(error=quota_error()), naver=naver, vworld=FakeVWorld(), prefer="naver",
+    )
+    assert candidates == [] and notice == ""
+
+
 def _api_client(monkeypatch, kakao, naver, vworld) -> TestClient:
     settings = Settings(_env_file=None, demo_mode=False, kakao_rest_api_key="k")
     main.app.dependency_overrides[get_settings] = lambda: settings

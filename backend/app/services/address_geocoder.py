@@ -264,6 +264,8 @@ async def search_address_candidates(
     """
 
     errors: list[BaseException] = []
+    # 오류로 치지는 않지만 답하지 못한 원천(네이버 인증 실패 = 미설정 취급).
+    silent: set[str] = set()
 
     async def ask_kakao() -> list[GeocodeCandidate]:
         return list(await _ask_kakao(kakao, [query], errors) or [])
@@ -278,6 +280,7 @@ async def search_address_candidates(
         try:
             return list(await _retrying(lambda: naver.candidates(query)))
         except NaverGeocodeAuthError:
+            silent.add("naver")
             return []
         except Exception as exc:  # noqa: BLE001
             if isinstance(exc, NaverGeocodeError) and _is_http_failure(exc):
@@ -306,10 +309,18 @@ async def search_address_candidates(
     }
     order = ("naver", "vworld", "kakao") if prefer == "naver" else ("kakao", "naver", "vworld")
     first_label = steps[order[0]][0]
+    enabled = {
+        "kakao": _kakao_enabled(kakao),
+        "naver": _enabled(naver),
+        "vworld": _enabled(vworld),
+    }
+    answered_cleanly = False
     for index, key in enumerate(order):
         before = len(errors)
         label, ask = steps[key]
         rows = await ask()
+        if enabled[key] and len(errors) == before and key not in silent:
+            answered_cleanly = True
         if rows:
             # 고른 세트가 막혀 뒤 원천에서 찾았을 때만 알린다(고른 세트로 찾으면 조용히).
             first_errors = errors[:before] if index > 0 else []
@@ -319,6 +330,8 @@ async def search_address_candidates(
                     f"{first_label}이 응답하지 않아({reason[:80]}) {label}에서 찾았습니다."
                 )
             return rows, ""
-    if errors:
+    # 한 원천이라도 정상으로 「없음」이라 답했으면 주소가 틀린 것이다(예: 송천동 → 송전동
+    # 오타). 막힌 다른 원천의 오류(카카오 한도 초과)를 내세우지 않고 「결과 없음」으로 둔다.
+    if errors and not answered_cleanly:
         raise _unavailable(query, errors)
     return [], ""
