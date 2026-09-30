@@ -51,6 +51,7 @@ from app.screening.service import ScreeningService
 from app.services.cadastral_local import CadastralLocalStore
 from app.services.facility_store import FacilityStore
 from app.services.kakao import KakaoClient
+from app.services.naver_geocode import NaverGeocodeClient
 from app.services.naver_search import NaverSearchClient
 from app.services.hira_hospital import HiraHospitalClient
 from app.services.school_locations import SchoolLocationClient
@@ -131,6 +132,10 @@ def get_screening_service() -> ScreeningService:
             # 초·중·고·공원·상업·문화·공공·버스정류장은 시설 필지경계에서 잰다
             # (MEASUREMENT.md §3). 1차 판정과 같은 VWorld 클라이언트를 쓴다.
             vworld=get_vworld_client(),
+            # 카카오가 막혔을 때 학교 지번주소 필지를 찾는 대체 지오코딩(NCP).
+            naver_geocode=NaverGeocodeClient(
+                config.naver_map_client_id, config.naver_map_client_secret
+            ),
             # 환승시설 지정 원천(환승센터 표준데이터 15034541). 활용신청 전엔 지도 근사.
             transfer_client=TransferCenterClient(config.public_data_key),
             # 서울 버스정류소(TAGO 미제공 지역). 서울 열린데이터광장 키.

@@ -6984,3 +6984,33 @@ button {
 }
 
 
+
+/* 카카오 API 한도 초과 안내(지도를 네이버로 바꿨다는 알림). */
+.screening-app .provider-outage-banner {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3000;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(720px, calc(100vw - 32px));
+  padding: 10px 12px 10px 14px;
+  border: 1px solid #f0c36d;
+  border-radius: 10px;
+  background: #fff8e6;
+  color: #6b4a00;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+.screening-app .provider-outage-banner button {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}

@@ -92,6 +92,12 @@ def _trip(provider: str, client: object, exc: BaseException) -> None:
     )
 
 
+def mark_outage(provider: str, client: object, exc: BaseException) -> None:
+    """바깥(상태 확인)에서 본 원천 오류를 쉬는 목록에 올린다."""
+
+    _trip(provider, client, exc)
+
+
 def current_outages() -> dict[str, str]:
     """지금 쉬는 원천 → 사유(설정 패널·안내 문구용)."""
 

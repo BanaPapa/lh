@@ -1,6 +1,8 @@
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,6 +16,8 @@ from app.services.demo import demo_geocode
 from app.services.address_geocoder import (
     GeocodeUnavailable,
     ProviderOutage,
+    current_outages,
+    mark_outage,
     search_address_candidates,
 )
 from app.services.kakao import KakaoAPIError, KakaoClient
@@ -85,6 +89,43 @@ async def health(config: Settings = Depends(get_settings)) -> dict[str, object]:
         "public_data_configured": bool(config.public_data_key),
         "naver_search_configured": config.naver_search_configured,
         "naver_geocode_configured": config.naver_geocode_configured,
+    }
+
+
+# 카카오 상태 확인은 10분에 한 번만 실제로 묻는다(확인 자체가 쿼터를 쓰지 않게).
+KAKAO_PROBE_INTERVAL_SECONDS = 600
+KAKAO_PROBE_ADDRESS = "서울특별시 중구 세종대로 110"
+_kakao_probe: dict[str, float] = {"at": float("-inf")}
+
+
+@app.get("/api/status/providers")
+async def provider_status(config: Settings = Depends(get_settings)) -> dict[str, object]:
+    """카카오 API 가 지금 막혔는가(일일 쿼터 초과 등). 화면이 안내를 띄우고 지도를 네이버로 돌린다."""
+
+    kakao = KakaoClient(config.kakao_rest_api_key)
+    reason = current_outages().get("카카오", "")
+    now = time.monotonic()
+    if not reason and kakao.enabled and now - _kakao_probe["at"] >= KAKAO_PROBE_INTERVAL_SECONDS:
+        _kakao_probe["at"] = now
+        try:
+            await kakao.geocode(KAKAO_PROBE_ADDRESS)
+        except (KakaoAPIError, httpx.HTTPStatusError) as exc:
+            mark_outage("카카오", kakao, exc)
+            reason = current_outages().get("카카오", str(exc))
+        except httpx.TransportError:
+            pass  # 일시 통신 오류는 한도 초과로 보지 않는다
+    limited = bool(reason)
+    return {
+        "kakao_limited": limited,
+        "kakao_reason": reason,
+        "notice": (
+            "카카오 API 일일 사용 한도를 넘어 지도를 네이버 지도로 바꿨습니다. 주소 검색은 "
+            "네이버·VWorld 로 대신하고, 카카오 지도 검색에만 의존하는 일부 편의시설(철도역·"
+            "터미널·마트·백화점·도서관 등)은 「검토 필요」로 표시됩니다. 한도는 매일 자정(KST)에 "
+            "풀립니다."
+            if limited
+            else ""
+        ),
     }
 
 

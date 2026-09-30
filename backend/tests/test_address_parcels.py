@@ -167,3 +167,49 @@ async def test_resolver_rejects_road_parcels() -> None:
     resolver = AddressParcelResolver(kakao, fetch)
 
     assert await resolver.parcel_for("학교 주소", CENTER) is None
+
+
+def _feature(pnu: str, jibun: str, center: Coordinates) -> ParcelFeature:
+    return ParcelFeature(pnu=pnu, address="", jibun=jibun, ring=square_ring(center, 20), area_m2=1600)
+
+
+class DownSearch:
+    """쿼터가 바닥난 카카오 주소검색."""
+
+    enabled = True
+
+    async def address_documents(self, query: str) -> list[dict[str, Any]]:
+        raise RuntimeError("API limit has been exceeded.")
+
+
+async def _no_pnu(pnu: str) -> ParcelFeature | None:
+    return None
+
+
+@pytest.mark.asyncio
+async def test_kakao_down_falls_back_to_geocoded_point_parcel_with_same_lot() -> None:
+    near = Coordinates(lat=35.82, lng=127.13)
+
+    async def locate(address: str) -> Coordinates | None:
+        return near
+
+    async def at(point: Coordinates) -> ParcelFeature | None:
+        return _feature(SCHOOL_PNU, "227-1학", point)
+
+    resolver = AddressParcelResolver(DownSearch(), _no_pnu, locate=locate, fetch_at=at)
+    parcel = await resolver.parcel_for("전주시 완산구 서완산동2가 227-1", near)
+    assert parcel is not None and parcel.pnu == SCHOOL_PNU
+
+
+@pytest.mark.asyncio
+async def test_kakao_down_rejects_point_parcel_with_other_lot() -> None:
+    near = Coordinates(lat=35.82, lng=127.13)
+
+    async def locate(address: str) -> Coordinates | None:
+        return near
+
+    async def at(point: Coordinates) -> ParcelFeature | None:
+        return _feature("5211112300100620000", "62학", point)  # 옆 필지
+
+    resolver = AddressParcelResolver(DownSearch(), _no_pnu, locate=locate, fetch_at=at)
+    assert await resolver.parcel_for("전주시 완산구 서완산동2가 227-1", near) is None

@@ -309,3 +309,30 @@ def test_connections_show_naver_auth_failure_before_probe(monkeypatch) -> None:
     assert row.label == "네이버 지오코딩(NCP)"
     assert row.state == "failed"
     assert "인증 실패" in row.detail
+
+
+def test_provider_status_reports_kakao_limit_and_probes_rarely(monkeypatch) -> None:
+    # 카카오 한도 초과면 화면이 안내를 띄우고 지도를 네이버로 돌린다. 확인은 10분에 한 번만.
+    from fastapi.testclient import TestClient
+
+    import app.main as main_module
+    from app.services import address_geocoder
+    from app.services.kakao import KakaoAPIError
+
+    address_geocoder.reset_outages()
+    monkeypatch.setitem(main_module._kakao_probe, "at", float("-inf"))
+    calls: list[str] = []
+
+    async def over_limit(self, query: str):
+        calls.append(query)
+        raise KakaoAPIError("API limit has been exceeded.", 400)
+
+    monkeypatch.setattr(main_module.KakaoClient, "geocode", over_limit)
+    monkeypatch.setattr(main_module.KakaoClient, "enabled", property(lambda self: True))
+    client = TestClient(main_module.app)
+    body = client.get("/api/status/providers").json()
+    assert body["kakao_limited"] is True
+    assert "네이버 지도" in body["notice"]
+    client.get("/api/status/providers")
+    assert len(calls) == 1
+    address_geocoder.reset_outages()

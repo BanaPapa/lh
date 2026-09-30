@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import math
+import re
 from uuid import uuid4
 
 from app.hazard_review.models import (
@@ -73,6 +74,25 @@ def provisional_ring(center: Coordinates) -> list[Coordinates]:
     ]
 
 
+
+# 지번주소 끝의 법정동명 + 지번(「산」 + 본번-부번).
+_DONG_AND_LOT = re.compile(r"(\S+?[동리가])\s*(산)?\s*(\d+)(?:\s*-\s*(\d+))?\s*$")
+
+
+def _sibling_pnu(address: str, anchor: ParcelFeature | None) -> str | None:
+    """대표필지와 같은 법정동의 다른 지번이면 대표필지 법정동코드로 PNU 를 조립한다."""
+
+    if anchor is None or len(anchor.pnu) != 19 or not anchor.pnu.isdigit():
+        return None
+    match = _DONG_AND_LOT.search((address or "").strip())
+    if match is None:
+        return None
+    dong, mountain, bonbun, bubun = match.groups()
+    # 대표필지 주소에 같은 법정동명이 있어야 한다(경계 좌표로 옆 동 필지를 잡은 경우 제외).
+    if dong not in (anchor.address or "").split():
+        return None
+    return f"{anchor.pnu[:10]}{'2' if mountain else '1'}{int(bonbun):04d}{int(bubun or 0):04d}"
+
 class ParcelResolver:
     def __init__(
         self,
@@ -123,7 +143,9 @@ class ParcelResolver:
         except VWorldAPIError:
             return None
 
-    async def _resolve_additional(self, address: str) -> ParcelFeature | None:
+    async def _resolve_additional(
+        self, address: str, anchor: ParcelFeature | None = None
+    ) -> ParcelFeature | None:
         """인접 지번 하나를 좌표 없이 해석한다(로컬 지적도 우선).
 
         좌표가 없으므로 주소 → PNU 조립(법정동코드표) 또는 카카오 주소검색으로 PNU 를
@@ -149,6 +171,11 @@ class ParcelResolver:
                 documents = []
             for document in documents:
                 _add(pnu_from_address_document(document))
+
+        # 카카오가 막혀도 풀리게: 대표필지와 같은 법정동이면 대표필지 PNU 앞 10자리
+        # (법정동코드)에 이 지번을 붙여 PNU 를 만든다(2026-09-30 카카오 쿼터 초과 때 복수
+        # 지번 사업지가 첫 필지만 잡혀 거리가 20~70m 길게 나왔다).
+        _add(_sibling_pnu(address, anchor))
 
         for pnu in candidates:
             feature = await self._feature_for_pnu(pnu)
@@ -179,7 +206,7 @@ class ParcelResolver:
                 # 첫 항목)의 지번은 같은 PNU 로 풀려 seen_pnus 에서 걸러지므로, 첫
                 # 지번이 대표가 아니어도 결과에서 누락되지 않는다.
                 for extra_address in parsed.jibun_addresses:
-                    feature = await self._resolve_additional(extra_address)
+                    feature = await self._resolve_additional(extra_address, parcel)
                     if feature is None:
                         unresolved.append(extra_address)
                         continue

@@ -1,6 +1,6 @@
 import { MapPin } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { searchAddress } from "./api";
+import { getProviderStatus, searchAddress } from "./api";
 import { useTheme } from "./theme";
 import { MapPanel } from "./components/MapPanel";
 import { TopSearchBar } from "./components/TopSearchBar";
@@ -102,6 +102,21 @@ function App() {
       ? "naver"
       : "kakao",
   );
+  // 카카오 API 한도 초과 안내. 막히면 이번 접속 동안 지도를 네이버로 바꾼다(저장된 선택은
+  // 그대로 두어 한도가 풀리면 원래 지도로 돌아온다).
+  const [kakaoNotice, setKakaoNotice] = useState("");
+  const checkKakao = useCallback(() => {
+    getProviderStatus()
+      .then((status) => {
+        if (!status.kakao_limited) return;
+        setKakaoNotice(status.notice);
+        setMapProvider("naver");
+      })
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    checkKakao();
+  }, [checkKakao]);
   const [searching, setSearching] = useState(false);
   // 지도를 사업지 기준으로 재-fit 하라는 요청 카운터. 두 경우에 증가한다.
   // (1) 검색 재클릭: 후보가 나오면 siteChanged 여부와 무관하게 올려, 스크롤로
@@ -393,6 +408,7 @@ function App() {
         } else if (response.notice) {
           // 카카오 장애로 대체 원천에서 찾은 결과 — 조용히 넘기지 않고 알린다.
           setSearchNotice(response.notice);
+          checkKakao();
         }
         const nextCandidate = response.candidates[0];
         const siteChanged =
@@ -813,6 +829,14 @@ function App() {
 
   return (
     <main className="screening-app solo-app" data-module-view="solo">
+      {kakaoNotice && (
+        <div className="provider-outage-banner" role="status">
+          <span>{kakaoNotice}</span>
+          <button type="button" aria-label="안내 닫기" onClick={() => setKakaoNotice("")}>
+            ×
+          </button>
+        </div>
+      )}
       <TopSearchBar
         query={query}
         onQueryChange={(nextQuery) => {

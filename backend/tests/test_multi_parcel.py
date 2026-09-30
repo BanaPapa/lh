@@ -85,3 +85,17 @@ def test_space_separated_jibuns_without_comma() -> None:
     assert [a.split()[-1] for a in parsed.jibun_addresses] == [
         "339-6", "339-23", "339-24", "339-36", "339-39", "334-33", "산79-5",
     ]
+
+
+def test_sibling_pnu_reuses_anchor_legal_dong_code() -> None:
+    # 카카오가 막혀도 복수 지번 사업지의 나머지 필지를 대표필지 법정동코드로 조립한다.
+    from app.hazard_review.parcels import _sibling_pnu
+    from app.services.vworld import ParcelFeature
+
+    anchor = ParcelFeature(
+        "5211310700105170001", "전북특별자치도 전주시 덕진구 인후동1가 517-1", "517-1", [], 1.0
+    )
+    assert _sibling_pnu("전주시 덕진구 인후동1가 517-2", anchor) == "5211310700105170002"
+    assert _sibling_pnu("전주시 덕진구 인후동1가 산 7-1", anchor) == "5211310700200070001"
+    # 다른 법정동이면 조립하지 않는다.
+    assert _sibling_pnu("전주시 덕진구 금암동 5-1", anchor) is None

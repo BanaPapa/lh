@@ -111,6 +111,17 @@ export function updateSettingsKeys(
   });
 }
 
+export interface ProviderStatus {
+  kakao_limited: boolean;
+  kakao_reason: string;
+  notice: string;
+}
+
+// 카카오 API 가 막혔는가(일일 쿼터 초과 등). 막혔으면 화면이 안내를 띄우고 지도를 네이버로 돌린다.
+export function getProviderStatus(): Promise<ProviderStatus> {
+  return request<ProviderStatus>("/api/status/providers");
+}
+
 export function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/api/health");
 }

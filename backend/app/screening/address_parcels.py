@@ -39,6 +39,19 @@ class AddressSearch(Protocol):
 
 
 PnuParcelFetcher = Callable[[str], Awaitable[ParcelFeature | None]]
+PointLocator = Callable[[str], Awaitable[Coordinates | None]]
+PointParcelFetcher = Callable[[Coordinates], Awaitable[ParcelFeature | None]]
+
+# 주소 끝의 지번(「산」 + 본번-부번). 대체 경로로 찾은 필지가 같은 번지인지 확인한다.
+_TAIL_LOT = re.compile(r"(산)?\s*(\d+)(?:\s*-\s*(\d+))?\s*$")
+_HEAD_LOT = re.compile(r"^\s*(산)?\s*(\d+)(?:\s*-\s*(\d+))?")
+
+
+def _lot(text: str, pattern: re.Pattern[str]) -> tuple[bool, int, int] | None:
+    match = pattern.search(text or "")
+    if match is None:
+        return None
+    return bool(match.group(1)), int(match.group(2)), int(match.group(3) or 0)
 
 
 def _squash(text: str) -> str:
@@ -89,10 +102,16 @@ class AddressParcelResolver:
         search: AddressSearch | None,
         fetch_by_pnu: PnuParcelFetcher,
         legal_dong: LegalDongIndex | None = None,
+        locate: PointLocator | None = None,
+        fetch_at: PointParcelFetcher | None = None,
     ) -> None:
         self.search = search
         self.fetch_by_pnu = fetch_by_pnu
         self.legal_dong = legal_dong
+        # 카카오 주소검색이 막혔을 때의 대체 경로: 주소 → 좌표(네이버·VWorld) → 그 자리 필지.
+        # 찾은 필지의 번지가 주소의 번지와 같을 때만 쓴다(옆 필지로 재지 않게).
+        self.locate = locate
+        self.fetch_at = fetch_at
         self._cache: dict[str, ParcelFeature | None] = {}
 
     async def parcel_for(
@@ -123,6 +142,8 @@ class AddressParcelResolver:
             if self._accept(feature, near) is not None:
                 parcel = feature
                 break
+        if parcel is None and failed and not documents:
+            parcel = await self._by_point(address, near)
         # 필지 조회가 비어 온 것은 지적도 원천 장애일 수 있어 기억하지 않는다(다음 심사에서
         # 다시 찾는다). 필지를 받았는데 좌표와 멀거나 도로라 버린 것은 기억한다.
         if parcel is not None or not failed:
@@ -130,6 +151,24 @@ class AddressParcelResolver:
                 self._cache.clear()
             self._cache[address] = parcel
         return parcel
+
+    async def _by_point(self, address: str, near: Coordinates) -> ParcelFeature | None:
+        """카카오 없이: 주소를 좌표로 바꿔 그 자리 필지를 받고, 번지가 같을 때만 쓴다."""
+
+        if self.locate is None or self.fetch_at is None:
+            return None
+        wanted = _lot(address, _TAIL_LOT)
+        if wanted is None:
+            return None
+        try:
+            point = await self.locate(address)
+            feature = await self.fetch_at(point) if point is not None else None
+        except Exception:
+            logger.warning("시설 주소 대체 필지 조회 실패: %s", address, exc_info=True)
+            return None
+        if feature is None or _lot(feature.jibun, _HEAD_LOT) != wanted:
+            return None
+        return self._accept(feature, near)
 
     @staticmethod
     def _accept(

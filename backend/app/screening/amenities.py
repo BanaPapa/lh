@@ -60,7 +60,9 @@ from app.services.geo import (
     polygon_contains,
 )
 from app.services.institutions import is_public_office
+from app.services.address_geocoder import make_address_geocoder
 from app.services.kakao import KakaoClient
+from app.services.naver_geocode import NaverGeocodeClient
 from app.services.naver_search import NaverSearchClient
 from app.services.seoul_bus import SeoulBusStopClient
 from app.services.parcel_sanity import parcel_rejection_reason
@@ -771,6 +773,7 @@ class AmenityCollector:
         safemap_fire: SafemapFacilityFeed | None = None,
         dataset_gates: tuple[DatasetGate, ...] | None = None,
         alignments: Sequence[LhAlignment] | None = None,
+        naver_geocode: NaverGeocodeClient | None = None,
     ) -> None:
         self.kakao = kakao
         # LH 개별 맞춤 항목. None 이면 매 수집마다 등록부 파일(lh_alignments.json)을
@@ -827,8 +830,13 @@ class AmenityCollector:
         # 로컬 폴백은 한 번에 하나씩만 들어가게 막는다.
         self._cadastral_lock = asyncio.Lock()
         # 학교 지번주소 → 필지(PNU). 주소별로 기억해 같은 학교를 다시 찾지 않는다.
+        # 카카오가 막히면 네이버(NCP)·VWorld 로 주소 좌표를 찾아 그 자리 필지를 쓴다.
         self.address_parcels = AddressParcelResolver(
-            kakao, self._parcel_by_pnu, LegalDongIndex.from_env()
+            kakao,
+            self._parcel_by_pnu,
+            LegalDongIndex.from_env(),
+            locate=make_address_geocoder(kakao, vworld, naver_geocode),
+            fetch_at=lambda point: self._facility_parcel(point, {}),
         )
         # 대학 정문 좌표를 확보할 지역검색. 표준 데이터셋이 대학 정문·역 출구를
         # 같은 API 로 확보했으므로(2026-09-08 회신) 기준점이 어긋나지 않는다.
