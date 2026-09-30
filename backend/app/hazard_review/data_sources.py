@@ -26,6 +26,7 @@ from app.services.lpg_seoul import SEOUL_LPG_PAGE_URL
 from app.services.safemap_layers import LAYER_BY_ID
 from app.services.lpg_station_file import LPG_FILE_URL
 from app.services.crematorium import CREMATORIUM_URL
+from app.services.factory_lots import FACTORY_LOTS_AS_OF, FACTORY_LOTS_URL
 from app.services.factory_registry import FACTORY_PARCEL_URL
 from app.services.kgs import KGS_LPG_URL
 from app.services.localdata import DATASET_BY_KEY, LOCALDATA_BASE, LocalDataSet
@@ -64,6 +65,11 @@ API_SOURCE_REGISTRY: dict[str, tuple[str, str]] = {
     "cng_gyeongnam": ("경상남도 천연가스 충전소", CNG_GYEONGNAM_URL),
     "crematorium": ("공공데이터포털 화장시설", CREMATORIUM_URL),
     "factory_registry": ("산단공 공장등록 필지정보(15087615)", FACTORY_PARCEL_URL),
+    # 공장등록 API 가 주지 않는 등록 지번(PNU). 서버에 실은 공공데이터 파일이다.
+    "factory_lots_file": (
+        f"전주시 공장등록현황 · 등록 지번(파일 3069076 · {FACTORY_LOTS_AS_OF})",
+        FACTORY_LOTS_URL,
+    ),
     "gg_chemical": ("경기데이터드림 유해화학물질 취급사업장", GG_CHEMICAL_URL),
     "logistics_chem_warehouse": ("국토부 물류창고업 · 환경부 보관저장 창고", WAREHOUSE_DETAIL_URL),
     # 카지노는 API 가 아니라 코드에 둔 허가 명단(H-04-바 §8)이지만 원천 링크는 협회 회원사 페이지다.

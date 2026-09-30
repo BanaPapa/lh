@@ -1577,6 +1577,59 @@
   font-size: 19px;
 }
 
+/* API 외에 서버에 실은 파일: 설명이 길어 줄바꿈을 허용한다. */
+.api-file-intro {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.api-file-table th:nth-child(1) { width: 20%; }
+.api-file-table th:nth-child(2) { width: 36%; }
+.api-file-table th:nth-child(3) { width: 24%; }
+.api-file-table th:nth-child(4) { width: 10%; }
+.api-file-table th:nth-child(5) { width: 10%; }
+
+.api-file-table td {
+  white-space: normal;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.api-file-table td small,
+.api-file-table td code {
+  display: block;
+  margin-top: 4px;
+}
+
+.api-file-table td small {
+  color: var(--muted-2);
+  font-size: 16.5px;
+}
+
+.api-file-table .api-conn-label code {
+  width: fit-content;
+  max-width: 100%;
+  font-size: 15px;
+  padding: 1px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.api-file-table .api-conn-meta .api-keys-issuer {
+  margin: 4px 0 0;
+}
+
+.api-file-table .api-keys-state {
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.api-file-table tr.is-missing td {
+  opacity: 0.6;
+}
+
 /* 상태 색: 키 없음(회색)·미점검(파랑 테두리)·정상(초록)·실패(빨강) */
 .api-keys-chip.is-missing_key {
   color: var(--muted);

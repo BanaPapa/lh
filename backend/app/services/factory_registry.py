@@ -15,6 +15,11 @@ API 실측(2026-09-15): `cmpnyNm` 이 필수지만 공백 한 칸(" ")이 와일
 368번지」(현대콘크리트, 분할로 사라진 옛 지번)는 LH 표준 데이터셋이 효자동2가 366-13(쑥고개로
 368)에 두어 LH 앱 1차 공장 검토에 37m 로 나온다. 보조 결과는 캐시에 「vworld|주소」 키로
 따로 남겨, 관리자 스위치(factory_geocode_kakao_only)를 켜면 카카오 결과만 쓴다.
+
+API 는 지번을 주지 않으므로, 서버에 실은 등록 지번 파일(factory_lots · 전주시 공장등록현황
+3069076)에 같은 공장(회사명+도로명)이 있으면 도로명 지오코딩 대신 **등록 지번 필지**(PNU ·
+필지 안 한 점)를 쓴다(2026-09-30). LH 앱이 등록공장 대장의 지번으로 PNU 를 조립하는 것과 맞춘다.
+파일에 없거나 지적도에 없는 옛 지번이면 종전대로 도로명을 지오코딩한다.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from typing import Any, NamedTuple
 import httpx
 
 from app.models import Coordinates
+from app.services.factory_lots import FactoryLot, FactoryLotIndex, default_index
 from app.services.geo import haversine_meters
 from app.services.kgs import PublicDataAPIError
 from app.services.single_flight import LoopSafeLock
@@ -72,6 +78,8 @@ class FactoryRecord(NamedTuple):
     organization: str
     zoning_name: str
     building_area_m2: float | None
+    # 서버에 실은 등록 지번 파일(factory_lots)과 맞춘 행이면 그 지번. 좌표·PNU 가 그 필지다.
+    lot: FactoryLot | None = None
 
 
 def _text(item: ET.Element, tag: str) -> str:
@@ -101,7 +109,11 @@ def _parse_items(body: str) -> tuple[list[dict[str, str]], int]:
     return rows, total
 
 
-def record_from_row(row: dict[str, str], coordinates: Coordinates | None) -> FactoryRecord:
+def record_from_row(
+    row: dict[str, str],
+    coordinates: Coordinates | None,
+    lot: FactoryLot | None = None,
+) -> FactoryRecord:
     area_text = row.get("fctryDongBuldAr") or ""
     try:
         area = float(area_text) if area_text else None
@@ -111,14 +123,16 @@ def record_from_row(row: dict[str, str], coordinates: Coordinates | None) -> Fac
     return FactoryRecord(
         record_id=row.get("fctryManageNo") or road,
         name=row.get("cmpnyNm") or "",
-        address=road,
+        # 등록 지번과 맞췄으면 지번주소를 주소로 보인다(도로명은 road_address 에 남는다).
+        address=lot.jibun_address if lot else road,
         road_address=road,
         coordinates=coordinates,
         status_text="등록",
-        pnu="",
+        pnu=lot.pnu if lot else "",
         organization=row.get("cvplChrgOrgnztNm") or "",
         zoning_name=row.get("spfcSeCodeNm") or "",
         building_area_m2=area,
+        lot=lot,
     )
 
 
@@ -140,8 +154,11 @@ class FactoryRegistryClient:
         fallback_enabled: Callable[[], bool] | None = None,
         timeout: float = 60.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        lot_index: FactoryLotIndex | None = None,
     ) -> None:
         self.service_key = service_key
+        # 등록 지번 파일 색인. 주지 않으면 서버에 실은 파일을 읽는다(테스트는 빈 색인을 준다).
+        self._lot_index = lot_index
         self.geocoder = geocoder
         # 카카오가 못 찾은 주소의 보조(VWorld 주소검색). fallback_enabled 는 요청마다
         # 관리자 스위치를 읽는다(없으면 늘 켬).
@@ -163,6 +180,18 @@ class FactoryRegistryClient:
     @property
     def enabled(self) -> bool:
         return bool(self.service_key)
+
+    @property
+    def lot_index(self) -> FactoryLotIndex:
+        if self._lot_index is None:
+            self._lot_index = default_index()
+        return self._lot_index
+
+    def registered_lot(self, row: dict[str, str]) -> FactoryLot | None:
+        """API 행과 같은 공장의 등록 지번(지적도 좌표가 있는 것만)."""
+
+        lot = self.lot_index.match(row.get("cmpnyNm") or "", row.get("rnAdres") or "")
+        return lot if lot is not None and lot.coordinates is not None and lot.pnu else None
 
     @property
     def geocode_failures(self) -> list[str]:
@@ -284,6 +313,9 @@ class FactoryRegistryClient:
         self.last_geocode_outages = 0
 
         async def locate(row: dict[str, str]) -> FactoryRecord:
+            lot = self.registered_lot(row)
+            if lot is not None:
+                return record_from_row(row, lot.coordinates, lot)
             address = row.get("rnAdres") or ""
             if not address:
                 return record_from_row(row, None)

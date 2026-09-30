@@ -5,6 +5,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  FileText,
   Globe,
   Info,
   Loader2,
@@ -33,18 +34,25 @@ import {
   setRuntimeKey,
   type RuntimeKeyName,
 } from "../runtime-keys";
+import { BundledFilesList } from "./BundledFilesList";
 
-type ApiTab = "status" | "browser" | "server";
+type ApiTab = "status" | "browser" | "server" | "files";
 
 const TABS: { key: ApiTab; label: string }[] = [
   { key: "status", label: "연결 현황" },
   { key: "browser", label: "브라우저 키" },
   { key: "server", label: "서버 키" },
+  { key: "files", label: "서버에 실은 파일" },
 ];
 
 interface ApiKeysPanelProps {
   open: boolean;
   onClose: () => void;
+  /**
+   * 배포판: API 연결 정보(키·점검)는 루프백 전용이라 감추고, 그 자리에 「API 외에 서버에 실은
+   * 파일」만 보인다. 로컬 앱은 연결 현황·키 탭 옆에 같은 목록을 탭으로 둔다.
+   */
+  filesOnly?: boolean;
 }
 
 interface BrowserKeyMeta {
@@ -98,11 +106,11 @@ function payloadField(spec: ServerKeyStatus): ServerKeyField {
   return spec.key.toLowerCase() as ServerKeyField;
 }
 
-export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
+export function ApiKeysPanel({ open, onClose, filesOnly = false }: ApiKeysPanelProps) {
   const [status, setStatus] = useState<KeysStatusResponse | null>(null);
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   // 상단 탭: 연결 현황 / 브라우저 키 / 서버 키
-  const [tab, setTab] = useState<ApiTab>("status");
+  const [tab, setTab] = useState<ApiTab>(filesOnly ? "files" : "status");
   const [checking, setChecking] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingBrowser, setSavingBrowser] = useState(false);
@@ -157,8 +165,9 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
       VITE_NAVER_MAP_CLIENT_ID: getRuntimeKey("VITE_NAVER_MAP_CLIENT_ID"),
       VITE_NAVER_MAP_STYLE_ID: getRuntimeKey("VITE_NAVER_MAP_STYLE_ID"),
     });
-    void loadState();
-  }, [open, loadState]);
+    // 배포판은 루프백 전용 설정 API 를 부르지 않는다(403 이 날 뿐이다).
+    if (!filesOnly) void loadState();
+  }, [open, loadState, filesOnly]);
 
   // Esc 로 닫는다.
   useEffect(() => {
@@ -265,14 +274,23 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
         className="api-keys-modal"
         role="dialog"
         aria-modal="true"
-        aria-label="API 연결"
+        aria-label={filesOnly ? "API 외에 서버에 실은 파일" : "API 연결"}
       >
         <header className="api-keys-head">
           <div>
             <h2>
-              <Plug size={18} aria-hidden="true" /> API 연결
+              {filesOnly ? (
+                <FileText size={18} aria-hidden="true" />
+              ) : (
+                <Plug size={18} aria-hidden="true" />
+              )}{" "}
+              {filesOnly ? "API 외에 서버에 실은 파일" : "API 연결"}
             </h2>
-            <p>앱이 쓰는 외부 API 를 한 곳에서 확인하고 키를 관리합니다.</p>
+            <p>
+              {filesOnly
+                ? "공공 API 로 온전히 받을 수 없어 파일로 서버에 실은 자료입니다. API 연결 정보는 로컬 앱에서만 보입니다."
+                : "앱이 쓰는 외부 API 와 서버에 실은 파일을 한 곳에서 확인하고 키를 관리합니다."}
+            </p>
           </div>
           <button
             type="button"
@@ -284,7 +302,7 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
           </button>
         </header>
         <div className="api-keys-tabs" role="tablist" aria-label="API 연결">
-          {TABS.map((entry) => (
+          {TABS.filter((entry) => !filesOnly || entry.key === "files").map((entry) => (
             <button
               key={entry.key}
               type="button"
@@ -311,6 +329,9 @@ export function ApiKeysPanel({ open, onClose }: ApiKeysPanelProps) {
               <span>{notice}</span>
             </div>
           )}
+
+          {/* ── API 외에 서버에 실은 파일 ──────────────── */}
+          {tab === "files" && <BundledFilesList open={open} />}
 
           {/* ── 연결 현황 ──────────────────────────────── */}
           {tab === "status" && (

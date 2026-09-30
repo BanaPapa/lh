@@ -87,6 +87,11 @@ from app.services.lpg_retailer_file import LPG_RETAILER_AS_OF, LpgRetailerFileCl
 from app.services.gas_product_file import GAS_PRODUCT_AS_OF, GasProductFileClient
 from app.services.lpg_station_file import LpgStationFileClient
 from app.services.safemap_facilities import SafemapFacilityFeed
+from app.services.factory_lots import (
+    FACTORY_LOTS_AS_OF,
+    FACTORY_LOTS_DATASET_ID,
+    FACTORY_LOTS_DATASET_TITLE,
+)
 from app.services.factory_registry import FactoryRegistryClient
 from app.services.kgs import KgsLpgClient, PublicDataAPIError
 from app.services.parcel_sanity import parcel_rejection_reason
@@ -1183,7 +1188,7 @@ class HazardReviewService:
             # 주소 지오코딩 원천(카카오·네이버)이 막혀 좌표를 못 붙인 공장이 있다 — 빠진
             # 공장이 있을 수 있으니 조용히 넘기지 않고 재심사 안내를 띄운다.
             failed_sources.add("factory_registry")
-        return self._records_to_facilities(
+        facilities = self._records_to_facilities(
             request,
             tuple(records),
             search_limit_m,
@@ -1199,6 +1204,26 @@ class HazardReviewService:
             ),
             metadata={"factory_registered": True, "factory_and": ""},
         )
+        # 서버에 실은 등록 지번 파일과 맞춘 공장은 도로명 지오코딩이 아니라 등록 지번 필지다.
+        lots = {
+            f"factory-api:{record.record_id}": record.lot
+            for record in records
+            if getattr(record, "lot", None) is not None
+        }
+        for facility in facilities:
+            lot = lots.get(facility.facility_id)
+            if lot is None:
+                continue
+            extra = f" 외 {lot.extra_lots}필지(대표 지번만 사용)" if lot.extra_lots else ""
+            facility.classification_note = (
+                "산단공 공장등록 원장의 등록공장입니다. 등록 사실만 확인되며 "
+                "대기·소음 배출은 별도 확인이 필요합니다. 위치는 "
+                f"{FACTORY_LOTS_DATASET_TITLE}({FACTORY_LOTS_AS_OF})의 등록 지번"
+                f"{extra} 필지입니다(PNU {lot.pnu})."
+            )
+            facility.metadata["factory_lot_source"] = FACTORY_LOTS_DATASET_ID
+            facility.metadata["factory_lot_pnu"] = lot.pnu
+        return facilities
 
     def _factory_api_ready(self) -> bool:
         return bool(
@@ -3227,6 +3252,10 @@ class HazardReviewService:
         if category.key == "factory_registered":
             if self._factory_api_ready() and "factory_registry" not in failed_sources:
                 sources.append(api_source("factory_registry"))  # type: ignore[arg-type]
+                # API 가 주지 않는 등록 지번은 서버에 실은 파일(전주시 공장등록현황)로 붙인다.
+                lot_index = getattr(self.factory_registry, "lot_index", None)
+                if lot_index is not None and len(lot_index):
+                    sources.append(api_source("factory_lots_file"))  # type: ignore[arg-type]
         if category.key == "factory_registered" and self.local_sources.factory_facilities:
             sources.append(local_source(self._local_source_detail("factory_registry")))
         elif category.key == "cng_station" and self.local_sources.cng_facilities:

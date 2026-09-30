@@ -27,6 +27,16 @@ from app.services.geo import offset_coordinates
 CENTER = Coordinates(lat=35.9678, lng=126.7368)
 
 
+@pytest.fixture(autouse=True)
+def _no_bundled_lots(monkeypatch):
+    """지오코딩 경로 시험이 서버에 실은 등록 지번 파일(전주시)과 우연히 맞지 않게 비운다."""
+
+    from app.services import factory_registry
+    from app.services.factory_lots import FactoryLotIndex
+
+    monkeypatch.setattr(factory_registry, "default_index", lambda: FactoryLotIndex([]))
+
+
 def xml_page(items: list[dict[str, str]], total: int) -> str:
     body = "".join(
         "<item>" + "".join(f"<{k}>{v}</{k}>" for k, v in item.items()) + "</item>"

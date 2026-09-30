@@ -226,6 +226,32 @@ export function getLhAlignments(): Promise<LhAlignmentsResponse> {
   return request<LhAlignmentsResponse>("/api/settings/lh-alignments");
 }
 
+/** API 외에 서버에 실은 파일 한 개(읽기 전용 · 배포판에서도 보인다). */
+export interface BundledFile {
+  id: string;
+  name: string;
+  path: string;
+  purpose: string;
+  source: string;
+  source_id: string;
+  source_url: string;
+  as_of: string;
+  count: number | null;
+  count_unit: string;
+  present: boolean;
+  size_bytes: number | null;
+  note: string;
+}
+
+export interface BundledFilesResponse {
+  description: string;
+  files: BundledFile[];
+}
+
+export function getBundledFiles(): Promise<BundledFilesResponse> {
+  return request<BundledFilesResponse>("/api/settings/bundled-files");
+}
+
 export function getRules(): Promise<RulesResponse> {
   return request<RulesResponse>("/api/settings/rules");
 }

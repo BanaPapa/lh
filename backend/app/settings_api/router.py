@@ -13,6 +13,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app.bundled_files import BundledFilesResponse, bundled_files_response
 from app.config import get_settings
 from app.settings_api.connections import (
     ConnectionsResponse,
@@ -457,3 +458,11 @@ async def read_lh_alignments() -> LhAlignmentsResponse:
             for entry in registry.entries
         ],
     )
+
+
+# ── API 외에 서버에 실은 파일(읽기 전용) ───────────────────────────────
+# 공공 API 로 온전히 받을 수 없어 파일로 실은 자료의 이름·쓰임·출처·기준일·건수. 비밀이 없고
+# 배포판에서도 보여야 하므로(API 연결 정보가 감춰지는 자리에 이 목록을 보인다) 루프백 제한이 없다.
+@router.get("/bundled-files", response_model=BundledFilesResponse)
+async def read_bundled_files() -> BundledFilesResponse:
+    return bundled_files_response()
