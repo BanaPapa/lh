@@ -410,15 +410,16 @@
 }
 /* 아이콘은 줄지 않고, 폭이 모자라면 상태 안내 글자만 말줄임으로 줄인다. */
 .solo-bar-actions > * { flex: none; }
-/* 상태 안내는 보통 온전히 보이고(검색창이 먼저 줄어든다), 아주 좁은 화면에서만 글자
-   폭을 열 최소 폭 계산에서 빼 말줄임으로 줄인다(아이콘이 잘리지 않게). */
+/* 상태 안내는 보통 테마 버튼 왼쪽에 온전히 보인다(검색창이 먼저 줄어든다). 노트북처럼
+   좁으면 아이콘 바로 아랫줄(2행 오른쪽, 평소 비어 있는 칸)로 내리고, 더 좁으면 말줄임. */
+.solo-status-slot { grid-column: 6; grid-row: 2; justify-self: end; display: none; min-width: 0; }
 @media (max-width: 1539px) {
-  .solo-bar-actions > .server-status-notes {
-    contain: inline-size;
-    flex: 0 1 340px;
-    min-width: 0;
-    overflow: hidden;
-  }
+  .solo-bar-actions > .server-status-notes { display: none; }
+  .solo-status-slot { display: block; }
+}
+@media (max-width: 1399px) {
+  .solo-status-slot { contain: inline-size; justify-self: stretch; overflow: hidden; }
+  .solo-status-slot > .server-status-notes { max-width: 100%; }
 }
 
 .solo-icon-button {

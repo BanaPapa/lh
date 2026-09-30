@@ -348,6 +348,10 @@ export function TopSearchBar({
             <Printer size={18} />
           </button>
       </div>
+      {/* 좁은 화면에서만 보이는 상태 안내 자리(2행 오른쪽). 넓으면 아이콘 왼쪽에 보인다. */}
+      <div className="solo-status-slot">
+        <ServerWakeNotice kakaoNotice={kakaoNotice} />
+      </div>
       <div className="solo-site-slot">
         {hasSite && siteSummary && (
             <div
