@@ -29,6 +29,7 @@ from tests.test_screening_amenities import (
     DisabledKakao,
     FakeKakao,
     FakeTago,
+    FakeVWorld,
     place,
     square_ring,
 )
@@ -90,6 +91,7 @@ def test_registry_keeps_the_hazard_exclusion_of_the_lh_app() -> None:
 
 # 17건 표본의 사업지 필지(연속지적도). LH 기준점이 LH앱 거리를 재현하는지 본다.
 SITES: dict[str, list[list[tuple[float, float]]]] = {
+    "004": [[(35.8611441, 127.114962), (35.8611651, 127.1149148), (35.8613339, 127.1148939), (35.8614168, 127.1149477), (35.861617, 127.1150745), (35.8616655, 127.1151017), (35.8616969, 127.1151216), (35.8616674, 127.1151341), (35.8615196, 127.1151704), (35.861513, 127.1151718), (35.8614109, 127.1152069), (35.8614016, 127.1152095), (35.8613697, 127.1152209), (35.8612487, 127.1152628), (35.8611441, 127.114962)]],
     "006": [[(35.8366315, 127.1315493), (35.8365586, 127.131447), (35.8366897, 127.1313072), (35.8366968, 127.1313171), (35.8367589, 127.1314057), (35.836761, 127.1314087), (35.8368147, 127.1314851), (35.8368454, 127.1315286), (35.8367167, 127.131668), (35.8366315, 127.1315493)]],
     "002": [[(35.8152911, 127.1038497), (35.8152909, 127.1040766), (35.8150471, 127.1040761), (35.8150473, 127.1038494), (35.8152911, 127.1038497)]],
     "077": [[(35.8164855, 127.1041001), (35.8163185, 127.1040999), (35.8163186, 127.1038617), (35.8163499, 127.1038231), (35.8164857, 127.1038233), (35.8164855, 127.1041001)]],
@@ -117,6 +119,8 @@ SITES: dict[str, list[list[tuple[float, float]]]] = {
         ("univ-jeonju-vision-gate-point", "002", 1188),
         ("univ-jeonju-vision-gate-point", "077", 1294),
         ("busstop-express-terminal-buddhist-point", "115", 161),
+        # 파인트리몰: LH PNU(송천동2가 488-3)가 연속지적도에 없어 LH앱이 점포 좌표로 잰 값.
+        ("retail-pinetree-mall-point", "004", 792.3),
     ],
 )
 def test_lh_points_reproduce_lh_distances(entry_id: str, site: str, lh_distance: float) -> None:
@@ -199,6 +203,60 @@ async def test_point_entry_with_pnu_measures_to_the_lh_parcel_even_on_rail_land(
     assert facility.measurement_tier == "site_boundary"
     assert pnu in facility.front_door_notice
     assert pnu in vworld.pnu_calls
+
+
+@pytest.mark.asyncio
+async def test_point_entry_without_pnu_overrides_the_coordinate_parcel_of_a_retail_store(
+    tmp_path,
+) -> None:
+    """파인트리몰(004): 점포 좌표를 품는 필지(1422) 경계 대신 LH 좌표에서 잰다.
+
+    LH 데이터셋의 점포 PNU(송천동2가 488-3)는 연속지적도에 없어 LH앱이 점포 좌표로
+    쟀다(792.3m). 등록부 항목은 pnu 없이 좌표만 두고, 좌표 필지 측정을 LH 좌표로 바꾼다.
+    """
+
+    from app.services.facility_store import FacilityStore
+    from app.services.localdata import LocalDataRecord
+
+    store_point = offset_coordinates(CENTER, 800, 0)
+    store = FacilityStore(db_path=tmp_path / "facilities.db")
+    store.replace_dataset(
+        "large_scale_retail_stores",
+        [
+            LocalDataRecord(
+                dataset_key="large_scale_retail_stores",
+                record_id="pinetree",
+                name="파인트리몰",
+                address="전북특별자치도 전주시 덕진구 송천동2가 488-3",
+                road_address="전북특별자치도 전주시 덕진구 송천중앙로 225(송천동2가)",
+                coordinates=store_point,
+                status="영업/정상",
+                category="그 밖의 대규모점포",
+            )
+        ],
+    )
+    item = entry(
+        id="retail-pinetree-mall-point", name="파인트리몰", group="retail", lh=lh_at(800)
+    )
+    # 좌표 필지(반폭 30m)로 재면 770m 가 된다. LH 좌표로 재면 800m.
+    collector = AmenityCollector(
+        kakao=FakeKakao(),
+        tago=FakeTago([]),
+        facility_store=store,
+        vworld=FakeVWorld(half=30.0),
+        alignments=[item],
+    )
+
+    result = await collector.collect([], CENTER, radius_m=3000)
+
+    facility = result["retail"].facilities[0]
+    assert facility.name == "파인트리몰"
+    assert facility.distance_m == pytest.approx(800, abs=2)
+    assert result["retail"].distances_m == (facility.distance_m,)
+    assert facility.measurement_tier == "coordinate"
+    assert "LH 좌표" in facility.measurement_label
+    assert facility.lh_alignment.startswith(LH_ALIGNMENT_BADGE)
+    assert facility.facility_ring == ()
 
 
 @pytest.mark.asyncio

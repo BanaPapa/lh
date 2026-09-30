@@ -322,3 +322,78 @@ class TestMultiParcelUnion:
         assert response.provisional is False
         assert [p.pnu for p in response.parcels] == [rep.pnu]
         assert "담당자 추가 선택" in response.note
+
+
+class LotMappedKakao:
+    """주소 끝 지번(「산」 + 본번-부번)을 그대로 PNU 문서로 돌려주는 대역."""
+
+    def __init__(self, b_code: str) -> None:
+        self._b_code = b_code
+        self.address_queries: list[str] = []
+
+    async def address_documents(self, query: str) -> list[dict[str, Any]]:
+        import re
+
+        self.address_queries.append(query)
+        match = re.search(r"(산)?\s*(\d+)(?:-(\d+))?\s*$", query)
+        if match is None:
+            return []
+        return [
+            {
+                "address": {
+                    "b_code": self._b_code,
+                    "mountain_yn": "Y" if match.group(1) else "N",
+                    "main_address_no": match.group(2),
+                    "sub_address_no": match.group(3) or "",
+                }
+            }
+        ]
+
+    async def coord_to_address(self, lat: float, lng: float) -> dict[str, Any] | None:
+        return None
+
+    async def legal_code(self, lat: float, lng: float) -> str:
+        return ""
+
+
+class TestMountainAndNormalLotUnion:
+    """원장 109 「서서학동 산 10, 102-12」 — 산 지번 다음의 일반 지번도 필지로 확정한다."""
+
+    B_CODE = "5211112600"
+    MOUNTAIN_PNU = "5211112600200100000"  # 산 10
+    NORMAL_PNU = "5211112600101020012"  # 102-12
+
+    def _feature(self, pnu: str, jibun: str, center: Coordinates) -> ParcelFeature:
+        ring = square(center, 20)
+        return ParcelFeature(
+            pnu=pnu,
+            address=f"전북특별자치도 전주시 완산구 서서학동 {jibun}",
+            jibun=jibun,
+            ring=ring,
+            area_m2=polygon_area_m2(ring),
+        )
+
+    def test_mountain_lot_followed_by_normal_lot_resolves_both(self) -> None:
+        mountain = self._feature(self.MOUNTAIN_PNU, "산10임", SITE)
+        normal = self._feature(self.NORMAL_PNU, "102-12대", offset_coordinates(SITE, 0, 40))
+        # 주소 좌표는 산 10 필지에 떨어진다(실측: 네이버 지오코딩 「서서학동 산10」).
+        vworld = _PnuMappedVWorldWithCoord(
+            {mountain.pnu: mountain, normal.pnu: normal}, coord_parcel=mountain
+        )
+        kakao = LotMappedKakao(self.B_CODE)
+        resolver = ParcelResolver(kakao=kakao, vworld=vworld)
+        request = HazardParcelResolveRequest(
+            name="다필지 사업지",
+            address="전주시 완산구 서서학동 산 10, 102-12",
+            coordinates=SITE,
+        )
+
+        response = asyncio.run(resolver.resolve(request))
+
+        assert response.provisional is False
+        # 대표필지(산 10)에 일반 지번 102-12 가 더해진다. 예전에는 「산 102-12」로 풀려
+        # 없는 PNU(5211112600201020012)를 묻고 대표필지만 남았다.
+        assert [p.pnu for p in response.parcels] == [self.MOUNTAIN_PNU, self.NORMAL_PNU]
+        assert "5211112600201020012" not in vworld.requested_pnus
+        assert "합집합" in response.note
+        assert "찾지 못했습니다" not in response.note
