@@ -1,4 +1,4 @@
-import { AlertTriangle, Download, FileSpreadsheet, Square, X } from "lucide-react";
+import { AlertTriangle, Download, FileSpreadsheet, FileText, Square, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -7,7 +7,6 @@ import type {
   HazardHousingType,
 } from "../hazard-review/types";
 import {
-  batchExportUrl,
   batchTemplateUrl,
   cancelBatch,
   getBatch,
@@ -19,7 +18,7 @@ import {
   type BatchRowStatus,
   type BatchStatus,
 } from "./batchApi";
-import { downloadBatchXlsx } from "./exportApi";
+import { downloadBatchPdf, downloadBatchXlsx } from "./exportApi";
 import { collectJudgements } from "./judgements";
 import type { ScreeningResult } from "./types";
 import "../batch.css";
@@ -89,7 +88,7 @@ export function BatchPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [openingRow, setOpeningRow] = useState<string | null>(null);
-  const [exportingXlsx, setExportingXlsx] = useState(false);
+  const [exporting, setExporting] = useState<"xlsx" | "pdf" | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   // 열 때마다 본 화면의 유형을 기본값으로 따라간다.
@@ -144,6 +143,38 @@ export function BatchPanel({
   const housingLabel = (key: HazardHousingType) => applicationTypes?.housing_types[key] ?? key;
   const applicationLabel = (key: HazardApplicationType) =>
     applicationTypes?.application_types[key] ?? key;
+
+  // 내려받기 대비용 건별 결과 보관(접수번호 → 결과). 배포 서버는 쉬면 꺼지고 켜지면
+  // 메모리가 비어 일괄 심사 결과가 사라지므로, 심사가 끝나면 완료 건의 결과를 차례로
+  // 받아 둔다(실패한 건은 건너뛴다). 내려받기 때 서버에 결과가 남아 있으면 그쪽을 먼저 쓴다.
+  const resultCache = useRef<Map<string, ScreeningResult>>(new Map());
+  const cachedBatchId = useRef<string | null>(null);
+  const finished = batch !== null && batch.status !== "queued" && batch.status !== "running";
+  useEffect(() => {
+    if (!batch || !finished) return;
+    if (cachedBatchId.current !== batch.batch_id) {
+      cachedBatchId.current = batch.batch_id;
+      resultCache.current = new Map();
+    }
+    let cancelled = false;
+    const pending = batch.rows.filter(
+      (row) => row.status === "completed" && !resultCache.current.has(row.id),
+    );
+    void (async () => {
+      for (const row of pending) {
+        if (cancelled) return;
+        try {
+          const result = await getBatchRowResult(batch.batch_id, row.id);
+          if (!cancelled) resultCache.current.set(row.id, result);
+        } catch {
+          // 이미 사라진 결과 — 내려받기 때 서버 상태에 맡긴다.
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [batch, finished]);
 
   if (!open) return null;
 
@@ -200,20 +231,26 @@ export function BatchPanel({
     }
   };
 
-  // 결과 Excel. 담당자 판단은 건마다 심사표에서 남긴 것을 이 브라우저에서 모아 싣는다.
-  const handleExportXlsx = async () => {
+  // 결과 내려받기(Excel·PDF). 담당자 판단은 건마다 심사표에서 남긴 것을 이 브라우저에서 모아 싣는다.
+  // 서버가 결과를 잃었을 때(배포 서버는 쉬면 꺼지고, 켜지면 메모리가 빈다)를 대비해 심사가
+  // 끝나면 건별 결과를 이 브라우저에 받아 둔다 — 그 결과로 같은 파일을 만든다.
+  const handleExport = async (kind: "xlsx" | "pdf") => {
     if (!batch) return;
-    setExportingXlsx(true);
+    setExporting(kind);
     setError("");
     try {
-      await downloadBatchXlsx(
-        batch.batch_id,
-        collectJudgements(batch.rows.map((row) => row.screening_id)),
-      );
+      const judgements = collectJudgements(batch.rows.map((row) => row.screening_id));
+      const fallback = { batch, results: Object.fromEntries(resultCache.current) };
+      if (kind === "xlsx") await downloadBatchXlsx(batch.batch_id, judgements, fallback);
+      else await downloadBatchPdf(batch.batch_id, judgements, fallback);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "결과 Excel 을 만들지 못했습니다.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : `결과 ${kind === "xlsx" ? "Excel" : "PDF"} 을 만들지 못했습니다.`,
+      );
     } finally {
-      setExportingXlsx(false);
+      setExporting(null);
     }
   };
 
@@ -344,19 +381,25 @@ export function BatchPanel({
             <button
               type="button"
               className="batch-export"
-              disabled={exportingXlsx}
-              title="종합요약·1차 상세·2차 상세·데이터 스냅샷 4시트. 심사표에서 남긴 담당자 판단·메모가 1차 상세에 실립니다."
-              onClick={() => void handleExportXlsx()}
+              disabled={exporting !== null}
+              title="시트 1 은 이 화면의 결과표, 시트 2부터 건별 심사표(1차 항목별 판정·시설·거리, 2차 항목별 점수·시설, 담당자 판단·메모)입니다."
+              onClick={() => void handleExport("xlsx")}
             >
               <FileSpreadsheet size={16} aria-hidden="true" />
-              {exportingXlsx ? "Excel 만드는 중…" : "결과 Excel(4시트)"}
+              {exporting === "xlsx" ? "Excel 만드는 중…" : "Excel 내려받기"}
             </button>
           )}
           {batch && !running && (
-            <a className="batch-export" href={batchExportUrl(batch.batch_id)} download>
-              <Download size={16} aria-hidden="true" />
-              결과 내려받기(CSV 3종)
-            </a>
+            <button
+              type="button"
+              className="batch-export"
+              disabled={exporting !== null}
+              title="A4 세로 — 1쪽은 이 화면의 결과표, 2쪽부터 건별 심사표입니다."
+              onClick={() => void handleExport("pdf")}
+            >
+              <FileText size={16} aria-hidden="true" />
+              {exporting === "pdf" ? "PDF 만드는 중…" : "PDF 내려받기"}
+            </button>
           )}
         </div>
 

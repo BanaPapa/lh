@@ -10,3 +10,6 @@ pytest-asyncio==1.1.0
 
 openpyxl==3.1.5
 python-multipart==0.0.32
+# 일괄 심사 결과 PDF. 한글 글꼴은 app/assets/fonts(나눔고딕·OFL)에 함께 싣는다.
+reportlab==5.0.1
+pypdf==6.19.0

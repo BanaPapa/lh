@@ -61,6 +61,9 @@ class ExportSite(BaseModel):
     error: str = ""
     # 1차 항목 키(ScreeningExclusionItem.key) → 담당자 판단.
     judgements: dict[str, ItemJudgement] = Field(default_factory=dict)
+    # 일괄 심사 파일의 차수·접수일자·매도자명과 필지 확보 비고. 심사표 머리말에 싣는다.
+    extras: dict[str, str] = Field(default_factory=dict)
+    resolve_note: str = ""
 
 
 class ScreeningExportRequest(BaseModel):
