@@ -88,10 +88,10 @@ def _table(columns: list[str], rows: list[list[str]], weights: list[float], widt
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DCE6F1")),
         ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#BBBBBB")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 2.5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 2.5),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
     ]
     for index in group_rows:
         commands.append(("BACKGROUND", (0, index + 1), (-1, index + 1), colors.HexColor("#F2F2F2")))
@@ -111,7 +111,7 @@ def _block_flowables(block: Block, width: float, styles) -> list[object]:
     if block.kind == "text":
         return [_p(block.text, styles.get(block.style, styles["normal"]))]
     if block.kind == "kv":
-        return [_table(["항목", "값"], block.rows, [1.6, 8.4], width, styles)]
+        return [_table(["항목", "값"], block.rows, block.weights or [1.6, 8.4], width, styles)]
     if block.kind == "bullets":
         style = styles["warning"] if block.style == "warning" else styles["normal"]
         items = [ListItem(_p(text, style), leftIndent=8, value="•") for (text,) in block.rows]

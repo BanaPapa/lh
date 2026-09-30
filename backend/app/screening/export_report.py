@@ -478,12 +478,150 @@ def _stage_two_blocks(result: ScreeningResult, compact: bool) -> list[Block]:
     return blocks
 
 
+def _nearest_facility(item: ScreeningExclusionItem) -> tuple[str, float | None]:
+    """(가장 가까운 시설명, 거리). 시설 목록이 없으면 항목의 최근접 거리만."""
+
+    nearest = min(item.facilities, key=lambda f: f.distance_m, default=None)
+    if nearest is not None:
+        return nearest.name, nearest.distance_m
+    return "", item.nearest_distance_m
+
+
+def _one_page_stage_one(site: ExportSite, result: ScreeningResult) -> Block:
+    """1차 — 규칙(대분류) 한 줄씩. 세부 항목은 시설이 있거나 통과가 아닌 것만 비고에 적는다."""
+
+    groups: dict[str, list[ScreeningExclusionItem]] = {}
+    for item in result.stage_one.items:
+        groups.setdefault(item.rule_id, []).append(item)
+    table = Block(
+        "table", columns=["1차 규칙", "판정", "기준거리", "최근접 시설 · 거리", "세부(통과·해당 없음 제외)"],
+        weights=[3.0, 1.2, 1.1, 3.2, 6.5],
+    )
+    for items in groups.values():
+        worst = max(items, key=lambda i: _OUTCOME_RANK.get(i.outcome, 0))
+        label = "미적용" if all(i.passthrough for i in items) else worst.outcome_label
+        candidates = [(name, dist, item) for item in items for name, dist in [_nearest_facility(item)] if dist is not None]
+        if candidates:
+            name, dist, _ = min(candidates, key=lambda c: c[1])
+            nearest = f"{name} {fmt_distance(dist)}" if name else fmt_distance(dist)
+        else:
+            nearest = "—"
+        details = []
+        for item in items:
+            if item.outcome in ("pass", "not_applicable") and not item.facilities:
+                continue
+            name, dist = _nearest_facility(item)
+            text = f"{item.label} {item.outcome_label}"
+            if dist is not None:
+                text += f" {fmt_distance(dist)}" + (f"({name})" if name else "")
+            judgement = site.judgements.get(item.key)
+            if judgement and (judgement.state != "unchecked" or judgement.memo):
+                text += f" [{JUDGEMENT_LABELS[judgement.state]}{' · ' + judgement.memo if judgement.memo else ''}]"
+            details.append(text)
+        table.rows.append([items[0].rule_label, label, fmt_threshold(items[0].threshold_m), nearest, " / ".join(details)])
+    return table
+
+
+def _one_page_stage_two(result: ScreeningResult) -> Block:
+    """2차 — 축별 점수 한 줄 + 시설군별 「가장 가까운 시설 · 거리 · 개수」 한 줄씩."""
+
+    two = result.stage_two
+    table = Block(
+        "table", columns=["평가항목 · 시설군", "점수 · 채택 등급 / 최근접 시설 · 거리", "개수", "제외 후보"],
+        weights=[3.2, 6.4, 1.0, 4.4],
+    )
+    criteria = [(c, False) for c in two.criteria] + ([(two.bonus, True)] if two.bonus else [])
+    for criterion, bonus in criteria:
+        head = f"{criterion.label}{' (가점)' if bonus else ''}"
+        score = f"{fmt_points(criterion.awarded)} / {criterion.maximum}점"
+        if not criterion.determined:
+            score += f" · 산정 범위 {criterion.awarded_min}~{criterion.awarded_max}"
+        if criterion.tier_condition:
+            score += f" · {criterion.tier_condition}"
+        table.group_rows.add(len(table.rows))
+        table.rows.append([head, score, "", ""])
+        for group in criterion.groups:
+            counted = [h for h in group.hits if h.counted]
+            excluded = [h for h in group.hits if not h.counted]
+            nearest = min(counted, key=lambda h: h.distance_m, default=None)
+            if nearest is not None:
+                text = f"{nearest.name or '이름 미확보'} {fmt_distance(nearest.distance_m)}"
+            elif group.state != "connected":
+                text = f"없음 · {group.state_label}" + (f"({group.actual_source})" if group.actual_source else "")
+            else:
+                text = "없음"
+            table.sub_rows.add(len(table.rows))
+            table.rows.append([
+                f"└ {group.label}", text, f"{len(counted)}건" if group.hits else f"{group.count}건",
+                ", ".join(h.name or "이름 미확보" for h in excluded),
+            ])
+    return table
+
+
+def site_report_one_page(site: ExportSite, index: int) -> SiteReport:
+    """PDF 용 한 쪽 심사표 — 머리표 한 블록, 1차 규칙별 한 줄, 2차 축·시설군별 한 줄. 고지문은 뺀다."""
+
+    receipt, address, housing, application = _site_labels(site)
+    result = site.result
+    title, subtitle = _site_title(site)
+    heading = f"{index}. 접수번호 {receipt or '—'} · {title}"
+    if result is None:
+        return SiteReport(
+            receipt_no=receipt, title=heading, subtitle=address,
+            blocks=[
+                Block("kv", rows=[["소재지", address], ["분류 · 신청유형", f"{housing} · {application}"]], weights=[1.4, 8.6]),
+                Block("text", f"심사 결과 없음 — {site.error or '심사가 끝나지 않았습니다.'}", style="warning"),
+            ],
+        )
+    two = result.stage_two
+    one = result.stage_one
+    parcels = result.site.parcels
+    extras = " · ".join(f"{k} {v}" for k, v in site.extras.items() if v)
+    scores = " · ".join(
+        f"{c.label} {fmt_points(c.awarded) if c.determined else f'{c.awarded_min}~{c.awarded_max}'}/{c.maximum}"
+        for c in [*two.criteria, *([two.bonus] if two.bonus else [])]
+    )
+    living = (
+        f"{fmt_points(two.living_score)} / {two.living_maximum}점" if two.determined
+        else f"산정 범위 {two.living_score_min}~{two.living_score_max} / {two.living_maximum}점"
+    ) + (" (1차 매입제외 — 참고용)" if two.reference_only else "")
+    info: list[list[str]] = [
+        ["소재지", address + (f"  ·  {extras}" if extras else "")],
+        ["분류 · 유형", f"{housing} · {application} · 규칙팩 {result.rule_pack_id or '미지정'} v{result.rule_pack_version or '—'} · 심사 {stamp(result.created_at)}"],
+        [f"필지 {len(parcels)}건", ", ".join(p.address or p.pnu or p.parcel_id for p in parcels) + (f" · {site.resolve_note}" if site.resolve_note else "")],
+        ["종합 판정", f"{result.verdict_label} — {result.verdict_summary}"],
+    ]
+    reasons = one.reasons if result.verdict == "fail" else (one.review_reasons if result.verdict == "review" else [])
+    if reasons:
+        info.append(["사유", " / ".join(reasons)])
+    info.append(["생활편의성", f"{living} · {scores}"])
+    if result.source_alerts:
+        info.append([
+            f"원천 경고 {len(result.source_alerts)}건",
+            ", ".join(f"{'1차' if a.stage == 'stage_one' else '2차'} {a.source}" for a in result.source_alerts) + " — 재심사 권장",
+        ])
+    blocks: list[Block] = [Block("kv", rows=info, weights=[1.4, 8.6]), _one_page_stage_one(site, result)]
+    if one.passthrough_notes:
+        blocks.append(Block("text", "판정 미적용: " + " / ".join(one.passthrough_notes), style="muted"))
+    blocks.append(_one_page_stage_two(result))
+    if two.out_of_scope:
+        blocks.append(Block(
+            "text",
+            f"산정 대상 아님 {two.out_of_scope_points}점 — " + ", ".join(f"{o.label} {o.maximum}점" for o in two.out_of_scope),
+            style="muted",
+        ))
+    # 필지 주소는 머리표 「필지」 줄에 있으므로 부제목으로 되풀이하지 않는다.
+    return SiteReport(receipt_no=receipt, title=heading, subtitle="", blocks=blocks)
+
+
 def site_report(site: ExportSite, index: int, compact: bool = False) -> SiteReport:
     """사업지 한 건의 심사표 블록. 실패·중단 건은 사유만 적는다.
 
-    compact — PDF 용. 「해당 없음」 세부 항목과 2차 시설 목록을 줄여 한 건이 몇 쪽 안에 들게 한다.
-    Excel 은 전부 펼친다.
+    compact — PDF 용 한 쪽 압축본(site_report_one_page). Excel 은 전부 펼친다.
     """
+
+    if compact:
+        return site_report_one_page(site, index)
 
     receipt, address, housing, application = _site_labels(site)
     result = site.result

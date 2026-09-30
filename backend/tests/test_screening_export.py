@@ -276,11 +276,27 @@ async def test_site_report_carries_sheet_contents() -> None:
     hits = [r for b in groups for i, r in enumerate(b.rows) if i in b.sub_rows]
     assert any(r[0].startswith("└ subway-0") for r in hits)
 
-    # PDF 용 압축은 시설 목록을 시설군 칸 한 줄로 모은다.
+    # PDF 용 한 쪽 압축본 — 머리표 한 블록, 1차 규칙별 한 줄, 2차 축·시설군별 한 줄. 고지문은 없다.
     compact = site_report(site, 1, compact=True)
-    compact_groups = [b for b in compact.blocks if b.kind == "table" and b.columns[0] == "시설군"]
-    assert not any(b.sub_rows for b in compact_groups)
-    assert any("반영 1곳: subway-0 400.0m" in r[4] for b in compact_groups for r in b.rows)
+    kinds = [b.kind for b in compact.blocks]
+    assert kinds[0] == "kv" and kinds.count("table") == 2
+    head = dict((k, v) for k, v in compact.blocks[0].rows)
+    assert head["종합 판정"].startswith(result.verdict_label)
+    assert head["생활편의성"].startswith(f"{result.stage_two.living_score} / {result.stage_two.living_maximum}점")
+    assert "대중교통 접근성" in head["생활편의성"]
+    one_page = next(b for b in compact.blocks if b.kind == "table" and b.columns[0] == "1차 규칙")
+    gas_rule = next(r for r in one_page.rows if r[1] == "매입제외")
+    assert gas_rule[2] == "50m" and gas_rule[3] == "20.0m"
+    assert "주유소 매입제외 20.0m" in gas_rule[4] and "[오탐 · 현장 확인 폐업]" in gas_rule[4]
+    # 같은 규칙의 통과 세부 항목(LPG 충전소)은 비고에 적지 않는다.
+    assert "LPG 충전소" not in gas_rule[4]
+    assert len(one_page.rows) == len({i.rule_id for i in result.stage_one.items})
+    two_page = next(b for b in compact.blocks if b.kind == "table" and b.columns[0] == "평가항목 · 시설군")
+    transit_row = next(r for r in two_page.rows if r[0] == transit_criterion.label)
+    assert transit_row[1].startswith(f"{transit_criterion.awarded} / {transit_criterion.maximum}점")
+    subway_row = next(r for r in two_page.rows if r[0] == "└ 지하철역")
+    assert subway_row[1] == "subway-0 400.0m" and subway_row[2] == "1건"
+    assert not any(b.kind == "text" and b.text == result.disclaimer for b in compact.blocks)
 
 
 @pytest.mark.asyncio
@@ -328,7 +344,8 @@ async def test_batch_pdf_is_a4_portrait_with_korean_font_and_page_per_site() -> 
     finally:
         batch_results.pop(("bp", "001"), None)
     reader = PdfReader(io.BytesIO(data))
-    assert len(reader.pages) >= 1 + len(batch.rows)
+    # 1쪽 결과표 + 건당 한 쪽.
+    assert len(reader.pages) == 1 + len(batch.rows)
     first = reader.pages[0]
     assert float(first.mediabox.width) < float(first.mediabox.height)  # A4 세로
     assert round(float(first.mediabox.width)) == 595 and round(float(first.mediabox.height)) == 842
@@ -341,10 +358,10 @@ async def test_batch_pdf_is_a4_portrait_with_korean_font_and_page_per_site() -> 
     }
     assert any("NanumGothic" in name for name in fonts)
     # 2쪽부터 건별 심사표 — 순서대로.
-    assert "접수번호 001" in reader.pages[1].extract_text()
-    assert "1차 매입제외 판정" in reader.pages[1].extract_text()
-    remaining = "".join(page.extract_text() for page in reader.pages[2:])
-    assert "접수번호 002" in remaining and "접수번호 003" in remaining and "심사 결과 없음" in remaining
+    page_two = reader.pages[1].extract_text()
+    assert "접수번호 001" in page_two and "1차 규칙" in page_two and "평가항목 · 시설군" in page_two
+    assert "접수번호 002" in reader.pages[2].extract_text()
+    assert "접수번호 003" in reader.pages[3].extract_text() and "심사 결과 없음" in reader.pages[3].extract_text()
 
 
 @pytest.mark.asyncio
