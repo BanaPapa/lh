@@ -48,6 +48,8 @@ FACTORY_PARCEL_URL = (
     "https://apis.data.go.kr/B550624/fctryRegistLndpclInfo/getFctryLndpclService"
 )
 PAGE_SIZE = 1000
+# 504 로 끊기는 큰 시군구용 쪽 크기.
+SMALL_PAGE_SIZE = 200
 MAX_PAGES = 30
 # 시군구 목록 메모리 캐시 수명. 등록공장은 자주 바뀌지 않는다.
 CACHE_TTL_SECONDS = 24 * 3600
@@ -57,6 +59,17 @@ WILDCARD_NAME = " "
 GEOCODE_CONCURRENCY = 8
 DEFAULT_GEOCODE_CACHE = (
     Path(__file__).resolve().parents[2] / "data" / "factory_geocode_cache.json"
+)
+# 시군구별 등록공장 목록 사본. 산단공 API 는 한 시군구(1천여 곳)를 주는 데 22~36초가
+# 걸렸다(2026-09-30 실측, 쪽 크기와 무관). 사본이 있으면 곧바로 쓰고, 하루가 지났으면
+# 뒤에서 새로 받아 바꿔 둔다. 배포 이미지에 실어 첫 심사도 기다리지 않게 한다.
+DEFAULT_ROWS_CACHE = (
+    Path(__file__).resolve().parents[2] / "data" / "factory_rows_cache.json"
+)
+# 전북 시군구 코드(사본을 미리 만들어 실을 범위).
+JEONBUK_SIGUNGU_CODES = (
+    "52111", "52113", "52130", "52140", "52180", "52190", "52210",
+    "52710", "52720", "52730", "52740", "52750", "52770", "52790", "52800",
 )
 
 Geocoder = Callable[[str], Awaitable[Coordinates | None]]
@@ -155,8 +168,12 @@ class FactoryRegistryClient:
         timeout: float = 60.0,
         transport: httpx.AsyncBaseTransport | None = None,
         lot_index: FactoryLotIndex | None = None,
+        rows_cache_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
+        self.rows_cache_path = rows_cache_path
+        self._rows_disk: dict[str, dict] | None = None
+        self._refreshing: set[str] = set()
         # 등록 지번 파일 색인. 주지 않으면 서버에 실은 파일을 읽는다(테스트는 빈 색인을 준다).
         self._lot_index = lot_index
         self.geocoder = geocoder
@@ -201,7 +218,10 @@ class FactoryRegistryClient:
 
     # -- 목록 ---------------------------------------------------------------
     async def factories_in_sigungu(self, sigungu_code: str) -> list[dict[str, str]]:
-        """시군구(법정동코드 앞 5자리)의 등록공장 행 전량. 24시간 캐시."""
+        """시군구(법정동코드 앞 5자리)의 등록공장 행 전량.
+
+        메모리(24시간) → 서버 사본(있으면 곧바로, 하루 지났으면 뒤에서 갱신) → API 순.
+        """
 
         code = (sigungu_code or "")[:5]
         if not self.enabled or len(code) < 5:
@@ -209,38 +229,104 @@ class FactoryRegistryClient:
         cached = self._rows.get(code)
         if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
             return cached[1]
+        snapshot = self._disk_rows(code)
+        if snapshot is not None:
+            rows, fetched_at = snapshot
+            age = time.time() - fetched_at
+            self._rows[code] = (time.monotonic() - max(age, 0.0), rows)
+            if age >= CACHE_TTL_SECONDS and code not in self._refreshing:
+                self._refreshing.add(code)
+                asyncio.get_running_loop().create_task(self._refresh_in_background(code))
+            return rows
+        return await self._fetch_and_store(code)
+
+    async def _refresh_in_background(self, code: str) -> None:
+        try:
+            await self._fetch_and_store(code, force=True)
+        except Exception:  # noqa: BLE001 — 갱신 실패는 사본을 그대로 쓴다
+            logger.warning("등록공장 목록 갱신 실패(사본 유지): %s", code, exc_info=True)
+        finally:
+            self._refreshing.discard(code)
+
+    async def _fetch_and_store(self, code: str, force: bool = False) -> list[dict[str, str]]:
         lock = self._locks.setdefault(code, LoopSafeLock())
         async with lock.get():
             cached = self._rows.get(code)
-            if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
+            if not force and cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
                 return cached[1]
-            rows: list[dict[str, str]] = []
-            async with httpx.AsyncClient(
-                timeout=self.timeout, transport=self._transport, verify=shared_verify()
-            ) as client:
-                for page in range(1, MAX_PAGES + 1):
-                    page_rows, total = await self._page(client, code, page)
-                    rows.extend(page_rows)
-                    if len(page_rows) < PAGE_SIZE or len(rows) >= total:
-                        break
+            try:
+                rows = await self._fetch_all(code, PAGE_SIZE)
+            except PublicDataAPIError as exc:
+                # 공장이 많은 시군구(군산·익산·김제·완주)는 1천 건 쪽이 게이트웨이
+                # 시간 초과(504)로 끊겼다(2026-09-30). 작은 쪽으로 다시 받는다.
+                if getattr(exc, "status_code", None) != 504:
+                    raise
+                rows = await self._fetch_all(code, SMALL_PAGE_SIZE)
             self._rows[code] = (time.monotonic(), rows)
+            self._store_disk_rows(code, rows)
             return rows
 
+    async def _fetch_all(self, code: str, size: int) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        async with httpx.AsyncClient(
+            timeout=self.timeout, transport=self._transport, verify=shared_verify()
+        ) as client:
+            for page in range(1, MAX_PAGES * (PAGE_SIZE // size) + 1):
+                page_rows, total = await self._page(client, code, page, size)
+                rows.extend(page_rows)
+                if len(page_rows) < size or len(rows) >= total:
+                    break
+        return rows
+
+    # -- 시군구 목록 사본 -------------------------------------------------------
+    def _load_rows_disk(self) -> dict[str, dict]:
+        if self._rows_disk is not None:
+            return self._rows_disk
+        data: dict[str, dict] = {}
+        if self.rows_cache_path and self.rows_cache_path.exists():
+            try:
+                raw = json.loads(self.rows_cache_path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    data = raw
+            except (OSError, ValueError):
+                logger.warning("등록공장 목록 사본을 읽지 못했습니다: %s", self.rows_cache_path)
+        self._rows_disk = data
+        return data
+
+    def _disk_rows(self, code: str) -> tuple[list[dict[str, str]], float] | None:
+        entry = self._load_rows_disk().get(code)
+        if not isinstance(entry, dict) or not isinstance(entry.get("rows"), list):
+            return None
+        return entry["rows"], float(entry.get("fetched_at") or 0.0)
+
+    def _store_disk_rows(self, code: str, rows: list[dict[str, str]]) -> None:
+        if not self.rows_cache_path:
+            return
+        data = self._load_rows_disk()
+        data[code] = {"fetched_at": time.time(), "rows": rows}
+        try:
+            self.rows_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            self.rows_cache_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            logger.warning("등록공장 목록 사본을 쓰지 못했습니다: %s", self.rows_cache_path)
+
     async def _page(
-        self, client: httpx.AsyncClient, code: str, page: int
+        self, client: httpx.AsyncClient, code: str, page: int, size: int = PAGE_SIZE
     ) -> tuple[list[dict[str, str]], int]:
         response = await client.get(
             FACTORY_PARCEL_URL,
             params={
                 "serviceKey": self.service_key,
-                "numOfRows": PAGE_SIZE,
+                "numOfRows": size,
                 "pageNo": page,
                 "cmpnyNm": WILDCARD_NAME,
                 "adresCode": code,
             },
         )
         if response.status_code != 200:
-            raise PublicDataAPIError(f"등록공장 조회 실패 (HTTP {response.status_code})")
+            raise PublicDataAPIError(
+                f"등록공장 조회 실패 (HTTP {response.status_code})", response.status_code
+            )
         return _parse_items(response.text)
 
     # -- 좌표 ---------------------------------------------------------------

@@ -315,3 +315,36 @@ def test_api_outage_is_dataset_missing_not_no_conflict() -> None:
     # 원천 상태에도 「실패」 줄이 생겨 심사 결과 경고(source_alerts)가 재심사를 안내한다.
     failed = [s for s in result.sources if s.state == "failed"]
     assert [s.source_id for s in failed] == ["failed-factory_registry"]
+
+
+@pytest.mark.asyncio
+async def test_rows_snapshot_answers_without_api_and_refreshes_when_stale(tmp_path) -> None:
+    # 산단공 목록 API 는 시군구당 20~30초 걸린다. 서버 사본이 있으면 곧바로 쓰고,
+    # 하루가 지난 사본은 뒤에서 새로 받아 바꿔 둔다.
+    import asyncio
+    import json
+    import time
+
+    snapshot = tmp_path / "rows.json"
+    snapshot.write_text(
+        json.dumps({"52130": {"fetched_at": time.time() - 2 * 86400,
+                              "rows": [factory_row("1", "옛공장", "군산시 1로 1")]}},
+                   ensure_ascii=False),
+        encoding="utf-8",
+    )
+    recorder = Recorder([xml_page([factory_row("2", "새공장", "군산시 2로 2")], total=1)])
+    client = FactoryRegistryClient(
+        "key", cache_path=tmp_path / "geo.json", transport=recorder.transport(),
+        rows_cache_path=snapshot,
+    )
+
+    rows = await client.factories_in_sigungu("52130")
+    assert [r["cmpnyNm"] for r in rows] == ["옛공장"]  # 기다리지 않고 사본
+    for _ in range(50):
+        if recorder.requests and not client._refreshing:
+            break
+        await asyncio.sleep(0.01)
+    assert len(recorder.requests) == 1
+    assert [r["cmpnyNm"] for r in await client.factories_in_sigungu("52130")] == ["새공장"]
+    saved = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert saved["52130"]["rows"][0]["cmpnyNm"] == "새공장"

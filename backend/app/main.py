@@ -1,3 +1,4 @@
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -126,6 +127,35 @@ async def provider_status(config: Settings = Depends(get_settings)) -> dict[str,
             else ""
         ),
     }
+
+
+# 배포 서버에서 외부 원천까지 연결되는지 잰다(원천 장애 진단용). 고정된 주소만
+# 부르고 키·응답 본문은 싣지 않는다.
+EGRESS_PROBE_HOSTS = (
+    "https://apis.data.go.kr",
+    "https://api.data.go.kr",
+    "https://api.odcloud.kr",
+    "https://www.safemap.go.kr",
+    "https://api.vworld.kr",
+    "https://maps.apigw.ntruss.com",
+    "https://dapi.kakao.com",
+    "https://openapi.naver.com",
+)
+
+
+@app.get("/api/status/egress")
+async def egress_status() -> list[dict[str, object]]:
+    async def probe(url: str) -> dict[str, object]:
+        started = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=6.0)) as client:
+                response = await client.get(url)
+            outcome = f"HTTP {response.status_code}"
+        except httpx.HTTPError as exc:
+            outcome = exc.__class__.__name__
+        return {"host": url, "result": outcome, "ms": round((time.monotonic() - started) * 1000)}
+
+    return list(await asyncio.gather(*(probe(url) for url in EGRESS_PROBE_HOSTS)))
 
 
 @app.get("/api/geocode", response_model=GeocodeResponse)

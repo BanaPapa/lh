@@ -25,6 +25,7 @@ session-log/
 # 인허가 원장 스냅샷(60MB). sync_facilities.py 로 재생성한다.
 backend/data/facilities.db
 backend/data/factory_geocode_cache.json
+backend/data/factory_rows_cache.json
 backend/data/cadastral_*.sqlite
 backend/data/cadastral_*.db
 

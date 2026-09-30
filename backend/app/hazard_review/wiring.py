@@ -41,7 +41,7 @@ from app.services.safemap_facilities import SafemapFacilityFeed
 from app.services.crematorium import CrematoriumClient
 from app.services.facility_store import FacilityStore
 from app.services.kakao import KakaoClient
-from app.services.factory_registry import FactoryRegistryClient
+from app.services.factory_registry import DEFAULT_ROWS_CACHE, FactoryRegistryClient
 from app.services.kgs import KgsLpgClient
 from app.services.local_wiring import (
     LocalSourcesBundle,
@@ -237,6 +237,8 @@ def build_hazard_service(
         # 카카오가 못 찾은 옛 지번은 VWorld 주소검색으로 한 번 더(LH 기준 · 관리자 스위치로 끌 수 있음).
         factory_registry=FactoryRegistryClient(
             config.public_data_key,
+            # 시군구 목록 사본(API 가 느려 서버 사본을 먼저 쓰고 뒤에서 갱신한다).
+            rows_cache_path=DEFAULT_ROWS_CACHE,
             geocoder=geocode_factory,
             fallback_geocoder=vworld.search_address_point,
             fallback_enabled=lambda: not option_enabled("factory_geocode_kakao_only"),

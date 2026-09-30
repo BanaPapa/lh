@@ -17,6 +17,7 @@ import json
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -24,6 +25,7 @@ from pydantic import BaseModel
 from app.lh_alignments import load_registry as load_lh_alignments
 from app.screening.front_door import DATASET_GATES_PATH
 from app.services.facility_store import DEFAULT_DB_PATH as FACILITY_DB_PATH
+from app.services.factory_registry import DEFAULT_ROWS_CACHE
 from app.services.factory_lots import (
     FACTORY_LOTS_AS_OF,
     FACTORY_LOTS_CSV,
@@ -150,6 +152,26 @@ def _facility_db_synced(path: Path) -> str:
     return str(row[0] or "")[:10] if row else ""
 
 
+def _count_factory_rows(path: Path) -> int:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return sum(len(entry.get("rows") or []) for entry in data.values())
+
+
+def _factory_rows_fetched(path: Path) -> str:
+    """등록공장 목록 사본에서 가장 오래된 시군구의 받은 날짜(YYYY-MM-DD)."""
+
+    if not path.is_file():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        stamps = [float(entry.get("fetched_at") or 0) for entry in data.values()]
+    except (OSError, ValueError, AttributeError):
+        return ""
+    if not stamps:
+        return ""
+    return datetime.fromtimestamp(min(stamps), UTC).strftime("%Y-%m-%d")
+
+
 BUNDLED_FILES: tuple[BundledFile, ...] = (
     BundledFile(
         id="factory_lots",
@@ -243,6 +265,22 @@ BUNDLED_FILES: tuple[BundledFile, ...] = (
         count_unit="행",
         note="API 로 받은 자료를 파일로 둔 것이라 git 에는 없고 배포 이미지에만 실립니다(sync_facilities.py 로 다시 만듭니다).",
         counter=_count_facility_rows,
+    ),
+    BundledFile(
+        id="factory_rows",
+        name="산단공 등록공장 목록 사본",
+        path=DEFAULT_ROWS_CACHE,
+        purpose=(
+            "산단공 공장등록 API 는 시군구 하나(1천여 곳)를 주는 데 20~80초가 걸려 1차 공장 조회가 "
+            "오래 걸렸습니다. 전북 시군구 목록을 받아 두고 곧바로 쓰며, 하루가 지나면 뒤에서 새로 받습니다."
+        ),
+        source="한국산업단지공단 공장등록 필지정보 API 사본",
+        source_id="data.go.kr 15087615",
+        source_url="https://www.data.go.kr/data/15087615/openapi.do",
+        as_of_reader=_factory_rows_fetched,
+        count_unit="곳",
+        note="API 로 받은 자료를 파일로 둔 것이라 git 에는 없고 배포 이미지에만 실립니다.",
+        counter=_count_factory_rows,
     ),
 )
 
