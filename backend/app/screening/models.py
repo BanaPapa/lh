@@ -152,6 +152,8 @@ class ScreeningFacilityHit(BaseModel):
     counted: bool = True
     # 배점 인정/제외 사유(버스정류장: 15분당 평균 도착 버스 수와 노선 배차).
     count_note: str = ""
+    # LH 개별 맞춤(lh_alignments.json)을 적용한 시설이면 그 한 줄(「LH 개별 맞춤 — …」).
+    lh_alignment: str = ""
     # 시설 마커 좌표(지도 표시용).
     coordinates: Coordinates | None = None
     # 사업지↔시설 최단거리 선분(1차 HazardFacility 와 같은 형태). 프런트가 같은

@@ -1,0 +1,299 @@
+{
+  "description": "LH 개별 맞춤 등록부. 공공 API 기준으로 모은 시설 중, LH 데이터셋(진용성 v6 facility-sets)과 위치·이름·범위가 달라 시설 한 곳씩 LH 기준에 맞춘 곳을 적는다. 항목마다 LH 데이터셋 근거(파일·행·좌표·PNU)와 LH 거리를 함께 둔다. 거리 근거는 LH앱 결과(17건 표본)이고, after_m 은 이 앱이 맞춘 뒤 같은 사업지 필지에서 잰 값이다. LH 행에 좌표가 없고 PNU 만 있으면 lat/lng 에는 그 필지 중심점(또는 공공 API 좌표)을 적어 같은 시설인지 가리는 기준점으로만 쓴다. 로더: backend/app/lh_alignments.py",
+  "entries": [
+    {
+      "id": "univ-yesu-school-point",
+      "scope": "amenity",
+      "name": "예수대학교",
+      "aliases": ["예수대학교 일반대학원", "예수대학교입구"],
+      "group": "university",
+      "action": "point",
+      "lh": {
+        "name": "예수대학교 일반대학원",
+        "address": "전북특별자치도 전주시 완산구 서원로 383 (중화산동1가 168-1)",
+        "lat": 35.815575,
+        "lng": 127.1351374,
+        "evidence": [
+          {"site": "002 전주시 완산구 효자동2가 1243-3", "lh_distance_m": 2807, "before_m": 2832.1, "after_m": 2807.3},
+          {"site": "077 전주시 완산구 효자동2가 1236-8", "lh_distance_m": 2806, "before_m": 2832.5, "after_m": 2806.2},
+          {"site": "006 전주시 덕진구 금암동 473-6", "lh_distance_m": 2352, "before_m": 2392.0, "after_m": 2352.0}
+        ]
+      },
+      "reason": "공공 API(표준 정문 좌표)는 「예수대학교입구」 지점을 주지만, LH 데이터셋 최신판은 예수대학교 일반대학원을 학교 지점(중화산동1가 168-1)으로 잡아 잽니다. 공공 API 자료 범위를 LH 데이터셋 기준에 맞춰 그 지점에서 잽니다.",
+      "source": "facilities_review.xlsx 생활편의시설 29·30행(id 63243·63244 「예수대학교입구」, 09-16판 좌표 35.8152437, 127.1354142 → 002 기준 2,832m) · LH앱 결과 002·077·006 거리 3건 · 세 거리를 모두 재현하는 점 = 네이버 지역검색 「예수대학교」 학교 지점",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "univ-wonkwang-gate-point",
+      "scope": "amenity",
+      "name": "원광대학교",
+      "aliases": ["원광디지털대학교", "원광대학교정문"],
+      "group": "university",
+      "action": "point",
+      "lh": {
+        "name": "원광대학교정문",
+        "address": "전북특별자치도 익산시 익산대로 460 (신동)",
+        "lat": 35.9669243,
+        "lng": 126.9533063,
+        "evidence": [
+          {"site": "094 익산시 창인동1가 19 외 2필지", "lh_distance_m": 2848, "before_m": 2832.1, "after_m": 2847.6, "note": "LH 는 원광대학교·원광디지털대학교를 같은 정문 2,848m 로 따로 적는다. 이 앱은 같은 정문을 쓰는 학교를 한 줄로 합친다."}
+        ]
+      },
+      "reason": "공공 API(표준 정문 좌표 09-16판)와 LH 데이터셋 최신판의 원광대학교 정문 좌표가 16m 다릅니다. 원광디지털대학교도 같은 정문을 씁니다. 공공 API 자료를 LH 데이터셋 기준 정문 지점에 맞춥니다.",
+      "source": "facilities_review.xlsx 생활편의시설 41~50행(id 63257~63272 「원광대학교정문」, 원광디지털대학교 63270·63272 포함, 09-16판 좌표 35.966791, 126.953242 → 2,832m) · LH앱 결과 094 거리 2,848m = 네이버 지역검색 「원광대학교정문」 지점",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "univ-polytech-iksan-parcel",
+      "scope": "amenity",
+      "name": "한국폴리텍대학 익산캠퍼스",
+      "aliases": ["한국폴리텍 V 대학 익산캠퍼스", "한국폴리텍5대학 익산캠퍼스정문", "한국폴리텍V대학"],
+      "group": "university",
+      "action": "point",
+      "lh": {
+        "name": "한국폴리텍 V 대학 익산캠퍼스",
+        "address": "전북특별자치도 익산시 선화로 579 (어양동 16)",
+        "lat": 35.9511745,
+        "lng": 126.9914891,
+        "pnu": "5214012300100160000",
+        "evidence": [
+          {"site": "060 익산시 부송동 764-10 외 3필지", "lh_distance_m": 562, "before_m": 852.3, "after_m": 562.2}
+        ]
+      },
+      "reason": "공공 API(표준 정문 좌표)는 캠퍼스 정문 점을 주지만, LH 데이터셋 최신판은 폴리텍 익산캠퍼스를 캠퍼스 필지(어양동 16)로 잡아 필지 경계에서 잽니다. 공공 API 자료 범위를 LH 데이터셋 기준에 맞춰 그 필지 경계에서 잽니다.",
+      "source": "facilities.xlsx 생활편의시설 17016행(id 63313 「한국폴리텍5대학 익산캠퍼스정문」 POINT 35.9506635, 126.9920173 → 852m) · 52_university_exit_update.xlsx 출입구정보_추가 80행(학교명 「한국폴리텍 V 대학 익산캠퍼스」) · LH앱 결과 060 거리 562m = 어양동 16 필지(PNU 5214012300100160000) 경계",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "univ-jbnu-vet-rename",
+      "scope": "amenity",
+      "name": "전북대학교 수의방역대학원",
+      "aliases": ["전북대학교 특성화캠퍼스"],
+      "group": "university",
+      "action": "rename",
+      "lh": {
+        "name": "전북대학교 수의방역대학원",
+        "address": "전북특별자치도 익산시 고봉로 79 (마동)",
+        "lat": 35.9418232,
+        "lng": 126.9626715,
+        "evidence": [
+          {"site": "060 익산시 부송동 764-10 외 3필지", "lh_distance_m": 2924, "before_m": 2924.4, "after_m": 2924.4},
+          {"site": "094 익산시 창인동1가 19 외 2필지", "lh_distance_m": 1286, "before_m": 1285.8, "after_m": 1285.8}
+        ]
+      },
+      "reason": "공공 API(지도 검색)는 이 캠퍼스를 「전북대학교 특성화캠퍼스」로 주고, LH 데이터셋은 같은 정문을 학교명 「전북대학교 수의방역대학원」으로 적습니다. 거리는 같고, 표기만 LH 데이터셋 기준에 맞춥니다.",
+      "source": "facilities.xlsx 생활편의시설 17010행(id 63287 「전북대학교 특성화캠퍼스정문」 35.9418232, 126.9626715) · 52_university_exit_update.xlsx 출입구정보_추가 54행(학교명 「전북대학교 수의방역대학원」)",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "univ-jeonju-gate-point",
+      "scope": "amenity",
+      "name": "전주대학교",
+      "aliases": ["전주대학교정문"],
+      "group": "university",
+      "action": "point",
+      "lh": {
+        "name": "전주대학교정문",
+        "address": "전북특별자치도 전주시 완산구 천잠로 303 (효자동2가)",
+        "lat": 35.8139519,
+        "lng": 127.0940487,
+        "evidence": [
+          {"site": "002 전주시 완산구 효자동2가 1243-3", "lh_distance_m": 894, "before_m": 915.7, "after_m": 894.0},
+          {"site": "077 전주시 완산구 효자동2가 1236-8", "lh_distance_m": 923, "before_m": 941.9, "after_m": 922.6}
+        ]
+      },
+      "reason": "LH 데이터셋 09-16판과 최신판의 전주대학교 정문 좌표가 다릅니다. 공공 API(표준 정문 좌표)를 LH 데이터셋 최신판 정문 지점에 맞춥니다. 표준 정문 좌표 CSV(university_gates_jeonbuk.csv)도 같은 값으로 고쳐 두었습니다(2026-09-30).",
+      "source": "facilities.xlsx 생활편의시설 17013행(id 63304 「전주대학교정문」 09-16판 35.814045, 127.093792 → 915.7m) · LH앱 결과 002·077 거리 = 네이버 지역검색 「전주대학교정문」 지점",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "univ-jeonju-vision-gate-point",
+      "scope": "amenity",
+      "name": "전주비전대학교",
+      "aliases": ["전주비전대학교정문"],
+      "group": "university",
+      "action": "point",
+      "lh": {
+        "name": "전주비전대학교정문",
+        "address": "전북특별자치도 전주시 완산구 천잠로 235 (효자동2가)",
+        "lat": 35.8072714,
+        "lng": 127.0948184,
+        "evidence": [
+          {"site": "002 전주시 완산구 효자동2가 1243-3", "lh_distance_m": 1188, "before_m": 1225.6, "after_m": 1187.7},
+          {"site": "077 전주시 완산구 효자동2가 1236-8", "lh_distance_m": 1294, "before_m": 1324.2, "after_m": 1294.5}
+        ]
+      },
+      "reason": "LH 데이터셋 09-16판과 최신판의 전주비전대학교 정문 좌표가 다릅니다. 공공 API(표준 정문 좌표)를 LH 데이터셋 최신판 정문 지점에 맞춥니다. 표준 정문 좌표 CSV 도 같은 값으로 고쳐 두었습니다(2026-09-30).",
+      "source": "facilities.xlsx 생활편의시설 17014행(id 63311 「전주비전대학교정문」 09-16판 35.807712, 127.093711 → 1,225.6m) · LH앱 결과 002·077 거리 = 네이버 지역검색 「전주비전대학교정문」 지점",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "terminal-iksan-station-merge",
+      "scope": "amenity",
+      "name": "익산",
+      "aliases": [],
+      "group": "terminal",
+      "action": "merge",
+      "merge_from": [{"group": "transfer", "names": ["익산역환승장"]}],
+      "lh": {
+        "name": "익산",
+        "address": "전라북도 익산시 창인동2가 1",
+        "lat": 35.940528,
+        "lng": 126.946509,
+        "pnu": "5214010200100010000",
+        "evidence": [
+          {"site": "094 익산시 창인동1가 19 외 2필지", "lh_distance_m": 95, "before_m": 83.9, "after_m": 94.8, "note": "이전 값은 환승시설 「익산역환승장」 좌표 거리"}
+        ]
+      },
+      "reason": "공공 API(환승센터 표준데이터)는 익산역 환승장을 환승시설 점으로 주지만, LH 데이터셋에는 환승시설 분류가 없고 익산역 필지(창인동2가 1)를 대중교통터미널 「익산」으로 등재해 필지 경계에서 잽니다. 같은 시설이므로 환승장을 LH 터미널 하나로 합쳐 LH 데이터셋 기준에 맞춥니다.",
+      "source": "facilities.xlsx 생활편의시설 16202행(id 62435 대중교통터미널 「익산」, 50_bus_terminals.csv 18행, PNU 5214010200100010000 창인동2가 1)",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "culture-jbnu-samsung-hall-add",
+      "scope": "amenity",
+      "name": "전북대삼성문화회관",
+      "aliases": ["전북대학교 전주캠퍼스 삼성문화회관", "전북대학교 삼성문화회관", "삼성문화회관"],
+      "group": "culture",
+      "action": "add",
+      "lh": {
+        "name": "전북대삼성문화회관",
+        "address": "전북특별자치도 전주시 덕진구 금암동 665 외6필지",
+        "lat": 35.84293781,
+        "lng": 127.13025956,
+        "pnu": "5211310700106650000",
+        "evidence": [
+          {"site": "006 전주시 덕진구 금암동 473-6", "lh_distance_m": 508, "after_m": 508.5, "note": "인허가 공연장 원장 조회분에 없음"},
+          {"site": "115 전주시 덕진구 금암동 762-1 외", "lh_distance_m": 623, "after_m": 622.6, "note": "인허가 공연장 원장 조회분에 없음"}
+        ]
+      },
+      "reason": "공공 API(행정안전부 인허가 공연장 원장) 조회분에는 이 공연장이 없고, LH 데이터셋 공연장 원장에는 금암동 665 필지로 등재돼 있습니다. LH 데이터셋 기준에 맞춰 이 시설을 더하고 그 필지 경계에서 잽니다. 인허가 원장에 같은 이름이 들어오면 새로 더하지 않고 위치만 맞춥니다.",
+      "source": "facilities.xlsx 생활편의시설 80행(id 46190 공연장 「전북대삼성문화회관」, 38_performance_halls.xlsx 83행, PNU 5211310700106650000)",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "culture-gunsan-history-hall-add",
+      "scope": "amenity",
+      "name": "일제강점기 군산역사관",
+      "aliases": [],
+      "group": "culture",
+      "action": "add",
+      "lh": {
+        "name": "일제강점기 군산역사관",
+        "address": "전북특별자치도 군산시 조촌동 888",
+        "lat": 35.9675748,
+        "lng": 126.73686411,
+        "pnu": "5213013400108880000",
+        "evidence": [
+          {"site": "035 군산시 경장동 511-7", "lh_distance_m": 493, "before_m": 2445.8, "after_m": 492.8, "note": "이전 값은 지도 검색 좌표(실제 전시관 자리) 거리"}
+        ]
+      },
+      "reason": "공공 API(지도 검색)는 이 역사관의 전시관 자리를 주고 인허가 박물관 원장 조회분에는 없지만, LH 데이터셋 박물관 원장은 등록 주소 조촌동 888(군산시청 필지)로 등재해 그 필지 경계에서 잽니다. LH 데이터셋 기준에 맞춰 그 필지 경계에서 잽니다.",
+      "source": "facilities.xlsx 생활편의시설 95행(id 46208 박물관 「일제강점기 군산역사관」, 39_museums_galleries.xlsx 7행, PNU 5213013400108880000)",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "hospital-jeonju-goryeo-parcel",
+      "scope": "amenity",
+      "name": "전주고려병원",
+      "aliases": [],
+      "group": "hospital",
+      "action": "point",
+      "lh": {
+        "name": "전주고려병원",
+        "address": "전북특별자치도 전주시 덕진구 안덕원로 367 (산정동 852-1)",
+        "lat": 35.8398807,
+        "lng": 127.1670378,
+        "pnu": "5211311100108520001",
+        "evidence": [
+          {"site": "005 전주시 덕진구 인후동1가 517-1 외 2필지", "lh_distance_m": 502, "before_m": 523.6, "after_m": 502.0}
+        ]
+      },
+      "reason": "공공 API(심평원 병원 좌표)로 좌표가 놓인 필지를 찾으면 병원 본 필지가 아닌 필지가 잡혀 523.6m 로 잽니다. LH 데이터셋은 병원 PNU(산정동 852-1)로 잽니다. LH 데이터셋 기준 필지 경계에서 잽니다.",
+      "source": "facilities.xlsx 생활편의시설 14행(id 26891 종합병원 「전주고려병원」, 00_hospitals.csv 14행, PNU 5211311100108520001)",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "retail-seongnak-market-parcel",
+      "scope": "amenity",
+      "name": "성락시장",
+      "aliases": [],
+      "group": "retail",
+      "action": "point",
+      "lh": {
+        "name": "성락시장",
+        "address": "전북특별자치도 전주시 덕진구 인후동2가 1575-1",
+        "lat": 35.845161,
+        "lng": 127.151219,
+        "pnu": "5211310400115750001",
+        "evidence": [
+          {"site": "111 전주시 덕진구 인후동2가 1557-4", "lh_distance_m": 141, "before_m": 6.9, "after_m": 140.8},
+          {"site": "005 전주시 덕진구 인후동1가 517-1 외 2필지", "lh_distance_m": 1102.5, "before_m": 1359.1, "after_m": 1102.5, "note": "LH앱 09-16판 결과"}
+        ]
+      },
+      "reason": "공공 API(인허가 대규모점포 원장)는 이 시장의 주소를 좌표로 바꿔 쓰는데, 주소 좌표가 다른 필지에 떨어질 수 있습니다. LH 데이터셋은 시장 PNU(인후동2가 1575-1)로 잽니다. LH 데이터셋 기준 필지 경계에서 잽니다.",
+      "source": "facilities.xlsx 생활편의시설 353행(id 46580 그 밖의 대규모점포 「성락시장」, 41_large_retail_stores.xlsx 88행, PNU 5211310400115750001)",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "busstop-express-terminal-buddhist-point",
+      "scope": "amenity",
+      "name": "고속버스터미널.불교회관",
+      "aliases": [],
+      "group": "bus_stop",
+      "action": "point",
+      "lh": {
+        "name": "고속버스터미널.불교회관",
+        "lat": 35.83418203,
+        "lng": 127.1303235,
+        "evidence": [
+          {"site": "115 전주시 덕진구 금암동 762-1 외", "lh_distance_m": 161, "before_m": 182.2, "after_m": 161.3}
+        ]
+      },
+      "reason": "공공 API(TAGO 정류소 근접조회)는 같은 이름 정류장 두 곳(JUB306100925·JUB306100918, 182.2m·196.5m)만 주고, LH 데이터셋 정류장 원장에는 세 곳이 있어 가장 가까운 곳에서 잽니다. LH 데이터셋 기준 정류장 좌표에서 잽니다.",
+      "source": "facilities.xlsx 생활편의시설 2865행(id 49098 버스정류장 「고속버스터미널.불교회관」 35.83418203, 127.1303235, 47_bus_stops_update.xlsx 2120행) · 같은 이름 2863·13971행",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "public-geumam-center-rename",
+      "scope": "amenity",
+      "name": "금암동 주민센터",
+      "aliases": ["금암1동주민센터"],
+      "group": "public",
+      "action": "rename",
+      "lh": {
+        "name": "금암동 주민센터",
+        "address": "전북특별자치도 전주시 덕진구 기린대로 392 (금암동 470-7)",
+        "lat": 35.837434,
+        "lng": 127.133123,
+        "pnu": "5211310700104700007",
+        "evidence": [
+          {"site": "006 전주시 덕진구 금암동 473-6", "lh_distance_m": 127, "before_m": 126.7, "after_m": 126.7},
+          {"site": "115 전주시 덕진구 금암동 762-1 외", "lh_distance_m": 309, "before_m": 309.2, "after_m": 309.2}
+        ]
+      },
+      "reason": "공공 API(민원행정기관 전자지도)는 이 행정복지센터를 옛 이름 「금암1동주민센터」로 주고, LH 데이터셋은 「금암동 주민센터」로 적습니다. 거리는 같고, 표기만 LH 데이터셋 기준에 맞춥니다.",
+      "source": "facilities.xlsx 생활편의시설 514행(id 46745 행정복지센터 「금암동 주민센터」, 44_admin_centers.csv 77행, PNU 5211310700104700007 기린대로 392)",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "hazard-sk-sinheung-exclude",
+      "scope": "hazard",
+      "name": "SK신흥주유소",
+      "aliases": [],
+      "group": "",
+      "action": "exclude",
+      "lh": {
+        "name": "SK신흥주유소",
+        "address": "전북특별자치도 전주시 완산구 효자동2가 363-4",
+        "pnu": "5211114100103630004",
+        "evidence": [
+          {"site": "082 전주시 완산구 효자동2가 363-2 외", "note": "LH 09/11 회의 — 주유소 철거 확인"}
+        ]
+      },
+      "reason": "공공 API(석유판매업 인허가 원장)에는 영업 중으로 남아 있지만, LH 가 09/11 회의에서 철거를 확인해 판정에서 뺐습니다(신청 082 전주 효자동2가 363-2 외). LH 개별 확인 기준에 맞춰 1차 판정에서 뺍니다.",
+      "source": "LH앱 data/facility-sets/lh-overrides.json(action exclude, PNU 5211114100103630004) · 협회 확인요청 2026-09-17",
+      "date": "2026-09-30"
+    }
+  ]
+}

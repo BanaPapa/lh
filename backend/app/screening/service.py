@@ -700,6 +700,7 @@ def _group_status(
                 facility_ring=list(facility.facility_ring),
                 counted=facility.counted,
                 count_note=facility.count_note,
+                lh_alignment=facility.lh_alignment,
             )
             for facility in collection.facilities
         ],

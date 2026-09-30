@@ -42,6 +42,12 @@ from app.screening import culture as culture_source
 from app.screening import parks as park_source
 from app.screening.scorebook import FACILITY_GROUPS
 from app.rules_config import option_enabled, options_fingerprint
+from app.lh_alignments import (
+    LH_ALIGNMENT_SOURCE,
+    LhAlignment,
+    alignments_fingerprint,
+    amenity_alignments,
+)
 from app.services.cadastral_local import CadastralLocalStore
 from app.services.facility_store import FacilityStore
 from app.services.geo import (
@@ -143,6 +149,10 @@ STATION_EXIT_SEARCH_RADIUS_M = 1500
 GATE_CATEGORY = "입출구"
 GATE_QUERY_SUFFIXES: tuple[str, ...] = ("정문", "문", "입구")
 GATE_SEARCH_RADIUS_M = 3000
+
+# LH 개별 맞춤 항목을 볼 범위 — 기준점이 수집 반경 + 이 거리 안인 항목만 본다. 이름으로
+# 맞출 때 허용하는 거리(lh_alignments.NAME_MATCH_RADIUS_M)와 같게 둔다.
+NAME_MATCH_MARGIN_M = 5000
 
 
 def station_base(name: str) -> str:
@@ -426,6 +436,9 @@ class CollectedFacility(NamedTuple):
     counted: bool = True
     # 배점 인정/제외 사유 한 줄(버스정류장: 15분당 도착 수와 노선 배차).
     count_note: str = ""
+    # LH 개별 맞춤(backend/data/lh_alignments.json)을 적용한 시설이면 그 한 줄.
+    # 화면·엑셀에 「LH 개별 맞춤」으로 드러낸다. 비어 있으면 공공 API 값 그대로다.
+    lh_alignment: str = ""
 
 
 class GroupCollection(NamedTuple):
@@ -757,8 +770,12 @@ class AmenityCollector:
         safemap_hospitals: SafemapFacilityFeed | None = None,
         safemap_fire: SafemapFacilityFeed | None = None,
         dataset_gates: tuple[DatasetGate, ...] | None = None,
+        alignments: Sequence[LhAlignment] | None = None,
     ) -> None:
         self.kakao = kakao
+        # LH 개별 맞춤 항목. None 이면 매 수집마다 등록부 파일(lh_alignments.json)을
+        # 읽는다 — 항목을 고치면 재시작 없이 다음 심사부터 반영된다. 테스트는 직접 준다.
+        self._fixed_alignments = None if alignments is None else tuple(alignments)
         # 표준 데이터셋 대학 정문 좌표(수기 지정 다음 순위). None 이면 저장소 CSV 를 읽는다.
         self.dataset_gates = (
             load_dataset_gates() if dataset_gates is None else dataset_gates
@@ -879,6 +896,9 @@ class AmenityCollector:
             for group in FACILITY_GROUPS
         }
         collections = await self._attach_boundaries(collections, valid_rings, center)
+        collections = await self._apply_lh_alignments(
+            collections, valid_rings, center, radius_m
+        )
         collections = {
             key: _with_source_alert(collection, results)
             for key, collection in collections.items()
@@ -2554,6 +2574,220 @@ class AmenityCollector:
             facility_point,
         )
 
+    # -- LH 개별 맞춤(lh_alignments.json) -------------------------------------
+    def _alignments(self) -> tuple[LhAlignment, ...]:
+        if self._fixed_alignments is not None:
+            return tuple(e for e in self._fixed_alignments if e.scope == "amenity")
+        return amenity_alignments()
+
+    async def _apply_lh_alignments(
+        self,
+        collections: dict[str, GroupCollection],
+        rings: list[list[Coordinates]],
+        center: Coordinates,
+        radius_m: int,
+    ) -> dict[str, GroupCollection]:
+        """공공 API 로 모은 시설 중 LH 데이터셋과 다른 곳을 LH 기준으로 맞춘다.
+
+        경계 측정(_attach_boundaries)이 끝난 뒤 마지막에 한 번 적용한다. 맞춘 시설에는
+        lh_alignment 한 줄을 붙여 화면·엑셀에 「LH 개별 맞춤」으로 드러낸다. 사업지에서
+        먼 항목(기준점이 반경 + 이름 맞춤 거리 밖)은 건드리지 않는다.
+        """
+
+        entries = [
+            entry
+            for entry in self._alignments()
+            if entry.group in collections
+            and (
+                entry.lh.coordinates is None
+                or haversine_meters(center, entry.lh.coordinates)
+                <= radius_m + NAME_MATCH_MARGIN_M
+            )
+        ]
+        if not entries:
+            return collections
+
+        updated = dict(collections)
+        # 시설군 키 → 맞춘 뒤 시설 목록(자르기 전). 끝에 한 번에 거리 목록을 다시 만든다.
+        working: dict[str, list[CollectedFacility]] = {}
+        parcels: dict[str, ParcelFeature | None] = {}
+
+        def facilities_of(key: str) -> list[CollectedFacility]:
+            if key not in working:
+                working[key] = list(updated[key].facilities)
+            return working[key]
+
+        for entry in entries:
+            collection = updated[entry.group]
+            # 원천이 아예 없는 시설군에 LH 시설만 끼워 넣으면 「찾았다」로 읽힌다. 건드리지 않는다.
+            if collection.state == "missing":
+                continue
+            facilities = facilities_of(entry.group)
+            matched = [
+                index
+                for index, facility in enumerate(facilities)
+                if entry.matches(facility.name, facility.coordinates)
+            ]
+            action = entry.action
+            if action == "exclude":
+                dropped = set(matched)
+                working[entry.group] = [
+                    f for i, f in enumerate(facilities) if i not in dropped
+                ]
+                continue
+            if action == "rename":
+                for index in matched:
+                    facility = facilities[index]
+                    facilities[index] = facility._replace(
+                        name=entry.lh_name,
+                        lh_alignment=_alignment_note(entry, facility.name),
+                    )
+                continue
+            if action == "point":
+                for index in matched:
+                    facilities[index] = await self._measure_at_lh(
+                        facilities[index], entry, rings, center, parcels
+                    )
+                continue
+            # add · merge — 있으면 LH 위치로 맞추고, 없으면 LH 시설을 더한다.
+            if matched:
+                for index in matched:
+                    facilities[index] = (
+                        await self._measure_at_lh(
+                            facilities[index], entry, rings, center, parcels
+                        )
+                    )._replace(name=entry.lh_name)
+                present = True
+            else:
+                added = await self._lh_facility(entry, rings, center, parcels)
+                present = added is not None and added.distance_m <= radius_m
+                if present:
+                    facilities.append(added)
+            if action == "merge" and present:
+                for source in entry.merge_from:
+                    if source.group not in updated:
+                        continue
+                    source_list = facilities_of(source.group)
+                    working[source.group] = [
+                        f
+                        for f in source_list
+                        if not entry.matches_merge_source(source.group, f.name, f.coordinates)
+                    ]
+
+        for key, facilities in working.items():
+            collection = updated[key]
+            ordered = sorted(facilities, key=lambda f: f.distance_m)
+            if key == "university":
+                # 맞춘 정문이 같아진 학교(원광대·원광디지털대)는 다시 한 줄로 합친다.
+                ordered = _collapse_same_gate(ordered)
+            updated[key] = collection._replace(
+                facilities=tuple(ordered[:MAX_HITS_PER_GROUP]),
+                distances_m=_replace_distances(
+                    collection.distances_m, collection.facilities, ordered
+                ),
+            )
+        return updated
+
+    async def _lh_parcel(
+        self, pnu: str, cache: dict[str, ParcelFeature | None]
+    ) -> ParcelFeature | None:
+        if pnu not in cache:
+            parcel = (
+                await self._parcel_by_pnu(pnu) if self._boundary_source_ready() else None
+            )
+            cache[pnu] = parcel if parcel is not None and len(parcel.ring) >= 4 else None
+        return cache[pnu]
+
+    async def _measure_at_lh(
+        self,
+        facility: CollectedFacility,
+        entry: LhAlignment,
+        rings: list[list[Coordinates]],
+        center: Coordinates,
+        parcels: dict[str, ParcelFeature | None],
+    ) -> CollectedFacility:
+        """시설 한 곳을 LH 기준점으로 다시 잰다. PNU 가 있으면 그 필지 경계, 없으면 LH 좌표.
+
+        LH 가 지정한 필지는 지목(철도용지 등)과 관계없이 그대로 쓴다 — 익산역 필지(지목
+        철)를 대중교통터미널로 재는 것이 LH 데이터셋 기준이다.
+        """
+
+        site_token = "대지경계" if rings else "주소점"
+        note = _alignment_note(entry, facility.name)
+        point = entry.lh.coordinates
+        fallback = ""
+        # 문 후보는 참고로 남기되, 잰 기준점이 LH 값으로 바뀌었으니 선택 표시는 지운다.
+        facility = facility._replace(
+            front_door_candidates=tuple(
+                c._replace(selected=False) for c in facility.front_door_candidates
+            )
+        )
+        if entry.lh.pnu:
+            parcel = await self._lh_parcel(entry.lh.pnu, parcels)
+            if parcel is not None:
+                if rings:
+                    measured = distance_polygons_to_polygon_m(rings, parcel.ring)
+                    distance = measured.distance_m
+                    facility_point: Coordinates | None = measured.nearest_b
+                    boundary_point: Coordinates | None = measured.nearest_a
+                else:
+                    distance = distance_point_to_polygon_m(center, parcel.ring)
+                    facility_point = None
+                    boundary_point = None
+                notice = f"LH 데이터셋 필지 PNU {parcel.pnu or entry.lh.pnu}"
+                if parcel.jibun:
+                    notice += f" · 지번 {parcel.jibun}"
+                return facility._replace(
+                    distance_m=distance,
+                    measurement_tier="site_boundary",
+                    measurement_label=f"({site_token} ↔ LH 필지 경계)",
+                    front_door_source=f"{LH_ALIGNMENT_SOURCE} · {entry.lh_name}",
+                    front_door_notice=notice,
+                    nearest_facility_point=facility_point or facility.nearest_facility_point,
+                    nearest_boundary_point=boundary_point or facility.nearest_boundary_point,
+                    facility_ring=tuple(parcel.ring),
+                    lh_alignment=note,
+                )
+            fallback = "LH 필지를 조회하지 못해 LH 좌표로 쟀습니다."
+        if point is None:
+            return facility._replace(lh_alignment=note, front_door_notice=fallback)
+        tier = "front_door_point" if entry.group == "university" else "coordinate"
+        return facility._replace(
+            distance_m=_distance_m(point, rings, center),
+            measurement_tier=tier,
+            measurement_label=f"({site_token} ↔ LH 좌표)",
+            front_door_source=f"{LH_ALIGNMENT_SOURCE} · {entry.lh_name}",
+            front_door_notice=fallback,
+            nearest_facility_point=point,
+            nearest_boundary_point=_anchor_for(point, rings),
+            facility_ring=(),
+            lh_alignment=note,
+        )
+
+    async def _lh_facility(
+        self,
+        entry: LhAlignment,
+        rings: list[list[Coordinates]],
+        center: Coordinates,
+        parcels: dict[str, ParcelFeature | None],
+    ) -> CollectedFacility | None:
+        """공공 API 에 없는 LH 시설 한 곳을 만든다. 기준점이 없으면 None."""
+
+        point = entry.lh.coordinates
+        if point is None:
+            return None
+        base = CollectedFacility(
+            name=entry.lh_name,
+            address=entry.lh.address,
+            coordinates=point,
+            distance_m=_distance_m(point, rings, center),
+            source_label=LH_ALIGNMENT_SOURCE,
+            nearest_facility_point=point,
+            nearest_boundary_point=_anchor_for(point, rings),
+        )
+        measured = await self._measure_at_lh(base, entry, rings, center, parcels)
+        return measured._replace(lh_alignment=_alignment_note(entry, ""))
+
     # -- 캐시 --------------------------------------------------------------
     def _cache_key(
         self,
@@ -2570,7 +2804,16 @@ class AmenityCollector:
         revision = self.front_door_store.revision() if self.front_door_store else 0
         # 관리자 판정 옵션(운행주기·문화시설 범위 등)이 바뀌면 시설 목록이 달라진다.
         options = options_fingerprint()
-        return f"{center.lat:.5f},{center.lng:.5f}:{radius_m}:{fingerprint}:fd{revision}:{options}"
+        # LH 개별 맞춤 항목이 바뀌면 맞춘 거리·이름이 달라진다.
+        aligned = (
+            alignments_fingerprint()
+            if self._fixed_alignments is None
+            else ",".join(entry.id for entry in self._fixed_alignments)
+        )
+        return (
+            f"{center.lat:.5f},{center.lng:.5f}:{radius_m}:{fingerprint}:fd{revision}:"
+            f"{options}:lh{aligned}"
+        )
 
     def _cache_get(self, key: str) -> dict[str, GroupCollection] | None:
         cached = self._cache.get(key)
@@ -2771,6 +3014,38 @@ def is_planned_facility(name: str) -> bool:
     """
 
     return "예정" in (name or "")
+
+
+def _alignment_note(entry: LhAlignment, api_name: str) -> str:
+    """맞춘 시설에 붙는 한 줄. 이름을 바꿨으면 공공 API 표기도 함께 남긴다."""
+
+    note = entry.note()
+    if api_name and normalize_key(api_name) != normalize_key(entry.lh_name):
+        note += f" (공공 API 표기 「{api_name}」)"
+    return note
+
+
+def _replace_distances(
+    distances: Sequence[float],
+    before: Sequence[CollectedFacility],
+    after: Sequence[CollectedFacility],
+) -> tuple[float, ...]:
+    """등급 판정용 거리 목록에서 화면 시설(before)의 거리를 빼고 맞춘 뒤 거리(after)로 바꾼다.
+
+    거리 목록은 화면 20곳 밖까지 전부 담는다. 화면 시설 몫만 값으로 한 번씩 지워 바꾸고
+    나머지는 그대로 둔다. 배점에 세지 않는 시설(운행주기 미달 정류장)은 원래 목록에 없다.
+    """
+
+    remaining = list(distances)
+    for facility in before:
+        if not facility.counted:
+            continue
+        try:
+            remaining.remove(facility.distance_m)
+        except ValueError:
+            continue
+    remaining.extend(f.distance_m for f in after if f.counted)
+    return tuple(sorted(remaining))
 
 
 def _dedupe(places: Sequence[RawPlace]) -> list[RawPlace]:

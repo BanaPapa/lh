@@ -9,6 +9,7 @@ import {
 } from "../api";
 import "../rules.css";
 import { IS_LOCAL_APP } from "../deployment";
+import { LhAlignmentList } from "./LhAlignmentList";
 
 interface RulesPanelProps {
   open: boolean;
@@ -21,7 +22,7 @@ const TAB_LABELS: Record<RulesTab, string> = {
   stage1: "1차 임계거리",
   options: "판정 옵션",
   relaxed: "2027 완화 기준",
-  excluded: "LH 개별 확인 제외",
+  excluded: "LH 개별 확인",
 };
 
 /** 입력칸 문자열 ↔ 값. 빈 칸은 「미적용」(null). */
@@ -357,6 +358,7 @@ export function RulesPanel({ open, onClose }: RulesPanelProps) {
                   <p>
                     LH 가 현장·서류로 확인해 판정 대상이 아니라고 회신한 시설(예: 철거된 주유소)입니다.
                     이름이 일치하는 시설은 1차 판정 후보에서 빠지고, 뺀 사실은 심사표 근거에 남습니다.
+                    아래 「LH 개별 맞춤」 등록부의 유해시설 제외 항목도 함께 적용됩니다.
                   </p>
                 </div>
                 <button
@@ -421,6 +423,9 @@ export function RulesPanel({ open, onClose }: RulesPanelProps) {
               )}
             </section>
           )}
+
+          {/* 공공 API 자료를 LH 데이터셋 기준에 맞춘 시설(저장소 등록부, 읽기 전용). */}
+          {!loading && data && tab === "excluded" && <LhAlignmentList open={open} />}
         </div>
 
         <footer className="rules-foot">

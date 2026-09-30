@@ -34,7 +34,8 @@ from app.hazard_review.models import (
     HazardSourceState,
     HazardSourceStatus,
 )
-from app.rules_config import excluded_reason, option_enabled
+from app.lh_alignments import lh_excluded_reason
+from app.rules_config import option_enabled
 from app.hazard_review.rulebook import (
     APPLICATION_TYPE_LABELS,
     CATEGORIES,
@@ -3429,7 +3430,12 @@ class HazardReviewService:
         # LH 가 개별 확인해 판정에서 뺀 시설(예: 철거 확인된 주유소 — LH 09/11 회신).
         # 관리자 「기준 편집」의 목록과 이름을 맞춰 판정 후보에서 뺀다. 지도·표에는
         # 남기지 않는다 — 뺀 사실은 note 로 밝힌다.
-        lh_excluded = [(f, reason) for f in matched if (reason := excluded_reason(f.name))]
+        # 저장소 등록부(lh_alignments.json scope=hazard)와 관리자 편집 목록을 함께 본다.
+        lh_excluded = [
+            (f, reason)
+            for f in matched
+            if (reason := lh_excluded_reason(f.name, f.parcel_pnu))
+        ]
         if lh_excluded:
             dropped = {id(f) for f, _ in lh_excluded}
             matched = [f for f in matched if id(f) not in dropped]

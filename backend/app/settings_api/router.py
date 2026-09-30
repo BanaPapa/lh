@@ -392,3 +392,66 @@ async def check_connections_endpoint(
     hazard, screening, demo = _services()
     only = set(payload.ids) if payload and payload.ids else None
     return await check_connections(hazard, screening, demo, only)
+
+
+# ── LH 개별 맞춤 등록부(읽기 전용) ─────────────────────────────────────
+# 공공 API 자료를 LH 데이터셋 기준에 일부러 맞춘 시설 목록. 저장소에 커밋하는 파일
+# (backend/data/lh_alignments.json)이라 화면에서 고치지 않는다. 판정 기준처럼 비밀이
+# 아니므로 읽기는 누구나 된다(배포 테스트 서버의 관리자 설정도 같은 목록을 보여야 한다).
+class LhAlignmentView(BaseModel):
+    id: str
+    scope: str
+    name: str
+    aliases: list[str]
+    group: str
+    group_label: str
+    action: str
+    action_label: str
+    summary: str
+    lh_name: str
+    lh_pnu: str
+    lh_lat: float | None
+    lh_lng: float | None
+    evidence: list[dict[str, object]]
+    reason: str
+    source: str
+    date: str
+
+
+class LhAlignmentsResponse(BaseModel):
+    description: str
+    fingerprint: str
+    entries: list[LhAlignmentView]
+
+
+@router.get("/lh-alignments", response_model=LhAlignmentsResponse)
+async def read_lh_alignments() -> LhAlignmentsResponse:
+    from app.lh_alignments import ACTION_LABELS, alignments_fingerprint, load_registry
+
+    registry = load_registry()
+    return LhAlignmentsResponse(
+        description=registry.description,
+        fingerprint=alignments_fingerprint(),
+        entries=[
+            LhAlignmentView(
+                id=entry.id,
+                scope=entry.scope,
+                name=entry.name,
+                aliases=list(entry.aliases),
+                group=entry.group,
+                group_label=entry.group_label,
+                action=entry.action,
+                action_label=ACTION_LABELS.get(entry.action, entry.action),
+                summary=entry.summary(),
+                lh_name=entry.lh_name,
+                lh_pnu=entry.lh.pnu,
+                lh_lat=entry.lh.lat,
+                lh_lng=entry.lh.lng,
+                evidence=[item.model_dump() for item in entry.lh.evidence],
+                reason=entry.reason,
+                source=entry.source,
+                date=entry.date,
+            )
+            for entry in registry.entries
+        ],
+    )
