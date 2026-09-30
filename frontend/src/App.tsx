@@ -1,5 +1,6 @@
 import { MapPin } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { getProviderStatus, searchAddress } from "./api";
 import { useTheme } from "./theme";
 import { MapPanel } from "./components/MapPanel";
@@ -88,6 +89,28 @@ function App() {
   const [query, setQuery] = useState("");
   // 심사표(상세) 열림 여부.
   const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetRef = useRef<HTMLElement | null>(null);
+  // 심사표를 열기 전에 초점이 있던 요소. 닫으면 되돌린다(상단 「상세 결과」 버튼 등). 일괄
+  // 심사 창에서 열었을 때는 그 창이 스스로 초점을 되찾는다(BatchPanel covered).
+  const sheetReturnFocusRef = useRef<HTMLElement | null>(null);
+  // 심사표는 가장 위에 뜨는 창이므로 Esc 는 심사표만 닫는다. 아래에 깔린 일괄 심사 창은
+  // covered 로 Esc 를 무시한다.
+  useEffect(() => {
+    if (!sheetOpen) return;
+    sheetReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    sheetRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSheetOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      const target = sheetReturnFocusRef.current;
+      sheetReturnFocusRef.current = null;
+      if (target?.isConnected) target.focus();
+    };
+  }, [sheetOpen]);
   // 필지를 새로 고른 뒤 「심사 실행」을 다시 눌러야 함을 알리는 반짝임.
   const [runAttention, setRunAttention] = useState(false);
   useEffect(() => {
@@ -803,8 +826,8 @@ function App() {
     setDesignationError("");
     setSearchError("");
     setSearchNotice("");
+    // 일괄 심사 창은 그대로 두고 그 위에 심사표를 띄운다. 닫으면 진행 중인 창으로 돌아간다.
     setSheetOpen(true);
-    setBatchOpen(false);
     setViewportRequest((seq) => seq + 1);
   };
 
@@ -906,16 +929,21 @@ function App() {
           )}
         </div>
 
-        {sheetOpen && (
+        {sheetOpen &&
           // 심사표는 룰북·API 연결과 같은 크기의 모달(80vw × 70vh)로 띄운다.
           // 닫기·인쇄는 심사표 자체 머리글이 갖고 있어 바깥 머리글은 두지 않는다.
+          // body 로 포털해 일괄 심사 창(같은 포털) 뒤에 붙이고, 그 창이 열려 있으면
+          // is-layered 로 한 겹 위에 올린다.
+          createPortal(
           <div
-            className="api-keys-backdrop"
+            className={`api-keys-backdrop${batchOpen ? " is-layered" : ""}`}
             onMouseDown={(event) => {
               if (event.target === event.currentTarget) setSheetOpen(false);
             }}
           >
             <section
+              ref={sheetRef}
+              tabIndex={-1}
               className="sheet-modal"
               role="dialog"
               aria-modal="true"
@@ -952,7 +980,8 @@ function App() {
                   onRerun={() => void runScreening()}
                 />
             </section>
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
 
@@ -988,6 +1017,7 @@ function App() {
 
       <BatchPanel
         open={batchOpen}
+        covered={sheetOpen}
         onClose={() => setBatchOpen(false)}
         applicationTypes={hazardApplicationTypes}
         defaultHousingType={hazardHousingType}

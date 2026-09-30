@@ -17,7 +17,8 @@ function formatSize(bytes: number | null): string {
  * 「API 외에 서버에 실은 파일」 — 공공 API 로 온전히 받을 수 없어 파일로 서버에 실은 자료.
  *
  * 백엔드 목록(backend/app/bundled_files.py · GET /api/settings/bundled-files)을 그대로 보인다.
- * 비밀이 없는 읽기 전용이라 배포판에서도 보이며, 배포판에서는 감춰진 API 연결 정보 자리에 뜬다.
+ * 엔드포인트는 비밀이 없는 공개 읽기 전용이지만, 화면은 API 연결 창의 탭이라 그 창처럼
+ * 로컬 앱(IS_LOCAL_APP)에서만 보인다.
  */
 export function BundledFilesList({ open }: { open: boolean }) {
   const [data, setData] = useState<BundledFilesResponse | null>(null);

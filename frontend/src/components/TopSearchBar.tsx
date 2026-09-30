@@ -3,7 +3,6 @@ import {
   BookOpen,
   ClipboardCheck,
   FileSpreadsheet,
-  FileText,
   Moon,
   Plug,
   Printer,
@@ -28,8 +27,8 @@ import { IS_LOCAL_APP } from "../deployment";
 /**
  * API 연결(키 입력·연결 점검) 패널은 이 PC(localhost)에서 띄울 때만 보인다. 배포 사이트는
  * 누구나 들어오므로 브라우저 키 입력칸에 카카오 키가 그대로 보이면 안 된다. 서버 키
- * 설정 API 는 원래 루프백에서만 열려 있어 배포 서버에서는 어차피 쓸 수 없다. 배포판은 같은
- * 자리에서 「API 외에 서버에 실은 파일」(공개 읽기 전용 목록)만 연다.
+ * 설정 API 는 원래 루프백에서만 열려 있어 배포 서버에서는 어차피 쓸 수 없다. 그 창의 탭인
+ * 「API 외에 서버에 실은 파일」 목록도 같은 기준으로 배포판에서는 감춘다.
  */
 const API_PANEL_ENABLED = IS_LOCAL_APP;
 import { ServerWakeNotice } from "./ServerWakeNotice";
@@ -302,20 +301,17 @@ export function TopSearchBar({
             <FileSpreadsheet size={18} />
           </button>
 
-          {/* 배포판은 API 연결 정보를 감추고, 같은 자리에서 「API 외에 서버에 실은 파일」을 연다. */}
-          <button
-            type="button"
-            className={`solo-icon-button ${apiOpen ? "is-active" : ""}`}
-            onClick={() => setApiOpen(true)}
-            aria-label={API_PANEL_ENABLED ? "API 연결" : "API 외에 서버에 실은 파일"}
-            title={
-              API_PANEL_ENABLED
-                ? "API 연결 · 서버에 실은 파일"
-                : "API 외에 서버에 실은 파일"
-            }
-          >
-            {API_PANEL_ENABLED ? <Plug size={18} /> : <FileText size={18} />}
-          </button>
+          {API_PANEL_ENABLED && (
+            <button
+              type="button"
+              className={`solo-icon-button ${apiOpen ? "is-active" : ""}`}
+              onClick={() => setApiOpen(true)}
+              aria-label="API 연결"
+              title="API 연결 · 서버에 실은 파일"
+            >
+              <Plug size={18} />
+            </button>
+          )}
 
           <button
             type="button"
@@ -402,11 +398,9 @@ export function TopSearchBar({
             </div>
         )}
       </div>
-      <ApiKeysPanel
-        open={apiOpen}
-        onClose={() => setApiOpen(false)}
-        filesOnly={!API_PANEL_ENABLED}
-      />
+      {API_PANEL_ENABLED && (
+        <ApiKeysPanel open={apiOpen} onClose={() => setApiOpen(false)} />
+      )}
       <RulebookModal open={rulebookOpen} onClose={() => setRulebookOpen(false)} rulePack={rulePack} />
       <RulesPanel open={rulesOpen} onClose={() => setRulesOpen(false)} />
     </header>

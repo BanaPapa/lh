@@ -27,6 +27,11 @@ import { IS_LOCAL_APP, TEST_BATCH_LIMIT } from "../deployment";
 
 interface BatchPanelProps {
   open: boolean;
+  /**
+   * 위에 다른 창(심사표)이 겹쳐 떠 있는 동안. Esc·배경 클릭은 맨 위 창의 몫이므로 이 창은
+   * 반응하지 않는다.
+   */
+  covered?: boolean;
   onClose: () => void;
   applicationTypes: HazardApplicationTypesResponse | null;
   defaultHousingType: HazardHousingType;
@@ -69,6 +74,7 @@ function criterionText(row: BatchRowStatus, key: string): string {
  */
 export function BatchPanel({
   open,
+  covered = false,
   onClose,
   applicationTypes,
   defaultHousingType,
@@ -91,6 +97,18 @@ export function BatchPanel({
   const [openingRow, setOpeningRow] = useState<string | null>(null);
   const [exportingXlsx, setExportingXlsx] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
+  const modal = useRef<HTMLElement | null>(null);
+
+  // 위에 겹쳤던 창(심사표)이 닫히면 초점을 이 창으로 되돌린다. 「열기」 버튼은 결과를 받는
+  // 동안 disabled 가 되어 초점을 잃으므로, 닫힌 심사표가 초점을 되돌릴 곳이 없다.
+  const wasCovered = useRef(false);
+  useEffect(() => {
+    const uncovered = wasCovered.current && !covered;
+    wasCovered.current = covered;
+    if (!open || !uncovered) return;
+    const section = modal.current;
+    if (section && !section.contains(document.activeElement)) section.focus();
+  }, [open, covered]);
 
   // 열 때마다 본 화면의 유형을 기본값으로 따라간다.
   useEffect(() => {
@@ -118,16 +136,19 @@ export function BatchPanel({
     };
   }, [running, batch]);
 
+  // 진행 중에는 닫기 버튼(명시적)으로만 닫힌다. Esc·배경 클릭 같은 우연한 경로로는 닫히지
+  // 않고, 위에 심사표가 떠 있으면 Esc 는 그 창의 몫이다. 닫아도 서버의 심사는 계속된다.
+  const dismissable = !covered && !running;
   useEffect(() => {
-    if (!open) return;
+    if (!open || covered) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (confirming) setConfirming(false);
-      else onClose();
+      else if (!running) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose, confirming]);
+  }, [open, covered, running, onClose, confirming]);
 
   const housingEntries = useMemo(
     () => Object.entries(applicationTypes?.housing_types ?? {}) as [HazardHousingType, string][],
@@ -259,10 +280,17 @@ export function BatchPanel({
     <div
       className="api-keys-backdrop"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget && dismissable) onClose();
       }}
     >
-      <section className="batch-modal" role="dialog" aria-modal="true" aria-label="일괄 심사">
+      <section
+        ref={modal}
+        tabIndex={-1}
+        className="batch-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="일괄 심사"
+      >
         <header className="batch-head">
           <div>
             <h2>
@@ -275,7 +303,13 @@ export function BatchPanel({
               테스트버전 - {TEST_BATCH_LIMIT}개 제한 적용중
             </span>
           )}
-          <button type="button" className="api-keys-close" onClick={onClose} aria-label="닫기">
+          <button
+            type="button"
+            className="api-keys-close"
+            onClick={onClose}
+            aria-label="닫기"
+            title={running ? "창을 닫아도 심사는 계속됩니다. 「일괄 심사」로 다시 엽니다." : undefined}
+          >
             <X size={18} />
           </button>
         </header>

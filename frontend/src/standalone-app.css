@@ -913,6 +913,16 @@
   background: rgba(15, 23, 42, 0.46);
 }
 
+/* 일괄 심사 창 위에 겹쳐 뜨는 심사표. 아래 창은 그대로 진행 중이다. */
+.api-keys-backdrop.is-layered {
+  z-index: 1150;
+}
+
+.sheet-modal:focus,
+.batch-modal:focus {
+  outline: none;
+}
+
 .api-keys-modal {
   box-sizing: border-box;
   /* 룰북 모달과 같은 크기: 화면 가로 60% · 세로 70%(좁은 화면은 꽉 채운다). */
