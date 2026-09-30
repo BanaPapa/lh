@@ -246,7 +246,7 @@ def make_lenient_geocoder(geocoder: Geocoder) -> Geocoder:
 def _fallback_notice(errors: list[BaseException], source: str) -> str:
     reason = next((str(e) for e in errors if str(e)), "응답 오류")
     return (
-        f"카카오 주소 검색이 응답하지 않아({reason[:80]}) {source}로 찾았습니다. "
+        f"카카오 주소 검색이 응답하지 않아({reason[:80]}) {source}에서 찾았습니다. "
         "카카오가 복구되면 다시 검색해 확인해 주세요."
     )
 
