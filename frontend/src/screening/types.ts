@@ -167,6 +167,8 @@ export interface ScreeningFacilityHit {
   counted?: boolean;
   /** 배점 인정/제외 사유(버스정류장: 15분당 평균 도착 버스 수와 노선 배차). */
   count_note?: string;
+  /** LH 개별 맞춤(공공 API 자료를 LH 데이터셋 기준에 맞춘 시설)이면 그 한 줄. */
+  lh_alignment?: string;
 }
 
 /** 시설군 하나의 수집 상태. 지정 원천과 실제 원천을 함께 보인다. */

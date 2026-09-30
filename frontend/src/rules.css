@@ -255,6 +255,35 @@
   min-width: 200px;
 }
 
+/* LH 개별 맞춤 등록부(읽기 전용). 편집 목록 아래에 두고 한 칸씩 띄운다. */
+.rules-alignments {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.rules-alignment-table td {
+  vertical-align: top;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.rules-alignment-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rules-alignment-action {
+  font-weight: 800;
+}
+
+.rules-alignment-evidence {
+  margin: 0;
+  padding-left: 16px;
+}
+
 .rules-toggle {
   display: inline-flex;
   align-items: center;

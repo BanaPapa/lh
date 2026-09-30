@@ -919,6 +919,12 @@ export function ScreeningSheet({
             {hit.count_note}
           </p>
         )}
+        {hit.lh_alignment && (
+          <p className="screening-hit-badge-row" title={hit.lh_alignment}>
+            <em className="screening-badge is-lh-aligned">LH 개별 맞춤</em>
+            <small>{hit.lh_alignment.replace(/^LH 개별 맞춤 — /, "")}</small>
+          </p>
+        )}
 
         {designation && (
           <p className="screening-hit-badge-row">

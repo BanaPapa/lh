@@ -103,6 +103,15 @@ def _measurement(hit: ScreeningFacilityHit) -> str:
     return label or hit.measurement_method or "시설 좌표"
 
 
+def _hit_note(hit: ScreeningFacilityHit) -> str:
+    """2차 상세 비고. LH 개별 맞춤을 적용한 시설은 그 사실을 앞에 붙인다."""
+
+    base = hit.count_note or hit.front_door_notice
+    if not hit.lh_alignment:
+        return base
+    return f"{hit.lh_alignment} / {base}" if base else hit.lh_alignment
+
+
 def _site_labels(site: ExportSite) -> tuple[str, str, str, str]:
     """(접수번호, 소재지, 분류, 신청유형)."""
 
@@ -186,7 +195,7 @@ def build_rows(sites: list[ExportSite]) -> dict[str, list[list[object]]]:
                         receipt, address, criterion.label, _score_text(criterion), criterion.maximum,
                         group.label, group.state_label, hit.name, _meters(hit.distance_m),
                         _measurement(hit), "반영" if hit.counted else "제외",
-                        hit.count_note or hit.front_door_notice,
+                        _hit_note(hit),
                     ])
     return {"종합요약": summary, "1차 상세": stage_one, "2차 상세": stage_two}
 

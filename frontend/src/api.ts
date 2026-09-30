@@ -172,6 +172,45 @@ export interface RulesUpdatePayload {
   options: Record<string, boolean>;
 }
 
+/** LH 개별 맞춤 — 공공 API 자료를 LH 데이터셋 기준에 일부러 맞춘 시설 한 곳(읽기 전용). */
+export interface LhAlignmentEvidence {
+  site: string;
+  lh_distance_m: number | null;
+  before_m: number | null;
+  after_m: number | null;
+  note: string;
+}
+
+export interface LhAlignmentEntry {
+  id: string;
+  scope: "amenity" | "hazard" | string;
+  name: string;
+  aliases: string[];
+  group: string;
+  group_label: string;
+  action: string;
+  action_label: string;
+  summary: string;
+  lh_name: string;
+  lh_pnu: string;
+  lh_lat: number | null;
+  lh_lng: number | null;
+  evidence: LhAlignmentEvidence[];
+  reason: string;
+  source: string;
+  date: string;
+}
+
+export interface LhAlignmentsResponse {
+  description: string;
+  fingerprint: string;
+  entries: LhAlignmentEntry[];
+}
+
+export function getLhAlignments(): Promise<LhAlignmentsResponse> {
+  return request<LhAlignmentsResponse>("/api/settings/lh-alignments");
+}
+
 export function getRules(): Promise<RulesResponse> {
   return request<RulesResponse>("/api/settings/rules");
 }
