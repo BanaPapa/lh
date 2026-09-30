@@ -57,3 +57,14 @@ def test_suspended_record_is_judged_as_active() -> None:
 
     # 상태 공란은 여전히 확정하지 않고 검토(hold)로 남긴다.
     assert operating_state("") == "hold"
+
+
+def test_record_id_is_unique_across_authorities() -> None:
+    # 문화 원장 관리번호는 자치단체마다 같은 번호가 나온다. 자치단체 코드를 붙여야
+    # 전국 적재에서 서로 덮어쓰지 않는다(2026-09-30 공연장 1,832건 → 498건).
+    seoul = {**_row(_OPEN, "영업/정상"), "MNG_NO": "CDFE1230002003000001", "OPN_ATMY_GRP_CD": "3000000"}
+    jeonju = {**seoul, "OPN_ATMY_GRP_CD": "4640000"}
+    a = parse_record(_DATASET, seoul)
+    b = parse_record(_DATASET, jeonju)
+    assert a is not None and b is not None
+    assert a.record_id != b.record_id

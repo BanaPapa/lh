@@ -356,7 +356,13 @@ def parse_record(
     if not (33.0 <= lat <= 39.5 and 124.0 <= lng <= 132.0):
         return None
 
+    # 관리번호(MNG_NO)는 자치단체 안에서만 고유하다. 문화 원장(공연장·박물관·영화상영관 등)은
+    # 번호에 자치단체 코드가 없어 전국으로 모으면 겹치고, 겹친 행이 서로 덮어써 사라졌다
+    # (2026-09-30 공연장 1,832건 → 498건, 전북 76곳 → 4곳). 개방자치단체코드를 앞에 붙인다.
     record_id = str(row.get("MNG_NO") or "").strip()
+    authority = str(row.get("OPN_ATMY_GRP_CD") or "").strip()
+    if record_id and authority:
+        record_id = f"{authority}:{record_id}"
     if not record_id:
         record_id = f"{x}:{y}:{row.get('BPLC_NM') or ''}"
     return LocalDataRecord(
