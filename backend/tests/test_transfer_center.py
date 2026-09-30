@@ -73,16 +73,23 @@ async def test_transfer_group_uses_standard_data_when_available() -> None:
     from app.services.transfer_center import TransferCenter
 
     center = TransferCenter("전주역 환승센터", "주소", offset_coordinates(CENTER, 300, 0), "버스", True)
-    collector = AmenityCollector(kakao=FakeKakao(), tago=FakeTago([]), transfer_client=FakeTransfer([center]))
+    # 지도 검색의 환승정류장은 LH 데이터셋 범위 밖이라 보충하지 않는다.
+    kakao = FakeKakao(keywords={
+        "환승정류장": [place("덕진 환승정류장", 200, "교통,수송 > 버스정류장")],
+    })
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), transfer_client=FakeTransfer([center]))
     result = await collector.collect([], CENTER)
     group = result["transfer"]
     assert group.state == "connected"
     assert group.actual_source == TRANSFER_STANDARD_SOURCE
-    assert group.facilities[0].name == "전주역 환승센터"
+    assert [f.name for f in group.facilities] == ["전주역 환승센터"]
+    assert "환승정류장" not in kakao.calls and "환승센터" not in kakao.calls
+    assert "활용신청" not in group.note
+    assert not group.source_alert
 
 
 @pytest.mark.asyncio
-async def test_transfer_group_falls_back_to_kakao_when_unapproved() -> None:
+async def test_transfer_group_falls_back_to_kakao_when_standard_fails() -> None:
     kakao = FakeKakao(keywords={
         "환승센터": [
             place("전주 환승센터", 400, "교통,수송 > 교통시설"),
@@ -97,6 +104,8 @@ async def test_transfer_group_falls_back_to_kakao_when_unapproved() -> None:
     assert group.state == "substituted"
     assert group.note == TRANSFER_SUBSTITUTED_NOTE
     assert [f.name for f in group.facilities] == ["전주 환승센터", "덕진 환승정류장"]
+    # 대체는 조용히 넘기지 않는다.
+    assert "표준데이터" in group.source_alert and "다시 심사" in group.source_alert
 
 
 @pytest.mark.asyncio
@@ -106,3 +115,16 @@ async def test_transfer_group_is_missing_without_any_source() -> None:
     collector = AmenityCollector(kakao=DisabledKakao(), tago=FakeTago([]))
     result = await collector.collect([], CENTER)
     assert result["transfer"].state == "missing"
+
+
+@pytest.mark.asyncio
+async def test_transfer_standard_failure_without_kakao_is_missing_with_alert() -> None:
+    from tests.test_screening_amenities import DisabledKakao
+
+    collector = AmenityCollector(
+        kakao=DisabledKakao(), tago=FakeTago([]), transfer_client=FakeTransfer(fail=True)
+    )
+    result = await collector.collect([], CENTER)
+    group = result["transfer"]
+    assert group.state == "missing"
+    assert "산정하지 못했습니다" in group.source_alert

@@ -170,19 +170,25 @@ _STATION_LIKE_DESIGNATABLE = ("railway", "subway", "terminal", "transfer")
 
 KAKAO_DISABLED_NOTE = "카카오 REST API 키가 설정되지 않았습니다."
 
-# 환승시설 원천 고지. 표준데이터(15034541) 활용신청 전에는 지도 검색으로 근사한다.
+# 환승시설 원천 고지. 지정 원천은 전국대중교통환승센터 표준데이터(15034541, 활용 중)
+# 하나다. 지도 검색(「환승센터」·「환승정류장」)은 LH 데이터셋 범위 밖이라 보충하지
+# 않고, 표준데이터가 응답하지 않을 때만 대체로 쓰며 경고로 올린다.
 TRANSFER_MISSING_NOTE = (
     "환승시설(간선급행버스체계법 제2조제3호다목) 위치 원천을 확보하지 못했습니다."
 )
 TRANSFER_STANDARD_SOURCE = "국토교통부 전국대중교통환승센터 표준데이터"
 TRANSFER_STANDARD_NOTE = (
-    "국토교통부 전국대중교통환승센터 표준데이터(운영 중)로 산정하고, 제공 기관(14곳)에 "
-    "등재되지 않은 지역은 지도 검색(「환승센터」·「환승정류장」)으로 보충했습니다."
+    "국토교통부 전국대중교통환승센터 표준데이터(운영 중)로 산정했습니다. 제공 기관에 "
+    "등재되지 않은 지역의 환승시설은 세지 않습니다(LH 데이터셋과 같은 범위)."
 )
-TRANSFER_SUPPLEMENT_SOURCE = f"{TRANSFER_STANDARD_SOURCE} + 카카오 장소검색(보충)"
 TRANSFER_SUBSTITUTED_NOTE = (
-    "전국대중교통환승센터 표준데이터(15034541)는 활용신청 승인 전이라 지도 검색"
-    "(「환승센터」·「환승정류장」)으로 근사했습니다."
+    "전국대중교통환승센터 표준데이터(15034541)가 응답하지 않아 지도 검색"
+    "(「환승센터」·「환승정류장」)으로 대체했습니다."
+)
+TRANSFER_FALLBACK_ALERT = (
+    "국토교통부 전국대중교통환승센터 표준데이터가 응답하지 않아 카카오 지도 검색"
+    "(「환승센터」·「환승정류장」)으로 환승시설을 대체했습니다. LH 데이터셋 범위와 "
+    "다를 수 있으니 원천이 복구되면 다시 심사하세요."
 )
 TRANSFER_KEYWORDS: tuple[str, ...] = ("환승센터", "환승정류장")
 # 지도 근사에서 환승시설로 인정하는 분류(잎). 「환승센터약국」·「환승센터 전기차충전소」·
@@ -199,6 +205,7 @@ FEED_LABELS: dict[str, str] = {
     "school": "초·중·고등학교",
     "bus_stop": "버스정류장",
     "traditional_market": "전통시장",
+    "library": "공공도서관",
 }
 
 # (원천 이름, 표시 이름, 건수 또는 None, 성공 여부)
@@ -267,8 +274,30 @@ HIRA_HOSPITAL_SOURCE = "건강보험심사평가원 병원정보서비스(종별
 SAFEMAP_SCHOOL_SOURCE = "교육부 학교알리미 초·중·고 위치(생활안전지도 IF_0035)"
 SCHOOL_STANDARD_SOURCE = "전국초중등학교위치표준데이터(한국교육시설안전원)"
 SAFEMAP_UNIVERSITY_SOURCE = "교육부 대학교 위치(생활안전지도 IF_0034)"
+# 레이어 행에 붙이는 분류. _is_university 가 지도 검색과 같은 규칙으로 읽는다.
+UNIVERSITY_LAYER_CATEGORY = "교육,학문 > 학교 > 대학교"
+# 레이어 좌표는 본교 주소점이라 정문과 수백 m 떨어진다(전북 71곳 중 최대 612m ·
+# 원광대). 정문이 반경 안인데 주소점이 반경 밖이라 빠지지 않게 넓혀 받고, 정문까지
+# 잰 뒤 반경으로 다시 자른다(2026-09-30: 060 수의방역대학원 2,924m · 094 원광대 2,848m).
+UNIVERSITY_LAYER_MARGIN_M = 1000
 SAFEMAP_OFFICE_SOURCE = "행정안전부 민원행정기관 전자지도(생활안전지도 IF_0031)"
 SAFEMAP_HOSPITAL_SOURCE = "국립중앙의료원 종합병원(생활안전지도 IF_0022)"
+
+# 대학교 기준점 순서 — 담당자 수기 지정 → 표준 데이터셋 정문 좌표(대학알리미 + 수기
+# 보완, university_gates_jeonbuk.csv) → LH 개별 맞춤 등록부 → 네이버 지역검색 문 후보.
+UNIVERSITY_FRONT_DOOR_ORDER = (
+    "기준점은 정문입니다 — 담당자 수기 지정, 표준 데이터셋 정문 좌표, LH 개별 맞춤, "
+    "네이버 지역검색 문 후보 순으로 정하고, 정문을 확인하지 못한 캠퍼스는 대표점으로 "
+    "재며 그 사실을 시설마다 적습니다."
+)
+UNIVERSITY_LAYER_NOTE = (
+    "교육부 대학교 위치(생활안전지도 IF_0034 · LH 데이터셋 대학알리미와 같은 교육부 "
+    "원천)로 대학교를 셉니다. " + UNIVERSITY_FRONT_DOOR_ORDER
+)
+UNIVERSITY_KAKAO_NOTE = (
+    "교육부 대학교 위치(생활안전지도 IF_0034) 대신 지도 검색(「대학교」)으로 "
+    "근사했습니다. " + UNIVERSITY_FRONT_DOOR_ORDER
+)
 
 # 정문을 어느 원천에서도 못 찾은 대학에 붙이는 지정 대기 고지(국장님 §3-3). 좌표
 # 폴백을 쓰되 그 사실을 감추지 않는다.
@@ -305,9 +334,9 @@ SCHOOL_KAKAO_NOTE = (
     "근사했습니다."
 )
 PUBLIC_LAYER_NOTE = (
-    "관공서·행정복지센터·우체국·도서관 등은 행정안전부 민원행정기관 전자지도"
-    "(생활안전지도 IF_0031)로 세고, 소방서·119안전센터(IF_0038)와 도서관 지도 검색으로 "
-    "보충했습니다."
+    "도청·시군구청 본청과 행정복지센터(동 주민센터·읍면사무소)는 행정안전부 민원행정기관 "
+    "전자지도(생활안전지도 IF_0031)로 세고, 공공도서관은 도서관 원천으로 더했습니다 "
+    "(LH 데이터셋 공공시설 = 관공서 본청·행정복지센터·공공도서관)."
 )
 PUBLIC_KAKAO_NOTE = (
     "행안부 민원행정기관 전자지도(생활안전지도 IF_0031) 대신 지도 공공기관 분류로 "
@@ -525,6 +554,10 @@ def _is_terminal(place: RawPlace) -> bool:
 # 「전북도청출장소」·「종합상황실」·「○○사업소」처럼 청사 부속·산하기관은 이름 끝이
 # 달라 걸러진다.
 _MAIN_OFFICE_RE = re.compile(r"(도청|시청|군청|구청)$")
+# 읍·면의 행정복지센터는 관공서 레이어(IF_0031)에 「○○면사무소」·「○○읍사무소」로
+# 온다(전북 130곳). 동 주민센터·행정복지센터 114곳과 합치면 244곳으로 내부망 앱
+# 행정복지센터 목록(JB_44, 242건)과 맞는다(2026-09-30 대조). 「관리사무소」 등은 거른다.
+_TOWNSHIP_OFFICE_RE = re.compile(r"[가-힣]+[읍면]사무소$")
 # 공공도서관이 아닌 도서관 — 내부망 앱 공공도서관 목록(JB_45)에 없다.
 # 대학·학교 도서관도 공공도서관이 아니다(「전주대학교 도서관」).
 _NON_PUBLIC_LIBRARY_TOKENS: tuple[str, ...] = (
@@ -533,7 +566,7 @@ _NON_PUBLIC_LIBRARY_TOKENS: tuple[str, ...] = (
 
 
 def _is_public(place: RawPlace) -> bool:
-    """공공시설 = 도청·시군구청 본청 + 공공도서관 + 행정복지센터(주민센터).
+    """공공시설 = 도청·시군구청 본청 + 공공도서관 + 행정복지센터(주민센터·읍면사무소).
 
     내부망 앱 표준 데이터셋의 공공시설은 관공서(JB_43, 도청·시군청 본청 17건)·
     공공도서관(JB_45)·행정복지센터(JB_44) 세 목록뿐이다(2026-09-28 대조). 관공서
@@ -551,6 +584,8 @@ def _is_public(place: RawPlace) -> bool:
     if "도서관" in name:
         return False
     if "행정복지센터" in name or "주민센터" in name:
+        return True
+    if _TOWNSHIP_OFFICE_RE.fullmatch(name):
         return True
     return bool(_MAIN_OFFICE_RE.search(name))
 
@@ -683,11 +718,14 @@ GROUP_SPECS: dict[str, GroupSpec] = {
         ("school",), "substituted", SCHOOL_KAKAO_NOTE, kakao_backed=False,
         keep=_school_filter("고등학교"),
     ),
+    # 대학교는 교육부 레이어(IF_0034)가 답하면 connected 로 올린다(_build_group).
+    # 초·중·고 feed(school)는 섞지 않는다 — 그 feed 가 지도 학교 분류(SC4)로 대체되면
+    # 지도사 사정에 따라 대학 목록이 달라진다.
     "university": GroupSpec(
-        ("school", "university"),
+        ("university",),
         "substituted",
-        "대학교는 네이버 지역검색으로 확인된 정문 좌표를 기준점으로 씁니다. "
-        "정문을 확인하지 못한 캠퍼스는 대표점으로 재며, 그 사실을 시설마다 적습니다.",
+        UNIVERSITY_KAKAO_NOTE,
+        kakao_backed=False,
         keep=_is_university,
     ),
 }
@@ -786,7 +824,7 @@ class AmenityCollector:
         # 소방서·119안전센터(IF_0038). 관공서 레이어의 보강(같은 자리 40m 는 뺀다).
         self.safemap_fire = safemap_fire
         # 생활안전지도 시설 레이어(2026-09-17 승인). 초·중·고(IF_0035)·관공서(IF_0031)는
-        # 지정 원천으로 지도 분류를 대체하고, 대학교(IF_0034)는 후보 보강, 종합병원
+        # 지정 원천으로 지도 분류를 대체하고, 대학교(IF_0034)도 지정 원천이며, 종합병원
         # (IF_0022)은 국립중앙의료원 시도 조회의 전국본 폴백이다. 키가 없으면 미사용.
         self.safemap_schools = safemap_schools
         self.safemap_universities = safemap_universities
@@ -1178,16 +1216,15 @@ class AmenityCollector:
                 seen.add(key)
                 targets.append((base, exclude_tokens, at))
 
-        for feed in ("school", "university"):
-            result = results.get(feed)
-            if isinstance(result, FeedResult):
-                for place in result.places:
-                    if _is_university(place):
-                        _add(
-                            university_base(place.name),
-                            _AUTO_EXCLUDE_TOKENS,
-                            place.coordinates,
-                        )
+        result = results.get("university")
+        if isinstance(result, FeedResult):
+            for place in result.places:
+                if _is_university(place):
+                    _add(
+                        university_base(place.name),
+                        _AUTO_EXCLUDE_TOKENS,
+                        place.coordinates,
+                    )
         # 종합병원은 09/22 결정으로 필지 경계 기준이라 정문을 묻지 않는다.
         if not targets:
             return
@@ -1195,14 +1232,17 @@ class AmenityCollector:
         async def one(
             base: str, exclude_tokens: tuple[str, ...], at: Coordinates
         ) -> None:
+            # 문 후보는 네이버 지역검색 하나로 정한다(LH 표준 데이터셋이 대학 정문을 같은
+            # API 로 확보했다). 카카오 「입출구」는 네이버가 없거나 실패했을 때만 대체로
+            # 묻는다 — 둘을 섞으면 카카오 한도·장애에 따라 가장 가까운 문이 바뀐다.
             doors: list[tuple[str, Coordinates]] = []
-            if use_kakao:
-                doors.extend(await self._kakao_gates(base, at))
+            naver_ok = False
             if use_naver:
                 try:
                     places = await self.naver.local(f"{base} 정문")
+                    naver_ok = True
                 except Exception:
-                    places = []  # 문을 못 얻으면 카카오 후보·좌표 폴백으로 간다
+                    places = []
                 doors.extend(
                     collect_door_candidates(
                         base,
@@ -1211,6 +1251,8 @@ class AmenityCollector:
                         exclude_tokens=exclude_tokens,
                     )
                 )
+            if not naver_ok and use_kakao:
+                doors.extend(await self._kakao_gates(base, at))
             merged = _dedupe_doors(doors)
             if merged:
                 self._front_door_candidates[normalize_key(base)] = tuple(merged)
@@ -1471,6 +1513,8 @@ class AmenityCollector:
             feeds["school"] = self._schools(center, radius_m)
         if _feed_enabled(self.safemap_offices):
             feeds["public"] = self._layer_offices(center, radius_m)
+        if _feed_enabled(self.safemap_universities):
+            feeds["university"] = self._universities(center, radius_m)
         if self.market_client is not None and self.market_client.enabled:
             feeds["traditional_market"] = self._traditional_markets(center, radius_m)
         if self.park_client is not None and self.park_client.enabled:
@@ -1479,9 +1523,10 @@ class AmenityCollector:
             # 키가 없으면 호출 자체를 만들지 않는다. 상태는 missing 으로 내려간다.
             return feeds
 
+        # 상업시설(대형마트 MT1·「백화점」·「전통시장」)은 대규모점포 원장과 전통시장
+        # 표준데이터로만 세므로 카카오를 부르지 않는다(쓰는 시설군이 없어 한도만 쓴다).
         category = {
             "subway": "SW8",
-            "mart": "MT1",
             "hospital": "HP8",
             "culture": "CT1",
             "public": "PO3",
@@ -1491,8 +1536,6 @@ class AmenityCollector:
             "railway": "기차역",
             "terminal": "버스터미널",
             "express_terminal": "고속버스터미널",
-            "department": "백화점",
-            "market": "전통시장",
             "park": "공원",
             "library": "도서관",
             "university": "대학교",
@@ -1516,10 +1559,7 @@ class AmenityCollector:
             feeds[name] = self._kakao_category(code, center, radius_m)
         for name, query in keyword.items():
             if name in feeds:
-                continue  # 지정 원천이 이미 맡았다(공원 표준데이터).
-            if name == "university" and _feed_enabled(self.safemap_universities):
-                feeds[name] = self._universities(query, center, radius_m)
-                continue
+                continue  # 지정 원천이 이미 맡았다(공원 표준데이터·대학교 레이어).
             feeds[name] = self._kakao_keyword(query, center, radius_m)
         if use_designated_hospital:
             feeds["hospital"] = self._designated_hospitals(center, radius_m)
@@ -1643,7 +1683,12 @@ class AmenityCollector:
             )
 
     async def _layer_offices(self, center: Coordinates, radius_m: int) -> FeedResult:
-        """관공서(IF_0031). 도서관 행은 도서관 분류로 두어 _is_public 이 남기게 한다."""
+        """관공서(IF_0031) — 공공시설의 본청·행정복지센터 원천.
+
+        전북 IF_0031 에는 도서관 행이 없다(2026-09-30 실측 700곳: 우체국·파출소·
+        주민센터·읍면사무소·본청 등). 공공도서관은 library feed 가 맡는다. 다른 시도에서
+        도서관 행이 오면 도서관 분류로 두어 _is_public 이 같은 규칙으로 가린다.
+        """
 
         assert self.safemap_offices is not None
         try:
@@ -1665,48 +1710,33 @@ class AmenityCollector:
         # 소방서(IF_0038)는 보강하지 않는다 — 내부망 앱 공공시설에 소방서가 없다.
         return FeedResult(tuple(places), SAFEMAP_OFFICE_SOURCE)
 
-    async def _universities(
-        self, query: str, center: Coordinates, radius_m: int
-    ) -> FeedResult:
-        """카카오 「대학교」 키워드 + 교육부 대학교 위치(IF_0034) 보강.
+    async def _universities(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """대학교 지정 원천: 교육부 대학교 위치(생활안전지도 IF_0034).
 
-        레이어는 본교 주소점 하나만 주므로 카카오 후보를 대체하지 않고, 같은 대학
-        (정규화 base 동일)이 1km 안에 이미 있으면 버리고 빠진 대학만 보탠다.
+        LH 데이터셋 대학교 목록(대학알리미)과 같은 교육부 원천이라 전북 71곳이 LH 와
+        같은 이름·주소로 온다(2026-09-30 대조). 지도 검색(카카오 「대학교」 키워드)은
+        지도사 사정에 따라 결과가 갈려 판정 원천으로 쓰지 않고, 레이어가 실패했을 때만
+        대체로 부르며 그 사실을 경고로 올린다(원천 장애는 조용히 넘기지 않는다).
+        기준점은 이 좌표가 아니라 정문이다(_measure_with_front_door).
         """
 
         assert self.safemap_universities is not None
-        kakao_result = await self._kakao_keyword(query, center, radius_m)
         try:
-            rows = await self.safemap_universities.facilities_around(center, radius_m)
+            rows = await self.safemap_universities.facilities_around(
+                center, radius_m + UNIVERSITY_LAYER_MARGIN_M
+            )
         except Exception:
-            logger.warning("생활안전지도 대학교 레이어 실패: 지도 검색만 사용", exc_info=True)
-            return kakao_result._replace(
+            logger.warning("생활안전지도 대학교 레이어 실패: 지도 검색으로 대체", exc_info=True)
+            if not self.kakao.enabled:
+                raise
+            fallback = await self._kakao_keyword("대학교", center, radius_m)
+            return fallback._replace(
                 degraded=True,
-                alert=(
-                    "생활안전지도 대학교 위치 레이어가 응답하지 않아 카카오 지도 검색만으로 "
-                    "대학교를 찾았습니다. 지도에 없는 대학이 빠졌을 수 있습니다."
-                ),
+                alert=_layer_alert("대학교(IF_0034)", "카카오 지도 「대학교」 검색"),
             )
-        known = [
-            (normalize_key(university_base(p.name)), p.coordinates)
-            for p in kakao_result.places
-        ]
-        extra: list[RawPlace] = []
-        for row in rows:
-            key = normalize_key(university_base(row.name))
-            if any(
-                key == seen_key and haversine_meters(row.coordinates, seen_point) <= 1000
-                for seen_key, seen_point in known
-            ):
-                continue
-            extra.append(
-                RawPlace(row.name, row.address, "교육,학문 > 학교 > 대학교", row.coordinates)
-            )
-        if not extra:
-            return kakao_result
         return FeedResult(
-            kakao_result.places + tuple(extra),
-            f"{kakao_result.source_label} + {SAFEMAP_UNIVERSITY_SOURCE}",
+            _layer_places(rows, lambda r: UNIVERSITY_LAYER_CATEGORY),
+            SAFEMAP_UNIVERSITY_SOURCE,
         )
 
     async def _designated_hospitals(
@@ -1984,51 +2014,51 @@ class AmenityCollector:
         )
 
     async def _transfer_centers(self, center: Coordinates, radius_m: int) -> FeedResult:
-        """환승센터 표준데이터(지정 원천) + 지도 검색 보충.
+        """환승시설 = 전국대중교통환승센터 표준데이터(지정 원천)만.
 
-        표준데이터는 제공 기관이 14곳뿐이라(2026-09-16 실측 40건, 서울 미등재) 그것만
-        쓰면 서울 잠실 같은 곳의 환승센터가 빠진다. 표준데이터를 먼저 담고, 같은 자리
-        (40m)에 없는 지도 검색 결과를 보충한다. 표준데이터가 응답하면 「연결」이고,
-        미승인·장애면 지도 근사(대체)로 남는다.
+        표준데이터가 응답하면 그것만 쓴다(연결). 지도 검색 보충은 LH 데이터셋 범위 밖의
+        환승정류장·환승주차장을 더해 결과를 갈라 뺐다. 표준데이터가 실패하거나 키가
+        없을 때만 카카오 지도 검색으로 대체하고 경고를 올린다.
         """
 
-        standard: list[RawPlace] = []
-        standard_ok = False
+        standard_error: Exception | None = None
         if self.transfer_client is not None and self.transfer_client.enabled:
             try:
                 centers = await self.transfer_client.centers_around(center, radius_m)
-                standard = [
-                    RawPlace(c.name, c.address, "교통,수송 > 환승센터", c.coordinates)
-                    for c in centers
-                ]
-                standard_ok = True
-            except Exception:
-                standard_ok = False  # 활용신청 전 403 등 — 지도 근사만 쓴다
-        if not standard_ok and not self.kakao.enabled:
-            raise SourceMissing(TRANSFER_MISSING_NOTE)
-        supplement: list[RawPlace] = []
-        if self.kakao.enabled:
-            for keyword in TRANSFER_KEYWORDS:
-                documents = await self.kakao.search_keyword(
-                    keyword, center.lat, center.lng, radius_m
+            except Exception as exc:
+                logger.warning("환승센터 표준데이터 실패", exc_info=True)
+                standard_error = exc
+            else:
+                return FeedResult(
+                    tuple(
+                        _dedupe(
+                            [
+                                RawPlace(c.name, c.address, "교통,수송 > 환승센터", c.coordinates)
+                                for c in centers
+                            ]
+                        )
+                    ),
+                    TRANSFER_STANDARD_SOURCE,
                 )
-                for place in _places(documents, _kakao_place):
-                    if "환승" not in place.name:
-                        continue
-                    if _category_leaf(place) not in TRANSFER_CATEGORY_LEAVES:
-                        continue
-                    if any(
-                        haversine_meters(place.coordinates, s.coordinates) <= 40
-                        for s in standard
-                    ):
-                        continue
-                    supplement.append(place)
-        merged = tuple(_dedupe(standard + supplement))
-        if not standard_ok:
-            return FeedResult(merged, KAKAO_PLACE_SOURCE)
-        return FeedResult(
-            merged, TRANSFER_SUPPLEMENT_SOURCE if supplement else TRANSFER_STANDARD_SOURCE
-        )
+        if not self.kakao.enabled:
+            if standard_error is not None:
+                raise standard_error
+            raise SourceMissing(TRANSFER_MISSING_NOTE)
+        found: list[RawPlace] = []
+        for keyword in TRANSFER_KEYWORDS:
+            documents = await self.kakao.search_keyword(
+                keyword, center.lat, center.lng, radius_m
+            )
+            for place in _places(documents, _kakao_place):
+                if "환승" not in place.name:
+                    continue
+                if _category_leaf(place) not in TRANSFER_CATEGORY_LEAVES:
+                    continue
+                found.append(place)
+        result = FeedResult(tuple(_dedupe(found)), KAKAO_PLACE_SOURCE)
+        if standard_error is None:
+            return result  # 표준데이터 키 미설정 — 근사(substituted) 고지로 드러난다
+        return result._replace(degraded=True, alert=TRANSFER_FALLBACK_ALERT)
 
     # -- 시설군 조립 -------------------------------------------------------
     def _build_group(
@@ -2051,10 +2081,15 @@ class AmenityCollector:
 
         places: list[RawPlace] = []
         sources: list[str] = []
+        # 여러 원천을 합치는 시설군(공공 = 관공서 레이어 + 도서관)은 한 원천이 실패해도
+        # 나머지로 센다. 실패한 원천은 _with_source_alert 가 「일부 원천 실패」로 올린다
+        # — 도서관 검색 하나가 막혔다고 주민센터까지 통째로 빠지면 안 된다(2026-09-30
+        # 카카오 한도 소진 때 공공시설이 전부 사라졌다). 모든 원천이 실패해야 missing 이다.
+        failure: GroupCollection | None = None
         for feed in spec.feeds:
             outcome = results.get(feed)
             if isinstance(outcome, BaseException):
-                return GroupCollection(
+                failure = failure or GroupCollection(
                     key,
                     "missing",
                     str(outcome)
@@ -2064,11 +2099,17 @@ class AmenityCollector:
                     (),
                     (),
                 )
+                continue
             if outcome is None:
-                return GroupCollection(key, "missing", KAKAO_DISABLED_NOTE, "", (), ())
+                failure = failure or GroupCollection(
+                    key, "missing", KAKAO_DISABLED_NOTE, "", (), ()
+                )
+                continue
             places.extend(outcome.places)
             if outcome.source_label not in sources:
                 sources.append(outcome.source_label)
+        if failure is not None and not sources:
+            return failure
 
         keep = spec.keep
         kept = [
@@ -2104,6 +2145,10 @@ class AmenityCollector:
                 key=lambda facility: facility.distance_m,
             )
             facilities = _collapse_same_gate(facilities)
+            # 레이어는 캠퍼스 대표점을 주므로 반경을 넓혀 받았다(_universities). 정문까지
+            # 잰 거리가 반경 밖인 학교는 뺀다 — LH앱도 정문 거리 반경 안만 싣는다.
+            if SAFEMAP_UNIVERSITY_SOURCE in sources:
+                facilities = [f for f in facilities if f.distance_m <= radius_m]
             group_notice = _front_door_group_notice(facilities)
         else:
             is_station = key in ("railway", "subway")
@@ -2153,6 +2198,9 @@ class AmenityCollector:
                 if any("+" in src for src in sources)
                 else park_source.PARK_STANDARD_NOTE
             )
+        if key == "university" and SAFEMAP_UNIVERSITY_SOURCE in sources:
+            state = "connected"
+            note = UNIVERSITY_LAYER_NOTE
         if key == "public" and any(src.startswith(SAFEMAP_OFFICE_SOURCE) for src in sources):
             state = "connected"
             note = PUBLIC_LAYER_NOTE
@@ -2688,6 +2736,9 @@ class AmenityCollector:
             if key == "university":
                 # 맞춘 정문이 같아진 학교(원광대·원광디지털대)는 다시 한 줄로 합친다.
                 ordered = _collapse_same_gate(ordered)
+                if SAFEMAP_UNIVERSITY_SOURCE in collection.actual_source:
+                    # LH 정문으로 옮긴 뒤 반경 밖이 된 학교도 뺀다(_build_group 과 같은 규칙).
+                    ordered = [f for f in ordered if f.distance_m <= radius_m]
             updated[key] = collection._replace(
                 facilities=tuple(ordered[:MAX_HITS_PER_GROUP]),
                 distances_m=_replace_distances(
@@ -3001,7 +3052,15 @@ def _with_source_alert(
             continue  # 원천이 아예 없는 것은 장애가 아니다. note 로 이미 드러난다.
         if isinstance(outcome, BaseException):
             label = FEED_LABELS.get(feed, feed)
-            messages.append(f"{label} 원천 조회가 실패했습니다({outcome}). 이 시설군은 산정하지 못했습니다.")
+            if collection.state == "missing":
+                messages.append(
+                    f"{label} 원천 조회가 실패했습니다({outcome}). 이 시설군은 산정하지 못했습니다."
+                )
+            else:
+                messages.append(
+                    f"{label} 원천 조회가 실패했습니다({outcome}). 이 시설군은 나머지 원천으로만 "
+                    "셌으니 빠진 시설이 있을 수 있습니다. 원천이 복구되면 다시 심사하세요."
+                )
         elif isinstance(outcome, FeedResult) and outcome.alert:
             messages.append(outcome.alert)
     if (

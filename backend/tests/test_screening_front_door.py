@@ -429,6 +429,18 @@ class TestNaverDoorCandidates:
         # 사업지 rings 가 있으면 경계 위 점도 실린다.
         assert facility.nearest_boundary_point is not None
 
+    def test_naver_answer_skips_kakao_gates(self) -> None:
+        # 네이버가 답하면 카카오 「입출구」를 섞지 않는다 — 카카오 한도·장애에 따라
+        # 가장 가까운 문이 바뀌면 지도사마다 결과가 갈린다.
+        naver = FakeNaver({"전주대학교 정문": [_local("전주대학교 정문", 300.0)]})
+        kakao = _university_kakao()
+        kakao.keywords["전주대학교 문"] = [
+            _place("전주대학교 후문", 200.0, "교통,수송 > 입출구")
+        ]
+        collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), naver=naver)
+        facility = _collect(collector)["university"].facilities[0]
+        assert {c.label for c in facility.front_door_candidates} == {"전주대학교 정문"}
+
     def test_single_door_has_one_candidate(self) -> None:
         naver = FakeNaver({"전주대학교 정문": [_local("전주대학교 정문", 300.0)]})
         collector = AmenityCollector(
