@@ -32,7 +32,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.hazard_review.models import HazardParcelResolveRequest, HazardSite
+from app.hazard_review.models import HazardParcelResolveRequest, HazardReviewResult, HazardSite
 from app.hazard_review.multi_parcel import representative_address
 from app.hazard_review.parcels import ParcelResolver
 from app.hazard_review.router import get_parcel_resolver
@@ -43,10 +43,13 @@ from app.hazard_review.rulebook import (
     HousingType,
 )
 from app.models import Coordinates
+from app.screening.export_pdf import PDF_MEDIA_TYPE, build_batch_pdf
+from app.screening.export_report import BatchReport, attachment_header, batch_report, build_batch_workbook
 from app.screening.export_xlsx import (
     XLSX_MEDIA_TYPE,
     BatchExportRequest,
     ExportSite,
+    ItemJudgement,
     build_workbook,
     xlsx_filename_header,
 )
@@ -437,6 +440,27 @@ batch_results: dict[tuple[str, str], ScreeningResult] = {}
 batch_cancel: dict[str, asyncio.Event] = {}
 _batch_tasks: set[asyncio.Task[None]] = set()
 
+# 메모리에 남겨 두는 끝난 일괄 심사 수. 결과 한 건이 수백 KB 라 쌓이면 배포 서버(1GiB)가
+# 메모리 부족으로 새로 켜지고, 그러면 모든 결과가 사라져 내려받기가 404 로 실패한다.
+MAX_FINISHED_BATCHES = 12
+
+
+def evict_finished_batches(keep: int = MAX_FINISHED_BATCHES) -> list[str]:
+    """끝난 일괄 심사를 오래된 순으로 지워 keep 개만 남긴다. 진행 중인 것은 건드리지 않는다."""
+
+    finished = sorted(
+        (b for b in batches.values() if b.status in {"completed", "cancelled"}),
+        key=lambda b: b.created_at,
+    )
+    removed: list[str] = []
+    for batch in finished[: max(0, len(finished) - keep)]:
+        batches.pop(batch.batch_id, None)
+        batch_cancel.pop(batch.batch_id, None)
+        for row in batch.rows:
+            batch_results.pop((batch.batch_id, row.id), None)
+        removed.append(batch.batch_id)
+    return removed
+
 
 def _score(criterion) -> BatchCriterionScore:  # noqa: ANN001 — ScreeningCriterion
     return BatchCriterionScore(
@@ -696,9 +720,22 @@ def export_sites(batch: BatchStatus, request: BatchExportRequest) -> list[Export
                 result=result,
                 error=row.error or ("" if result is not None else row.message),
                 judgements=request.judgements.get(result.screening_id, {}) if result else {},
+                extras={key: row.extras.get(key, "") for key in EXTRA_KEYS},
+                resolve_note=row.resolve_note,
             )
         )
     return sites
+
+
+def build_report(
+    batch: BatchStatus, request: BatchExportRequest, generated_at: datetime, compact: bool = False
+) -> BatchReport:
+    """결과표 + 건별 심사표. Excel 은 전부 펼치고 PDF 는 compact 로 줄인다."""
+
+    return batch_report(
+        batch, export_sites(batch, request), generated_at,
+        dict(HOUSING_TYPE_LABELS), dict(APPLICATION_TYPE_LABELS), compact=compact,
+    )
 
 
 def export_zip(batch: BatchStatus) -> bytes:
@@ -770,6 +807,7 @@ async def start_batch(
             status_code=400, detail=f"한 번에 {limit}건까지 심사할 수 있습니다({len(payload.rows)}건)."
         )
     await _await_warmup(screening)
+    evict_finished_batches()
     batch_id = str(uuid4())
     batch = BatchStatus(
         batch_id=batch_id,
@@ -852,12 +890,118 @@ async def export_batch(batch_id: str) -> Response:
 
 @router.post("/{batch_id}/export.xlsx")
 async def export_batch_xlsx(batch_id: str, payload: BatchExportRequest) -> Response:
-    """일괄 심사 결과 Excel(4시트). 담당자 판단은 브라우저에만 있어 요청에 싣는다."""
+    """일괄 심사 결과 Excel — 시트 1 은 화면 결과표, 시트 2부터 건별 심사표.
+
+    담당자 판단·메모는 브라우저에만 있어 요청에 싣는다. 파일 만들기는 CPU 작업이라
+    스레드로 보내 진행 중인 다른 심사의 폴링을 막지 않는다.
+    """
+
+    batch = _batch_or_404(batch_id)
+    generated_at = datetime.now(UTC)
+    report = build_report(batch, payload, generated_at)
+    content = await asyncio.to_thread(build_batch_workbook, report)
+    return Response(
+        content=content,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": attachment_header("LH_일괄심사", generated_at, "xlsx")},
+    )
+
+
+@router.post("/{batch_id}/export.pdf")
+async def export_batch_pdf(batch_id: str, payload: BatchExportRequest) -> Response:
+    """일괄 심사 결과 PDF(A4 세로) — 1쪽 결과표, 2쪽부터 건별 심사표."""
+
+    batch = _batch_or_404(batch_id)
+    generated_at = datetime.now(UTC)
+    report = build_report(batch, payload, generated_at, compact=True)
+    content = await asyncio.to_thread(build_batch_pdf, report)
+    return Response(
+        content=content,
+        media_type=PDF_MEDIA_TYPE,
+        headers={"Content-Disposition": attachment_header("LH_일괄심사", generated_at, "pdf")},
+    )
+
+
+class ExportResultPayload(ScreeningResult):
+    """브라우저가 보관해 둔 심사 결과. 내려받기에는 쓰지 않는 유해요소 원본(hazard_review)과
+    지도용 경계 좌표를 빼고 보내도 되게 느슨하게 받는다."""
+
+    hazard_review: HazardReviewResult | None = None  # type: ignore[assignment]
+
+
+class BatchSnapshotExportRequest(BaseModel):
+    """서버에 일괄 심사가 남아 있지 않을 때(새로 켜짐·오래되어 지움) 브라우저가 보관한
+    결과표·건별 결과로 같은 파일을 만든다."""
+
+    batch: BatchStatus
+    results: dict[str, ExportResultPayload] = Field(default_factory=dict)
+    judgements: dict[str, dict[str, ItemJudgement]] = Field(default_factory=dict)
+
+
+def _snapshot_report(payload: BatchSnapshotExportRequest, generated_at: datetime, compact: bool) -> BatchReport:
+    if len(payload.batch.rows) > MAX_ROWS:
+        raise HTTPException(status_code=400, detail=f"한 번에 {MAX_ROWS}건까지 내보낼 수 있습니다.")
+    sites: list[ExportSite] = []
+    for row in payload.batch.rows:
+        result = payload.results.get(row.id)
+        sites.append(
+            ExportSite(
+                receipt_no=row.id,
+                address=row.address,
+                housing_type_label=HOUSING_TYPE_LABELS[row.housing_type],
+                application_type_label=APPLICATION_TYPE_LABELS[row.application_type],
+                result=result,
+                error=row.error or (
+                    "" if result is not None
+                    else "브라우저에 보관된 결과 없음(심사 뒤 서버가 새로 켜져 결과가 사라짐)" if row.status == "completed"
+                    else row.message
+                ),
+                judgements=payload.judgements.get(result.screening_id, {}) if result else {},
+                extras={key: row.extras.get(key, "") for key in EXTRA_KEYS},
+                resolve_note=row.resolve_note,
+            )
+        )
+    return batch_report(
+        payload.batch, sites, generated_at, dict(HOUSING_TYPE_LABELS), dict(APPLICATION_TYPE_LABELS), compact=compact,
+    )
+
+
+@router.post("/export.xlsx")
+async def export_snapshot_xlsx(payload: BatchSnapshotExportRequest) -> Response:
+    """브라우저가 보관한 일괄 심사 결과로 Excel. 서버 상태가 없어도 내려받기가 된다."""
+
+    generated_at = datetime.now(UTC)
+    report = _snapshot_report(payload, generated_at, compact=False)
+    content = await asyncio.to_thread(build_batch_workbook, report)
+    return Response(
+        content=content,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": attachment_header("LH_일괄심사", generated_at, "xlsx")},
+    )
+
+
+@router.post("/export.pdf")
+async def export_snapshot_pdf(payload: BatchSnapshotExportRequest) -> Response:
+    """브라우저가 보관한 일괄 심사 결과로 PDF."""
+
+    generated_at = datetime.now(UTC)
+    report = _snapshot_report(payload, generated_at, compact=True)
+    content = await asyncio.to_thread(build_batch_pdf, report)
+    return Response(
+        content=content,
+        media_type=PDF_MEDIA_TYPE,
+        headers={"Content-Disposition": attachment_header("LH_일괄심사", generated_at, "pdf")},
+    )
+
+
+@router.post("/{batch_id}/export.legacy.xlsx")
+async def export_batch_legacy_xlsx(batch_id: str, payload: BatchExportRequest) -> Response:
+    """옛 4시트 묶음(종합요약·1차 상세·2차 상세·데이터 스냅샷). 건별 심사표 대신 평면 표가 필요할 때."""
 
     batch = _batch_or_404(batch_id)
     generated_at = datetime.now(UTC)
     return Response(
         content=build_workbook(export_sites(batch, payload), generated_at),
         media_type=XLSX_MEDIA_TYPE,
-        headers={"Content-Disposition": xlsx_filename_header("LH_일괄심사", generated_at)},
+        headers={"Content-Disposition": xlsx_filename_header("LH_일괄심사_4시트", generated_at)},
     )

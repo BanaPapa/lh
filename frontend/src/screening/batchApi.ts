@@ -132,7 +132,3 @@ export function getBatchRowResult(batchId: string, rowId: string): Promise<Scree
 export function batchTemplateUrl(): string {
   return `${API_BASE_URL}/api/screening/batch/template`;
 }
-
-export function batchExportUrl(batchId: string): string {
-  return `${API_BASE_URL}/api/screening/batch/${encodeURIComponent(batchId)}/export`;
-}
