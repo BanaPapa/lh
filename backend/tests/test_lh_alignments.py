@@ -119,8 +119,6 @@ SITES: dict[str, list[list[tuple[float, float]]]] = {
         ("univ-jeonju-vision-gate-point", "002", 1188),
         ("univ-jeonju-vision-gate-point", "077", 1294),
         ("busstop-express-terminal-buddhist-point", "115", 161),
-        # 파인트리몰: LH PNU(송천동2가 488-3)가 연속지적도에 없어 LH앱이 점포 좌표로 잰 값.
-        ("retail-pinetree-mall-point", "004", 792.3),
     ],
 )
 def test_lh_points_reproduce_lh_distances(entry_id: str, site: str, lh_distance: float) -> None:
@@ -209,10 +207,11 @@ async def test_point_entry_with_pnu_measures_to_the_lh_parcel_even_on_rail_land(
 async def test_point_entry_without_pnu_overrides_the_coordinate_parcel_of_a_retail_store(
     tmp_path,
 ) -> None:
-    """파인트리몰(004): 점포 좌표를 품는 필지(1422) 경계 대신 LH 좌표에서 잰다.
+    """상업시설 point 항목: 점포 좌표를 품는 필지 경계 대신 등록부의 LH 좌표에서 잰다(가상 항목).
 
-    LH 데이터셋의 점포 PNU(송천동2가 488-3)는 연속지적도에 없어 LH앱이 점포 좌표로
-    쟀다(792.3m). 등록부 항목은 pnu 없이 좌표만 두고, 좌표 필지 측정을 LH 좌표로 바꾼다.
+    등록부 항목은 pnu 없이 좌표만 두고, 좌표 필지 측정을 LH 좌표로 바꾼다. 파인트리몰(004)이
+    이 형태였으나 LH 쪽이 없어진 지번(488-3)으로 점 측정한 오류라 등록부에서 뺐다
+    (2026-09-30 · docs/LH_회의안건_데이터차이.md).
     """
 
     from app.services.facility_store import FacilityStore
