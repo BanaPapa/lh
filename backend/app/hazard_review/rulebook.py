@@ -328,9 +328,9 @@ class Category(NamedTuple):
     # 후보 조회·거리 계산·종합상태 승격·status_counts 집계에 일절 참여하지 않는다.
     # not_applicable + 판정제외 사유로만 표기한다.
     judgment_excluded: bool = False
-    # 관리자 설정 「판정 옵션」 스위치 키(rules_config.OPTION_DEFS). 스위치가 꺼져 있으면
-    # 이 종류는 「판정 미적용」으로 두고 후보는 지도 참고 핀으로만 싣는다.
-    option_key: str = ""
+    # 관리자 설정 「판정 옵션」 스위치 키(rules_config.OPTION_DEFS). 스위치를 켜면(LH 기준과
+    # 다르게) 이 종류는 「판정 미적용」으로 두고 후보는 지도 참고 핀으로만 싣는다.
+    reference_only_option: str = ""
 
 
 CATEGORIES: tuple[Category, ...] = (
@@ -499,7 +499,7 @@ CATEGORIES: tuple[Category, ...] = (
     # 처리 시설」 50m 로 판정한다(JB_22_GAS_PRODUCT_MANUFACTURERS · 기준 충족). 이 앱은
     # 법 정의상 아목이 아니라 빼 두었으나 「LH 앱과 같은 결과」 방침(2026-09-30)에 따라
     # 같은 원천(가스안전공사 ODcloud 15152505)을 API 로 받아 같은 50m 로 판정한다.
-    # 관리자 설정 스위치 gas_product_manufacturers 로 끌 수 있다(끄면 참고 핀).
+    # 관리자 설정 스위치 gas_product_reference_only 를 켜면 판정에서 빠진다(참고 핀).
     Category(
         key="gas_product_manufacturer",
         label="가스제품 제조업소 (LH 기준)",
@@ -515,7 +515,7 @@ CATEGORIES: tuple[Category, ...] = (
         ),
         doc_ref="H-02-아",
         facility_types=("gas_product_manufacturer",),
-        option_key="gas_product_manufacturers",
+        reference_only_option="gas_product_reference_only",
     ),
     Category(
         key="explosive_storage",

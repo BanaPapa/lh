@@ -36,68 +36,66 @@ class OptionDef(BaseModel):
     key: str
     label: str
     description: str
-    # 기본값 = LH 기준(내부망 앱)과 같게 두는 쪽. 없던 스위치는 이 값으로 동작한다.
-    default: bool
+    # 모든 스위치는 꺼짐이 LH 기준(내부망 앱)이다. 켜면 LH 기준과 달라지는 쪽이다
+    # (사용자 결정 2026-09-30). 없던 스위치는 이 값(끔)으로 동작한다.
+    default: bool = False
     # 화면에서 묶어 보일 이름(예: 「2차 대중교통」).
     group: str = ""
 
 
 # 관리자 설정 「판정 옵션」 탭에 나오는 스위치 목록. 새 스위치는 여기 한 줄만 더하고
-# 판정 코드에서 option_enabled(key) 로 읽는다. 기본값은 LH 기준을 따른다.
+# 판정 코드에서 option_enabled(key) 로 읽는다. 전부 끄면 LH 내부망 앱과 같은 판정이고,
+# 켜는 스위치만 LH 기준과 달라진다. LH 가 하는 동작을 스위치 뒤에 숨기지 않는다.
 OPTION_DEFS: tuple[OptionDef, ...] = (
     OptionDef(
         key="bus_headway_filter",
         label="버스 운행주기 15분 기준 적용",
         description=(
-            "TAGO 배차간격으로 15분당 평균 도착 버스가 1대 미만인 정류장을 배점에서 뺍니다. "
-            "끄면 LH 내부망 앱처럼 운행주기와 관계없이 모든 정류장을 셉니다."
+            "켜면 TAGO 배차간격으로 15분당 평균 도착 버스가 1대 미만인 정류장을 배점에서 "
+            "뺍니다(평가기준 2-1 문구대로). 끄면 LH 내부망 앱처럼 운행주기와 관계없이 모든 "
+            "정류장을 셉니다."
         ),
-        default=True,
         group="2차 대중교통",
     ),
     OptionDef(
         key="culture_extended",
         label="문화시설 넓게 보기(지도 문화시설 분류 추가)",
         description=(
-            "기본은 LH 기준대로 공연장·박물관·미술관·영화상영관만 문화시설로 셉니다. "
+            "끄면 LH 기준대로 공연장·박물관·미술관·영화상영관만 문화시설로 셉니다. "
             "켜면 지도(카카오) 문화시설 분류의 갤러리·전시장 등도 더합니다."
         ),
-        default=False,
         group="2차 주거여건",
-    ),
-    OptionDef(
-        key="gas_product_manufacturers",
-        label="가스제품 제조업소를 위험물 시설(50m)로 판정",
-        description=(
-            "LH 내부망 앱처럼 가스안전공사 「가스제품 제조업소정보」(압력용기·연소기·밸브 등 "
-            "제조공장)를 위험물 저장·처리시설 50m 로 판정합니다. 끄면 법 정의상 도시가스 "
-            "제조시설(아목)이 아니라는 이 앱 해석대로 판정하지 않고 지도에 참고로만 올립니다."
-        ),
-        default=True,
-        group="1차 유해시설",
-    ),
-    OptionDef(
-        key="factory_geocode_vworld_fallback",
-        label="등록공장 주소를 VWorld 주소검색으로 한 번 더 찾기",
-        description=(
-            "산단공 등록공장 주소를 카카오가 못 찾으면(없어진 옛 지번 등) VWorld 주소검색으로 "
-            "다시 찾습니다. LH 표준 데이터셋이 같은 방식으로 위치를 잡아 「공장 검토」 목록이 "
-            "같아집니다(예: 전주 효자동2가 368번지 현대콘크리트 → 쑥고개로 368). 끄면 "
-            "카카오로 찾은 공장만 싣습니다."
-        ),
-        default=True,
-        group="1차 유해시설",
     ),
     OptionDef(
         key="park_kakao_supplement",
         label="공원에 지도 검색 공원 더하기",
         description=(
-            "기본은 LH 기준대로 전국도시공원정보표준데이터의 도시공원만 셉니다. 켜면 "
+            "끄면 LH 기준대로 전국도시공원정보표준데이터의 도시공원만 셉니다. 켜면 "
             "지도(카카오) 공원 검색 결과 중 표준데이터에 없는 공원(수목원·자연공원 입구 등)도 "
             "더합니다. LH 결과보다 공원이 늘 수 있습니다."
         ),
-        default=False,
         group="2차 주거여건",
+    ),
+    OptionDef(
+        key="gas_product_reference_only",
+        label="가스제품 제조업소는 참고로만 표시",
+        description=(
+            "끄면 LH 내부망 앱처럼 가스안전공사 「가스제품 제조업소정보」(압력용기·연소기·밸브 "
+            "등 제조공장)를 위험물 저장·처리시설 50m 로 판정합니다. 켜면 법 정의상 도시가스 "
+            "제조시설(아목)이 아니라는 이 앱 해석대로 판정하지 않고 지도에 참고로만 올립니다."
+        ),
+        group="1차 유해시설",
+    ),
+    OptionDef(
+        key="factory_geocode_kakao_only",
+        label="등록공장 위치는 카카오 주소검색만 쓰기",
+        description=(
+            "끄면 LH 표준 데이터셋처럼 산단공 등록공장 주소를 카카오가 못 찾을 때(없어진 옛 "
+            "지번 등) VWorld 주소검색으로 한 번 더 찾습니다(예: 전주 효자동2가 368번지 "
+            "현대콘크리트 → 쑥고개로 368). 켜면 카카오로 찾은 공장만 실어 「공장 검토」 목록이 "
+            "LH 보다 줄 수 있습니다."
+        ),
+        group="1차 유해시설",
     ),
 )
 OPTION_BY_KEY: dict[str, OptionDef] = {option.key: option for option in OPTION_DEFS}
@@ -173,7 +171,7 @@ def is_relaxed() -> bool:
 
 
 def option_enabled(key: str) -> bool:
-    """판정 옵션 스위치 값. 저장값이 없으면 OPTION_DEFS 의 기본값(LH 기준)."""
+    """판정 옵션 스위치 값. 저장값이 없으면 OPTION_DEFS 의 기본값(끔 = LH 기준)."""
 
     definition = OPTION_BY_KEY.get(key)
     if definition is None:

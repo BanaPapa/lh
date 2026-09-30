@@ -1180,7 +1180,11 @@ def stop_row(name: str, node_id: str, offset_m: float) -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
-async def test_bus_stops_count_only_fifteen_minute_headway_stops() -> None:
+async def test_bus_stops_count_only_fifteen_minute_headway_stops(monkeypatch) -> None:
+    # 15분 기준은 관리자 스위치를 켤 때만 적용한다(기본 끔 = LH 기준, 모든 정류장).
+    import app.screening.amenities as amenities_module
+
+    monkeypatch.setattr(amenities_module, "option_enabled", lambda key: key == "bus_headway_filter")
     tago = HeadwayTago(
         rows=[
             stop_row("공수내다리", "N1", 100),   # 10분·30분 노선 → 15분당 2대 → 인정

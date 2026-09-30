@@ -225,12 +225,12 @@ def build_hazard_service(
         pnu_resolver=pnu_resolver,
         # 산단공 공장등록 필지정보 API(15087615). 로컬 factoryON 표준본이 없을 때
         # 사업지 시군구의 등록공장을 받아 지오코딩해 「공장 있음」 표시를 낸다.
-        # 카카오가 못 찾은 옛 지번은 VWorld 주소검색으로 한 번 더(관리자 스위치 · LH 기준 켬).
+        # 카카오가 못 찾은 옛 지번은 VWorld 주소검색으로 한 번 더(LH 기준 · 관리자 스위치로 끌 수 있음).
         factory_registry=FactoryRegistryClient(
             config.public_data_key,
             geocoder=geocode_address,
             fallback_geocoder=vworld.search_address_point,
-            fallback_enabled=lambda: option_enabled("factory_geocode_vworld_fallback"),
+            fallback_enabled=lambda: not option_enabled("factory_geocode_kakao_only"),
         ),
         # 가스안전공사 LPG 충전소 파일(15001643) — kgs 조회 API 의 보조(중복 40m 제거).
         lpg_file=LpgStationFileClient(config.public_data_key),

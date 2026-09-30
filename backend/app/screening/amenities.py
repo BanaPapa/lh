@@ -2607,14 +2607,15 @@ def _apply_bus_headway(
     """
 
     tagged: list[CollectedFacility] = []
-    # 관리자 설정에서 운행주기 기준을 끄면 LH 내부망 앱처럼 모든 정류장을 센다.
+    # 기본(운행주기 기준 끔)은 LH 내부망 앱처럼 모든 정류장을 센다. 관리자 설정에서 켜면
+    # 아래에서 15분 기준 미달 정류장을 배점에서 뺀다.
     # 판정 근거로 배차 정보는 그대로 적어 둔다.
     if not option_enabled("bus_headway_filter"):
         for facility in facilities:
             headway = headways.get(_stop_name_key(facility.name))
             note = headway.label if headway is not None else "운행주기 판정 정보 없음"
             tagged.append(
-                facility._replace(counted=True, count_note=f"운행주기 기준 끔(관리자 설정) · {note}")
+                facility._replace(counted=True, count_note=f"운행주기 미적용(LH 기준) · {note}")
             )
         return sorted(tagged, key=lambda f: f.distance_m)
     for facility in facilities:

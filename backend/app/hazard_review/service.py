@@ -350,14 +350,16 @@ def _is_refrigeration(row: Any) -> bool:
     )
 
 
-# 관리자 설정 「판정 옵션」에서 끈 종류의 not_applicable 사유(예: 가스제품 제조업소).
-SWITCHED_OFF_REASON = "판정 미적용 — 관리자 설정에서 끔 (후보는 지도 참고 핀)"
+# 관리자 설정 「판정 옵션」에서 참고 전용으로 돌린 종류의 not_applicable 사유(예: 가스제품 제조업소).
+SWITCHED_OFF_REASON = "판정 미적용 — 관리자 설정에서 참고로만 표시 (후보는 지도 참고 핀)"
 
 
 def _category_switch_on(category: Category) -> bool:
-    """이 종류의 관리자 스위치가 켜져 있는가. 스위치 없는 종류는 늘 켜짐."""
+    """이 종류를 판정에 쓰는가. 「참고로만 표시」 스위치를 켠 종류만 판정에서 빠진다."""
 
-    return not category.option_key or option_enabled(category.option_key)
+    return not category.reference_only_option or not option_enabled(
+        category.reference_only_option
+    )
 
 
 def _split_institutional(

@@ -197,6 +197,11 @@ def test_name_key_matches_lh_and_kakao_names() -> None:
     )
 
 
-def test_supplement_option_defaults_to_lh_standard_and_is_last() -> None:
-    assert OPTION_DEFS[-1].key == park_source.PARK_SUPPLEMENT_OPTION
-    assert OPTION_DEFS[-1].default is False
+def test_supplement_option_defaults_to_lh_standard() -> None:
+    option = next(o for o in OPTION_DEFS if o.key == park_source.PARK_SUPPLEMENT_OPTION)
+    assert option.default is False
+
+
+def test_every_option_is_off_by_default() -> None:
+    # 전부 끈 상태가 LH 내부망 앱 기준이다(사용자 결정 2026-09-30).
+    assert all(o.default is False for o in OPTION_DEFS)

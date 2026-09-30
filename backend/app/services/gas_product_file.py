@@ -5,7 +5,7 @@ MANUFACTURERS)을 「위험물 저장 및 처리 시설」 50m 로 판정한다(
 같은 업소가 생산품목마다 한 줄씩 있어 표준본이 「중복되는 정보 존재」로 REVIEW 에 넣었다).
 이 앱은 법 정의상 아목(도시가스 제조시설)이 아니라 싣지 않았으나, 2026-09-30 「LH 앱과
 같은 결과」 방침에 따라 같은 원천을 공공 API 로 받아 같은 50m 로 판정한다(관리자 설정
-「판정 옵션」 gas_product_manufacturers 스위치 · 기본 켬 = LH 기준).
+「판정 옵션」 gas_product_reference_only 스위치 · 기본 끔 = LH 기준대로 판정).
 
 API 실측(2026-09-30): swagger(infuser.odcloud.kr/oas/docs?namespace=15152505/v1)의 uddi 는
 78eca758-…, 열은 행정구역·업소명·소재지·생산품목·영업상태·법구분 여섯 개, 전국 1,549행

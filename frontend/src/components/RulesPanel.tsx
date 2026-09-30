@@ -285,8 +285,8 @@ export function RulesPanel({ open, onClose }: RulesPanelProps) {
                 <div>
                   <h3>판정 옵션</h3>
                   <p>
-                    기본값은 LH 기준(내부망 앱)과 같게 두었습니다. 끄거나 켜면 다음 심사부터
-                    반영됩니다. 「기본」 표시가 없는 스위치는 LH 기준과 다르게 바뀐 상태입니다.
+                    모든 스위치를 끈 상태가 LH 기준(내부망 앱)입니다. 켠 스위치만 LH 기준과
+                    달라지며, 바꾸면 다음 심사부터 반영됩니다.
                   </p>
                 </div>
               </header>

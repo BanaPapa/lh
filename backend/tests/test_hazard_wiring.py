@@ -842,7 +842,7 @@ class FakeGasProductFile:
 
 
 class TestGasProductManufacturerWiring:
-    """가스제품 제조업소 — LH 앱 기준 위험물 50m (관리자 스위치 gas_product_manufacturers)."""
+    """가스제품 제조업소 — LH 앱 기준 위험물 50m (관리자 스위치 gas_product_reference_only 로 참고 전용)."""
 
     @staticmethod
     def _switch(monkeypatch, tmp_path, on: bool | None) -> None:
@@ -852,7 +852,7 @@ class TestGasProductManufacturerWiring:
         monkeypatch.setattr(rules_config, "_cache", None)
         if on is not None:
             rules_config.save_config(
-                rules_config.RulesConfig(options={"gas_product_manufacturers": on})
+                rules_config.RulesConfig(options={"gas_product_reference_only": not on})
             )
 
     def test_manufacturer_within_50m_is_exclusion_by_default(self, monkeypatch, tmp_path) -> None:
