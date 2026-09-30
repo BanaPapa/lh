@@ -30,6 +30,7 @@ import { IS_LOCAL_APP } from "../deployment";
  * 설정 API 는 원래 루프백에서만 열려 있어 배포 서버에서는 어차피 쓸 수 없다.
  */
 const API_PANEL_ENABLED = IS_LOCAL_APP;
+import { ServerWakeNotice } from "./ServerWakeNotice";
 import { SettingsMenu } from "./SettingsMenu";
 import { RulebookModal } from "../rulebook/RulebookModal";
 import { RulesPanel } from "./RulesPanel";
@@ -275,6 +276,7 @@ export function TopSearchBar({
       </div>
 
       <div className="solo-bar-actions">
+          <ServerWakeNotice />
           <button
             type="button"
             className="solo-icon-button"

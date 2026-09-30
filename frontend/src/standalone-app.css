@@ -1940,3 +1940,25 @@
   flex: none;
   white-space: nowrap;
 }
+
+/* 배포판 첫 접속 안내(서버 기동 대기). 테마 버튼 왼쪽에 잠깐 떴다가 사라진다. */
+.server-wake-notice {
+  max-width: 340px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: server-wake-in 200ms ease;
+}
+@keyframes server-wake-in {
+  from { opacity: 0; transform: translateX(6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (max-width: 720px) {
+  .server-wake-notice { display: none; }
+}
