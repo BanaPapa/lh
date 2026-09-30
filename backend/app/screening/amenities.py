@@ -78,7 +78,21 @@ from app.services.city_parks import CityParkClient
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.tago import TagoClient
 from app.services.transfer_center import TransferCenterClient
-from app.services.vworld import ParcelFeature, VWorldClient
+from app.services.vworld import ParcelFeature, VWorldClient, VWorldPlace
+from app.services.public_library import (
+    LIBRARY_STANDARD_SOURCE,
+    PublicLibraryAPIError,
+    PublicLibraryClient,
+)
+from app.services.rail_stations import (
+    KORAIL_STATION_SOURCE,
+    KorailStationAPIError,
+    KorailStationClient,
+    StationExit,
+    dataset_exits_for,
+    load_station_exits,
+    station_name,
+)
 
 # uvicorn 이 출력 설정을 걸어 둔 로거라 원천 장애가 서버 콘솔에 보인다.
 logger = logging.getLogger("uvicorn.error")
@@ -191,6 +205,106 @@ TRANSFER_KEYWORDS: tuple[str, ...] = ("환승센터", "환승정류장")
 TRANSFER_CATEGORY_LEAVES: frozenset[str] = frozenset(
     {"교통시설", "주차장", "버스정류장", "버스터미널", "환승센터"}
 )
+
+# ---------------------------------------------------------------------------
+# 역·터미널·도서관 — 지도 회사와 무관한 원천(공공 API → VWorld 장소검색)을 먼저 쓴다.
+# 카카오 장소검색은 마지막 대체다. 카카오·네이버 중 어느 지도가 살아 있든 판정이 같아야
+# 한다(사용자 방침 2026-09-30, 카카오 일일 한도 소진으로 실측).
+# ---------------------------------------------------------------------------
+VWORLD_PLACE_SOURCE = "VWorld 장소검색(국토정보플랫폼)"
+VWORLD_LIBRARY_SOURCE = "VWorld 장소검색 「공공도서관」 분류"
+VWORLD_RAILWAY_SOURCE = "VWorld 장소검색 일반·고속철도역 분류"
+VWORLD_TERMINAL_SOURCE = "VWorld 장소검색 시외·고속·종합버스터미널 분류"
+VWORLD_SUBWAY_SOURCE = "VWorld 장소검색 지하철역·지하철역입구 분류"
+LIBRARY_NONE_SOURCE = "도서관 미반영"
+
+# VWorld 도서관 질의. 분류 문자열에도 걸려 이름에 「공공도서관」이 없는 곳도 온다.
+VWORLD_LIBRARY_QUERY = "공공도서관"
+VWORLD_LIBRARY_LEAF = "공공도서관"
+# 표준데이터·VWorld 도서관이 이 거리 안이면 같은 도서관이다(같은 건물의 방 이름 줄 포함).
+LIBRARY_SAME_SPOT_M = 100.0
+# 표준데이터·VWorld 도서관 이름이 같으면(한쪽이 다른 쪽을 품으면) 이 거리 안까지 같은 도서관이다.
+# 표준데이터 좌표가 수 km 틀린 줄이 있다(금강도서관 3.1km). LH 개별 맞춤 이름 거리와 같다.
+LIBRARY_NAME_MATCH_M = 5000.0
+# VWorld 철도역 질의와 받는 분류(잎). 「철도정거장」 분류는 화물역·무배치 간이역(동익산역·
+# 동산역·황등역)까지 담아 LH 철도역 목록보다 넓다 — 쓰지 않는다.
+VWORLD_RAILWAY_QUERY = "철도역"
+VWORLD_RAILWAY_LEAVES: frozenset[str] = frozenset({"일반철도역", "고속철도역"})
+# VWorld 터미널 질의(분류 이름). 「버스터미널」·「터미널」은 정류장까지 걸려 1만 건을 넘는다.
+VWORLD_TERMINAL_QUERIES: tuple[str, ...] = ("시외버스터미널", "고속버스터미널", "종합버스터미널")
+VWORLD_TERMINAL_LEAVES: frozenset[str] = frozenset(VWORLD_TERMINAL_QUERIES)
+# 같은 이름이 이 거리 안에 여러 번(분류만 다르게) 실리면 한 곳이다.
+VWORLD_SAME_PLACE_M = 150.0
+VWORLD_SUBWAY_QUERY = "지하철역"
+VWORLD_SUBWAY_LEAF = "지하철역"
+VWORLD_SUBWAY_EXIT_LEAF = "지하철역입구"
+
+RAILWAY_KORAIL_NOTE = (
+    "한국철도공사 역위치 정보(지정 원천)로 역을 찾고, 전북은 LH 데이터셋이 모은 역 출구 "
+    "좌표(철도역 JB_48·KTX역 JB_49)에서, 그 밖은 지도 출구 검색으로 찾은 가장 가까운 "
+    "출입구에서 잽니다."
+)
+RAILWAY_VWORLD_NOTE = (
+    "한국철도공사 역위치 정보 대신 VWorld 장소검색(일반·고속철도역 분류)으로 역을 찾았습니다 "
+    "(전북 12역이 LH 철도역·KTX역 목록의 역과 같음). 전북은 LH 데이터셋 역 출구 좌표에서, 그 밖은 "
+    "지도 출구 검색으로 찾은 가장 가까운 출입구에서 잽니다."
+)
+RAILWAY_KAKAO_NOTE = (
+    "한국철도공사 역위치 정보 대신 카카오 지도 검색으로 근사했습니다. "
+    "출입구 좌표는 LH 데이터셋 출구점(전북) 또는 지도 출구 검색으로 찾고, "
+    "찾지 못한 역은 역 대표점으로 잽니다."
+)
+TERMINAL_VWORLD_NOTE = (
+    "대중교통수단 터미널 정보(LH 데이터셋, 비공개 파일) 대신 VWorld 장소검색의 시외·고속·"
+    "종합버스터미널 분류로 근사했습니다. LH 목록에 있는 철도역 이름 터미널·간이 정류소·공항은 "
+    "이 분류에 없습니다."
+)
+TERMINAL_KAKAO_NOTE = "대중교통수단 터미널 정보 대신 카카오 지도 검색으로 근사했습니다."
+SUBWAY_KAKAO_NOTE = (
+    "역 출입구 좌표를 지도 검색(카카오 출구 번호별 조회 + 네이버 보충)으로 "
+    "모아 가장 가까운 출입구를 기준점으로 씁니다. 출입구를 찾지 못한 역은 "
+    "역 대표점으로 잽니다."
+)
+SUBWAY_VWORLD_NOTE = (
+    "카카오 지도 검색 대신 VWorld 장소검색(지하철역·지하철역입구 분류)과 네이버 출구 검색으로 "
+    "역과 출입구를 찾았습니다. 출입구를 찾지 못한 역은 역 대표점으로 잽니다."
+)
+
+
+FALLBACK_FAILED = "조회하지 못했습니다."
+
+
+def _fallback_reason(exc: BaseException) -> str:
+    """지정 원천이 빠진 까닭 한 토막 — 활용신청 전과 장애를 구분해 적는다."""
+
+    if getattr(exc, "unapproved", False):
+        return "활용신청 승인 전이라"
+    return "응답하지 않아"
+
+
+def _fallback_alert(
+    failures: Sequence[tuple[str, BaseException]], used: str, caveat: str
+) -> str:
+    """앞 순위 원천이 빠져 다음 원천을 썼다는 경고. 빠진 원천이 없으면 빈 문자열.
+
+    「전국도서관표준데이터(15013109)는 활용신청 승인 전이라 VWorld 장소검색 … 찾았습니다.」
+    장애(승인 전이 아닌 실패)가 섞였으면 재심사 안내를 붙인다 — 조용히 대체하지 않는다.
+    """
+
+    if not failures:
+        return ""
+    head = ", ".join(f"{who} {_fallback_reason(exc)}" for who, exc in failures)
+    text = " ".join(part for part in (head, used, caveat) if part)
+    if any(not getattr(exc, "unapproved", False) for _, exc in failures):
+        text += " 잠시 뒤 다시 심사해 주십시오."
+    return text
+
+
+def _exit_station(title: str) -> str:
+    """출입구 이름의 역명. 「아차산역1번출입구」·「군자역(능동)3번출입구」 → 「아차산역」·「군자역」."""
+
+    head = title.split("번출")[0].rstrip("0123456789")
+    return station_base(station_name(head))
 
 
 # 진행 화면용 원천 이름. 시설군 키와 같으면 심사표 라벨을 쓰고, 조회 단위가 다른 것만 따로 적는다.
@@ -306,8 +420,7 @@ SCHOOL_KAKAO_NOTE = (
 )
 PUBLIC_LAYER_NOTE = (
     "관공서·행정복지센터·우체국·도서관 등은 행정안전부 민원행정기관 전자지도"
-    "(생활안전지도 IF_0031)로 세고, 소방서·119안전센터(IF_0038)와 도서관 지도 검색으로 "
-    "보충했습니다."
+    "(생활안전지도 IF_0031)로 세고, 도서관은 공공도서관 원천으로 보충했습니다."
 )
 PUBLIC_KAKAO_NOTE = (
     "행안부 민원행정기관 전자지도(생활안전지도 IF_0031) 대신 지도 공공기관 분류로 "
@@ -333,8 +446,11 @@ PARK_CATEGORIES: frozenset[str] = frozenset(
 )
 
 LIBRARY_CATEGORIES: frozenset[str] = frozenset(
-    {"도서관", "국공립도서관", "작은도서관", "전문도서관", "어린이도서관"}
+    {"도서관", "국공립도서관", "작은도서관", "전문도서관", "어린이도서관", "공공도서관"}
 )
+# 공공도서관 원천(전국도서관표준데이터·VWorld 「공공도서관」 분류)이 준 분류. LH 공공도서관
+# 목록과 같은 분류라 이름 토큰으로 다시 거르지 않는다.
+PUBLIC_LIBRARY_LEAF = "공공도서관"
 
 # 심평원 '종류=종합병원' 을 대신하는 근사 기준. 상급종합병원은 카카오에서
 # '대학병원' 으로 분류되는데, LH 원장(전북 9건)에는 빠져 있다. 상급종합을
@@ -394,6 +510,9 @@ class FeedResult(NamedTuple):
     # 원천 장애·대체를 심사 결과에 경고로 올릴 문구. 비어 있으면 정상이다.
     # 조용히 대체 원천으로 넘어가지 않고, 담당자가 재심사를 판단할 수 있게 한다.
     alert: str = ""
+    # 역 피드만 채운다: 원천이 역과 함께 준 출입구 (역명, 출구 이름, 좌표). VWorld 지하철역
+    # 검색은 「○○역3번출입구」를 같은 질의로 돌려준다.
+    station_doors: tuple[tuple[str, str, Coordinates], ...] = ()
 
 
 class MeasuredDoor(NamedTuple):
@@ -543,6 +662,8 @@ def _is_public(place: RawPlace) -> bool:
 
     name = place.name.replace(" ", "")
     leaf = _category_leaf(place)
+    if leaf == PUBLIC_LIBRARY_LEAF:
+        return True
     if leaf in LIBRARY_CATEGORIES:
         return leaf != "작은도서관" and not any(
             token in name for token in _NON_PUBLIC_LIBRARY_TOKENS
@@ -591,19 +712,17 @@ def _is_university(place: RawPlace) -> bool:
 
 
 GROUP_SPECS: dict[str, GroupSpec] = {
+    # 지하철은 카카오(SW8 + 출구 번호별)가 1순위다 — VWorld 지하철역입구는 역마다 일부
+    # 출구만 있다(실측 2026-09-30 건대입구역: 4번출입구 하나). 카카오가 막히면 VWorld 로
+    # 대체하고 경고한다(_subways).
     "subway": GroupSpec(
-        ("subway",),
-        "connected",
-        "역 출입구 좌표를 지도 검색(카카오 출구 번호별 조회 + 네이버 보충)으로 "
-        "모아 가장 가까운 출입구를 기준점으로 씁니다. 출입구를 찾지 못한 역은 "
-        "역 대표점으로 잽니다.",
+        ("subway",), "connected", SUBWAY_KAKAO_NOTE, kakao_backed=False
     ),
     "railway": GroupSpec(
         ("railway",),
         "substituted",
-        "한국철도공사 역위치 정보 대신 지도 검색으로 근사했습니다. "
-        "출입구 좌표는 지도 검색(카카오 출구 번호별 조회 + 네이버 보충)으로 모아 "
-        "가장 가까운 출입구를 기준점으로 쓰고, 찾지 못한 역은 역 대표점으로 잽니다.",
+        RAILWAY_VWORLD_NOTE,
+        kakao_backed=False,
         keep=_is_railway,
     ),
     # 버스정류장은 TAGO 경유노선·배차간격으로 「운행주기 15분 이내」를 판정해
@@ -616,9 +735,10 @@ GROUP_SPECS: dict[str, GroupSpec] = {
         kakao_backed=False,
     ),
     "terminal": GroupSpec(
-        ("terminal", "express_terminal"),
+        ("terminal",),
         "substituted",
-        "대중교통수단 터미널 정보 대신 지도 검색으로 근사했습니다.",
+        TERMINAL_VWORLD_NOTE,
+        kakao_backed=False,
         keep=_is_terminal,
     ),
     "transfer": GroupSpec(
@@ -774,8 +894,17 @@ class AmenityCollector:
         dataset_gates: tuple[DatasetGate, ...] | None = None,
         alignments: Sequence[LhAlignment] | None = None,
         naver_geocode: NaverGeocodeClient | None = None,
+        library_client: PublicLibraryClient | None = None,
+        korail_client: KorailStationClient | None = None,
+        station_exits: tuple[StationExit, ...] | None = None,
     ) -> None:
         self.kakao = kakao
+        # 공공도서관 1순위 원천(전국도서관표준데이터 15013109). 미승인·장애면 VWorld.
+        self.library_client = library_client
+        # 철도역 1순위 원천(한국철도공사 역위치 정보 15127532). 미승인·장애면 VWorld.
+        self.korail_client = korail_client
+        # LH 데이터셋 역 출구점(전북). None 이면 저장소 CSV 를 읽는다.
+        self.station_exits = load_station_exits() if station_exits is None else station_exits
         # LH 개별 맞춤 항목. None 이면 매 수집마다 등록부 파일(lh_alignments.json)을
         # 읽는다 — 항목을 고치면 재시작 없이 다음 심사부터 반영된다. 테스트는 직접 준다.
         self._fixed_alignments = None if alignments is None else tuple(alignments)
@@ -1257,20 +1386,29 @@ class AmenityCollector:
 
         use_kakao = self.kakao.enabled
         use_naver = self.naver is not None and self.naver.enabled
-        if not (use_kakao or use_naver):
-            return
         stations: dict[str, Coordinates] = {}
+        # 원천이 역과 함께 준 출입구(VWorld 지하철역입구). 지도 출구 검색에 더한다.
+        feed_doors: dict[str, list[tuple[str, Coordinates]]] = {}
         for feed in ("railway", "subway"):
             result = results.get(feed)
             if not isinstance(result, FeedResult):
                 continue
+            for base, label, point in result.station_doors:
+                feed_doors.setdefault(base, []).append((label, point))
             for place in result.places:
                 base = station_base(place.name)
-                if base and base not in self._station_doors and base not in stations:
-                    stations[base] = place.coordinates
+                if not base or base in self._station_doors or base in stations:
+                    continue
+                # LH 데이터셋이 모은 출구점이 있는 역(전북 철도역)은 그 점에서만 잰다 —
+                # 지도 회사 출구 검색 결과에 따라 거리가 달라지지 않게 한다.
+                dataset = dataset_exits_for(base, place.coordinates, self.station_exits)
+                if dataset:
+                    self._station_doors[base] = tuple(_dedupe_doors(dataset))
+                    continue
+                stations[base] = place.coordinates
 
         async def one(base: str, at: Coordinates) -> None:
-            doors: list[tuple[str, Coordinates]] = []
+            doors: list[tuple[str, Coordinates]] = list(feed_doors.get(base, ()))
             if use_kakao:
                 doors.extend(await self._kakao_station_exits(base, at))
             if use_naver:
@@ -1475,6 +1613,12 @@ class AmenityCollector:
             feeds["traditional_market"] = self._traditional_markets(center, radius_m)
         if self.park_client is not None and self.park_client.enabled:
             feeds["park"] = self._parks(center, radius_m)
+        # 역·터미널·도서관은 공공 API → VWorld 장소검색 → 카카오(마지막 대체) 순으로 스스로
+        # 원천을 고른다. 아래 카카오 분류·키워드 목록은 이미 맡은 이름을 건너뛴다.
+        feeds["subway"] = self._subways(center, radius_m)
+        feeds["railway"] = self._railways(center, radius_m)
+        feeds["terminal"] = self._terminals(center, radius_m)
+        feeds["library"] = self._libraries(center, radius_m)
         if not self.kakao.enabled:
             # 키가 없으면 호출 자체를 만들지 않는다. 상태는 missing 으로 내려간다.
             return feeds
@@ -1490,7 +1634,6 @@ class AmenityCollector:
         keyword = {
             "railway": "기차역",
             "terminal": "버스터미널",
-            "express_terminal": "고속버스터미널",
             "department": "백화점",
             "market": "전통시장",
             "park": "공원",
@@ -2030,6 +2173,333 @@ class AmenityCollector:
             merged, TRANSFER_SUPPLEMENT_SOURCE if supplement else TRANSFER_STANDARD_SOURCE
         )
 
+    # -- 역·터미널·도서관(지도 회사와 무관한 원천 우선) ---------------------------
+    def _place_search_ready(self) -> bool:
+        """VWorld 장소검색을 쓸 수 있는가(키 + 장소검색을 갖춘 클라이언트)."""
+
+        return (
+            self.vworld is not None
+            and bool(getattr(self.vworld, "enabled", False))
+            and hasattr(self.vworld, "places_around")
+        )
+
+    async def _vworld_places(
+        self,
+        queries: Sequence[str],
+        center: Coordinates,
+        radius_m: int,
+        leaves: frozenset[str],
+    ) -> list[VWorldPlace]:
+        """VWorld 장소검색 여러 질의를 모아 분류 잎이 leaves 인 것만 남긴다. 하나라도 실패하면 올린다."""
+
+        assert self.vworld is not None
+        batches = await asyncio.gather(
+            *(self.vworld.places_around(query, center, radius_m) for query in queries)
+        )
+        seen: set[str] = set()
+        places: list[VWorldPlace] = []
+        for batch in batches:
+            for place in batch:
+                if place.id in seen or place.category_leaf not in leaves:
+                    continue
+                seen.add(place.id)
+                places.append(place)
+        return places
+
+    async def _libraries(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """공공도서관: 전국도서관표준데이터 → VWorld 「공공도서관」 분류 → 카카오 「도서관」.
+
+        LH 공공시설의 도서관은 공공도서관 목록(JB_45)이다. VWorld 「공공도서관」 분류는 그
+        66곳과 이름까지 같았다(2026-09-30 전북 전역 대조). 원천이 모두 실패해도 공공시설
+        전체를 버리지 않고 도서관만 빼고 세며, 그 사실을 경고로 올린다.
+        """
+
+        failures: list[tuple[str, BaseException]] = []
+        if self.library_client is not None and self.library_client.enabled:
+            try:
+                records = await self.library_client.libraries_around(center, radius_m)
+            except Exception as exc:  # noqa: BLE001 — 다음 원천으로 넘어가고 경고한다
+                logger.warning("전국도서관표준데이터 실패: VWorld 로 대체 (%s)", exc)
+                failures.append(("전국도서관표준데이터(15013109)는", exc))
+            else:
+                return await self._standard_libraries(records, center, radius_m)
+        if self._place_search_ready():
+            try:
+                found = await self._vworld_places(
+                    (VWORLD_LIBRARY_QUERY,), center, radius_m, frozenset({VWORLD_LIBRARY_LEAF})
+                )
+                places = tuple(
+                    RawPlace(p.title, p.address, p.category, p.coordinates) for p in found
+                )
+                return FeedResult(
+                    places,
+                    VWORLD_LIBRARY_SOURCE,
+                    degraded=bool(failures),
+                    alert=_fallback_alert(
+                        failures,
+                        "VWorld 장소검색 「공공도서관」 분류로 도서관을 찾았습니다.",
+                        "LH 데이터셋 공공도서관 목록과 같은 분류입니다.",
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("VWorld 도서관 검색 실패 (%s)", exc)
+                failures.append(("VWorld 장소검색은", exc))
+        if self.kakao.enabled:
+            try:
+                result = await self._kakao_keyword("도서관", center, radius_m)
+            except Exception as exc:  # noqa: BLE001
+                failures.append(("카카오 장소검색은", exc))
+            else:
+                return result._replace(
+                    degraded=bool(failures),
+                    alert=_fallback_alert(
+                        failures,
+                        "카카오 지도 「도서관」 검색으로 도서관을 찾았습니다.",
+                        "작은도서관·학교도서관이 섞이거나 공공도서관이 빠졌을 수 있습니다.",
+                    ),
+                )
+        # 도서관 원천이 하나도 답하지 않았다 — 공공시설은 관공서·주민센터로만 센다.
+        alert = _fallback_alert(
+            failures, "도서관을 찾지 못해 공공시설을 도서관 없이 셌습니다.", ""
+        ) or "도서관 위치 원천이 설정되지 않아 공공시설을 도서관 없이 셌습니다."
+        return FeedResult((), LIBRARY_NONE_SOURCE, degraded=True, alert=alert)
+
+    async def _standard_libraries(
+        self, records: Sequence[Any], center: Coordinates, radius_m: int
+    ) -> FeedResult:
+        """표준데이터 공공도서관(목록) + VWorld 「공공도서관」 분류(위치·이름·보충).
+
+        표준데이터는 지자체가 올린 값을 그대로 싣는다. 실측(2026-09-30 전북 66행):
+          - 김제시립도서관(본관·금구·만경분관)·명봉도서관이 없다(LH 66곳 중 59곳만 같다).
+          - 군산시립·설림도서관이 방 이름(「(자료열람실)」·「(학습실)」)으로 두 줄씩 실렸다.
+          - 좌표가 틀린 줄이 있다 — 금강도서관은 군산시립도서관 자리(3.1km 차이), 장수군립·
+            임피채만식도서관은 수 km, 전북도청도서관 238m·오수도서관 241m 어긋난다.
+            VWorld 좌표는 카카오 좌표와 같은 자리였다(부송도서관 682.9m 로 일치).
+          - 이름이 「인후도서관」 꼴이라 LH(「전주시립인후도서관」)와 다르다.
+        그래서 표준데이터 도서관마다 VWorld 공공도서관을 이름(한쪽이 다른 쪽을 품음,
+        LIBRARY_NAME_MATCH_M 안) → 같은 자리(LIBRARY_SAME_SPOT_M) 순으로 짝지어, 짝이 있으면
+        VWorld 이름·좌표(LH 와 같은 표기)로 적고, 짝이 없는 표준데이터 도서관은 그대로,
+        표준데이터에 없는 VWorld 공공도서관은 더한다. VWorld 가 응답하지 않으면 표준데이터만
+        쓰고 경고한다.
+        """
+
+        standard = _merge_same_place(
+            [
+                RawPlace(
+                    _strip_room_suffix(r.name),
+                    r.address,
+                    f"문화,예술 > 도서관 > {PUBLIC_LIBRARY_LEAF}",
+                    r.coordinates,
+                )
+                for r in records
+            ],
+            within_m=LIBRARY_SAME_SPOT_M,
+        )
+        if not self._place_search_ready():
+            return FeedResult(tuple(standard), LIBRARY_STANDARD_SOURCE)
+        try:
+            # 표준데이터 좌표가 틀린 도서관도 이름으로 짝지을 수 있게 넓게 묻는다.
+            found = await self._vworld_places(
+                (VWORLD_LIBRARY_QUERY,),
+                center,
+                radius_m + int(LIBRARY_NAME_MATCH_M),
+                frozenset({VWORLD_LIBRARY_LEAF}),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("VWorld 공공도서관 보충 실패: 표준데이터만 사용 (%s)", exc)
+            return FeedResult(
+                tuple(standard),
+                LIBRARY_STANDARD_SOURCE,
+                degraded=True,
+                alert=(
+                    "VWorld 장소검색이 응답하지 않아 공공도서관을 전국도서관표준데이터만으로 "
+                    "셌습니다. 표준데이터에 없는 공공도서관(김제시립도서관 등)이 빠지거나 "
+                    "좌표가 틀린 도서관이 있을 수 있으니 잠시 뒤 다시 심사해 주십시오."
+                ),
+            )
+        merged = [
+            place
+            for place in _merge_library_sources(standard, found)
+            if haversine_meters(center, place.coordinates) <= radius_m
+        ]
+        return FeedResult(
+            tuple(merged), f"{LIBRARY_STANDARD_SOURCE} + {VWORLD_LIBRARY_SOURCE}(위치·보충)"
+        )
+
+    async def _railways(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """철도역: 한국철도공사 역위치 정보 → VWorld 일반·고속철도역 분류 → 카카오 「기차역」."""
+
+        failures: list[tuple[str, BaseException]] = []
+        if self.korail_client is not None and self.korail_client.enabled:
+            try:
+                records = await self.korail_client.stations_around(center, radius_m)
+                return FeedResult(
+                    tuple(
+                        RawPlace(r.name, "", "교통,수송 > 기차역", r.coordinates)
+                        for r in records
+                    ),
+                    KORAIL_STATION_SOURCE,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("한국철도공사 역위치 정보 실패: VWorld 로 대체 (%s)", exc)
+                failures.append(("한국철도공사 역위치 정보(15127532)는", exc))
+        if self._place_search_ready():
+            try:
+                found = await self._vworld_places(
+                    (VWORLD_RAILWAY_QUERY,), center, radius_m, VWORLD_RAILWAY_LEAVES
+                )
+                places = _merge_same_place(
+                    [
+                        RawPlace(station_name(p.title), p.address, p.category, p.coordinates)
+                        for p in found
+                    ]
+                )
+                return FeedResult(
+                    tuple(places),
+                    VWORLD_RAILWAY_SOURCE,
+                    degraded=bool(failures),
+                    alert=_fallback_alert(
+                        failures,
+                        "VWorld 장소검색(일반·고속철도역 분류)으로 철도역을 찾았습니다.",
+                        "전북은 LH 철도역·KTX역 목록과 같은 역이 잡힙니다.",
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("VWorld 철도역 검색 실패 (%s)", exc)
+                failures.append(("VWorld 장소검색은", exc))
+        return await self._kakao_last_resort(
+            "기차역", center, radius_m, failures, "철도역",
+            "역 앞 상가 등이 섞이거나 역이 빠졌을 수 있습니다.",
+        )
+
+    async def _terminals(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """터미널: VWorld 시외·고속·종합버스터미널 분류 → 카카오 「버스터미널」·「고속버스터미널」.
+
+        LH 터미널 목록(산림빅데이터 대중교통수단터미널정보, 비공개)과 같은 공공 API 는 없다.
+        VWorld 분류는 LH 전북 68곳 중 버스터미널 이름의 곳을 거의 모두 담고, 역 이름
+        터미널(「익산」 = 익산역 필지)·간이 정류소·군산공항은 담지 않는다.
+        """
+
+        failures: list[tuple[str, BaseException]] = []
+        if self._place_search_ready():
+            try:
+                found = await self._vworld_places(
+                    VWORLD_TERMINAL_QUERIES, center, radius_m, VWORLD_TERMINAL_LEAVES
+                )
+                places = _merge_same_place(
+                    [RawPlace(p.title, p.address, p.category, p.coordinates) for p in found]
+                )
+                return FeedResult(tuple(places), VWORLD_TERMINAL_SOURCE)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("VWorld 터미널 검색 실패 (%s)", exc)
+                failures.append(("VWorld 장소검색은", exc))
+        if not self.kakao.enabled:
+            return await self._kakao_last_resort(
+                "버스터미널", center, radius_m, failures, "터미널", ""
+            )
+        try:
+            first, second = await asyncio.gather(
+                self._kakao_keyword("버스터미널", center, radius_m),
+                self._kakao_keyword("고속버스터미널", center, radius_m),
+            )
+        except Exception as exc:  # noqa: BLE001
+            failures.append(("카카오 장소검색은", exc))
+            raise RuntimeError(_fallback_alert(failures, FALLBACK_FAILED, "")) from exc
+        return FeedResult(
+            first.places + second.places,
+            KAKAO_PLACE_SOURCE,
+            degraded=bool(failures),
+            alert=_fallback_alert(
+                failures,
+                "카카오 지도 검색으로 터미널을 찾았습니다.",
+                "지도 회사 분류라 결과가 다를 수 있습니다.",
+            ),
+        )
+
+    async def _subways(self, center: Coordinates, radius_m: int) -> FeedResult:
+        """지하철역: 카카오 SW8(+ 출구 번호별 조회) → VWorld 지하철역·지하철역입구 분류.
+
+        지하철만 카카오가 1순위다 — VWorld 지하철역입구는 역마다 일부 출구만 있어 가장
+        가까운 출구가 빠질 수 있다. 카카오가 막히면(일일 한도 등) VWorld 로 역과 출구를
+        찾고 경고한다. 네이버 출구 검색은 두 경우 모두 보충으로 붙는다.
+        """
+
+        failures: list[tuple[str, BaseException]] = []
+        if self.kakao.enabled:
+            try:
+                return await self._kakao_category("SW8", center, radius_m)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("카카오 지하철역 조회 실패: VWorld 로 대체 (%s)", exc)
+                failures.append(("카카오 장소검색은", exc))
+        if not self._place_search_ready():
+            if failures:
+                raise RuntimeError(_fallback_alert(failures, FALLBACK_FAILED, ""))
+            raise SourceMissing(KAKAO_DISABLED_NOTE)
+        assert self.vworld is not None
+        try:
+            found = await self.vworld.places_around(
+                VWORLD_SUBWAY_QUERY, center, radius_m + STATION_EXIT_SEARCH_RADIUS_M
+            )
+        except Exception as exc:  # noqa: BLE001
+            failures.append(("VWorld 장소검색은", exc))
+            raise RuntimeError(_fallback_alert(failures, FALLBACK_FAILED, "")) from exc
+        stations = _merge_same_place(
+            [
+                RawPlace(station_name(p.title), p.address, p.category, p.coordinates)
+                for p in found
+                if p.category_leaf == VWORLD_SUBWAY_LEAF
+                and haversine_meters(center, p.coordinates) <= radius_m
+            ],
+            within_m=500.0,
+        )
+        bases = {station_base(s.name) for s in stations}
+        doors = tuple(
+            (base, p.title, p.coordinates)
+            for p in found
+            if p.category_leaf == VWORLD_SUBWAY_EXIT_LEAF
+            and (base := _exit_station(p.title)) in bases
+        )
+        return FeedResult(
+            tuple(stations),
+            VWORLD_SUBWAY_SOURCE,
+            degraded=bool(failures),
+            alert=_fallback_alert(
+                failures,
+                "VWorld 장소검색(지하철역·지하철역입구 분류)으로 지하철역과 출입구를 찾았습니다.",
+                "VWorld 에 없는 출입구가 있어 가장 가까운 출입구가 빠졌을 수 있습니다.",
+            ),
+            station_doors=doors,
+        )
+
+    async def _kakao_last_resort(
+        self,
+        query: str,
+        center: Coordinates,
+        radius_m: int,
+        failures: list[tuple[str, BaseException]],
+        what: str,
+        caveat: str,
+    ) -> FeedResult:
+        """앞선 원천이 모두 빠졌을 때 카카오 키워드 검색. 카카오도 없으면 올린다."""
+
+        if not self.kakao.enabled:
+            if failures:
+                raise RuntimeError(_fallback_alert(failures, FALLBACK_FAILED, ""))
+            raise SourceMissing(f"{what} 위치 원천(공공 API·VWorld·카카오)이 설정되지 않았습니다.")
+        try:
+            result = await self._kakao_keyword(query, center, radius_m)
+        except Exception as exc:  # noqa: BLE001
+            if not failures:
+                raise
+            failures.append(("카카오 장소검색은", exc))
+            raise RuntimeError(_fallback_alert(failures, FALLBACK_FAILED, "")) from exc
+        return result._replace(
+            degraded=bool(failures),
+            alert=_fallback_alert(
+                failures, f"카카오 지도 「{query}」 검색으로 {what}을 찾았습니다.", caveat
+            ),
+        )
+
     # -- 시설군 조립 -------------------------------------------------------
     def _build_group(
         self,
@@ -2162,6 +2632,21 @@ class AmenityCollector:
         ):
             state = "connected"
             note = TRANSFER_STANDARD_NOTE
+        # 역·터미널은 실제로 답한 원천에 맞춰 고지를 고른다(공공 API → VWorld → 카카오).
+        if key == "railway" and KORAIL_STATION_SOURCE in sources:
+            state = "connected"
+            note = RAILWAY_KORAIL_NOTE
+        elif key == "railway" and KAKAO_PLACE_SOURCE in sources:
+            note = RAILWAY_KAKAO_NOTE
+        if key == "terminal" and KAKAO_PLACE_SOURCE in sources:
+            note = TERMINAL_KAKAO_NOTE
+        if key == "subway" and VWORLD_SUBWAY_SOURCE in sources:
+            state = "substituted"
+            note = SUBWAY_VWORLD_NOTE
+        if key == "public":
+            library = results.get("library")
+            if isinstance(library, FeedResult) and library.source_label:
+                note = f"{note} 도서관 원천: {library.source_label}."
         # 버스정류장은 운행주기 15분 판정으로 인정 정류장만 배점에 센다.
         if key == "bus_stop":
             outcome = results.get("bus_stop")
@@ -3069,6 +3554,94 @@ def _dedupe(places: Sequence[RawPlace]) -> list[RawPlace]:
         seen.add(signature)
         unique.append(place)
     return unique
+
+
+_ROOM_SUFFIX_RE = re.compile(r"\s*\([^()]*실\)\s*$")
+
+
+def _strip_room_suffix(name: str) -> str:
+    """표준데이터가 도서관 방마다 따로 실은 줄의 방 이름을 뗀다. 「군산시립도서관(학습실)」→「군산시립도서관」."""
+
+    return _ROOM_SUFFIX_RE.sub("", name or "").strip() or (name or "").strip()
+
+
+def _merge_library_sources(
+    standard: Sequence[RawPlace], vworld: Sequence[VWorldPlace]
+) -> list[RawPlace]:
+    """표준데이터 공공도서관과 VWorld 공공도서관을 한 목록으로 합친다(_standard_libraries 참조).
+
+    짝짓기: 이름(정규화 뒤 한쪽이 다른 쪽을 품고 LIBRARY_NAME_MATCH_M 안, 가장 가까운 것) →
+    남은 것끼리 같은 자리(LIBRARY_SAME_SPOT_M). 짝이 있으면 VWorld 이름·좌표, 없으면 각자.
+    """
+
+    def key(name: str) -> str:
+        return re.sub(r"[\s()\[\]·.,\-]", "", name or "")
+
+    pair: dict[int, int] = {}
+    used: set[int] = set()
+    for i, known in enumerate(standard):
+        k = key(known.name)
+        candidates = [
+            (haversine_meters(known.coordinates, p.coordinates), j)
+            for j, p in enumerate(vworld)
+            if j not in used
+            and k
+            and (k in key(p.title) or key(p.title) in k)
+            and haversine_meters(known.coordinates, p.coordinates) <= LIBRARY_NAME_MATCH_M
+        ]
+        if candidates:
+            j = min(candidates)[1]
+            pair[i] = j
+            used.add(j)
+    for i, known in enumerate(standard):
+        if i in pair:
+            continue
+        candidates = [
+            (haversine_meters(known.coordinates, p.coordinates), j)
+            for j, p in enumerate(vworld)
+            if j not in used
+            and haversine_meters(known.coordinates, p.coordinates) <= LIBRARY_SAME_SPOT_M
+        ]
+        if candidates:
+            j = min(candidates)[1]
+            pair[i] = j
+            used.add(j)
+    merged: list[RawPlace] = []
+    for i, known in enumerate(standard):
+        if i in pair:
+            p = vworld[pair[i]]
+            merged.append(known._replace(name=p.title, coordinates=p.coordinates))
+        else:
+            merged.append(known)
+    merged.extend(
+        RawPlace(p.title, p.address, p.category, p.coordinates)
+        for j, p in enumerate(vworld)
+        if j not in used
+    )
+    return merged
+
+
+def _merge_same_place(
+    places: Sequence[RawPlace], within_m: float = VWORLD_SAME_PLACE_M
+) -> list[RawPlace]:
+    """같은 이름이 가까이(within_m) 여러 번 실린 장소를 하나로 둔다(먼저 온 것).
+
+    VWorld 는 한 터미널을 분류만 달리해 세 번(시외·고속·종합) 싣고, 지하철역은
+    「군자(능동)역」·「군자역(능동)」처럼 표기만 다른 두 점을 싣는다. 이름이 다르면
+    같은 자리여도 따로 둔다(정읍고속버스터미널·정읍시외버스공용터미널).
+    """
+
+    kept: list[RawPlace] = []
+    for place in places:
+        key = normalize_key(place.name)
+        if any(
+            normalize_key(other.name) == key
+            and haversine_meters(other.coordinates, place.coordinates) <= within_m
+            for other in kept
+        ):
+            continue
+        kept.append(place)
+    return kept
 
 
 def _distance_m(

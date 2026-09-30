@@ -12,7 +12,7 @@ from typing import Any, Literal, NamedTuple
 import httpx
 
 from app.models import Coordinates
-from app.services.geo import polygon_area_m2
+from app.services.geo import haversine_meters, polygon_area_m2
 from app.services.http_client import shared_verify
 
 
@@ -45,6 +45,11 @@ EMPTY_STATUSES = {"NOT_FOUND", "NOT_FOUND_DATA"}
 
 # VWorld data API 가 한 번에 돌려주는 최대 건수.
 MAX_PAGE_SIZE = 1000
+
+# 장소검색(type=place) 한 번에 훑는 최대 페이지 수. 3km 반경 사각형에서 분류 이름으로
+# 물으면 수십~수백 건이다(실측 2026-09-30 전북 전역: 「공공도서관」 120건, 「철도역」 20건,
+# 「시외버스터미널」 164건). 상한에 닿으면 잘린 것이므로 예외로 올린다.
+PLACE_SEARCH_MAX_PAGES = 5
 
 # 주거지역 판별 키워드. 전용·일반·준주거 전 종이 용도지역명에 「주거」를 포함한다
 # (제1·2종전용주거지역, 제1·2·3종일반주거지역, 준주거지역).
@@ -90,6 +95,25 @@ class BuildingFeature(NamedTuple):
     ground_floors: int
 
 
+class VWorldPlace(NamedTuple):
+    """VWorld 장소검색(type=place) 결과 하나. category 는 「철도시설 > 철도/지하철 > 고속철도역」 꼴."""
+
+    id: str
+    title: str
+    category: str
+    road_address: str
+    parcel_address: str
+    coordinates: Coordinates
+
+    @property
+    def address(self) -> str:
+        return self.road_address or self.parcel_address
+
+    @property
+    def category_leaf(self) -> str:
+        return self.category.split(">")[-1].strip()
+
+
 class ParcelFeature(NamedTuple):
     """지적도 필지 하나."""
 
@@ -118,6 +142,28 @@ def _outer_ring(geometry: dict[str, Any]) -> list[Coordinates]:
     # 여러 조각이면 좌표가 가장 많은 링을 대표로 쓴다.
     largest = max(rings, key=len)
     return [Coordinates(lat=float(point[1]), lng=float(point[0])) for point in largest]
+
+
+def _vworld_place(item: Any) -> VWorldPlace | None:
+    if not isinstance(item, dict):
+        return None
+    title = str(item.get("title") or "").strip()
+    point = item.get("point") or {}
+    try:
+        coordinates = Coordinates(lat=float(point["y"]), lng=float(point["x"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not title:
+        return None
+    address = item.get("address") or {}
+    return VWorldPlace(
+        id=str(item.get("id") or f"{title}@{coordinates.lat},{coordinates.lng}"),
+        title=title,
+        category=str(item.get("category") or "").strip(),
+        road_address=str(address.get("road") or "").strip(),
+        parcel_address=str(address.get("parcel") or "").strip(),
+        coordinates=coordinates,
+    )
 
 
 class VWorldClient:
@@ -264,6 +310,107 @@ class VWorldClient:
                 except (KeyError, TypeError, ValueError):
                     continue
         return None
+
+    async def search_places(
+        self,
+        query: str,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        max_pages: int = PLACE_SEARCH_MAX_PAGES,
+    ) -> list[VWorldPlace]:
+        """VWorld 장소검색(국토정보플랫폼 POI)으로 사각 영역 안의 장소를 모두 받는다.
+
+        지도 회사(카카오·네이버)와 무관한 반경 열거 원천이다. 질의어는 이름뿐 아니라 분류
+        문자열에도 걸린다 — 「공공도서관」으로 물으면 분류가 공공도서관인 곳(이름에
+        「공공도서관」이 없는 「전주시립인후도서관」 포함)이 온다. 실측(2026-09-30, 전북
+        전역): 분류 「공공도서관」 67곳이 LH 데이터셋 공공도서관 66곳과 이름까지 같고
+        (진안도서관 1곳 더), 「철도역」 질의의 일반·고속철도역 분류가 LH 철도역·KTX역과
+        같다. 결과 없음은 빈 목록, 장애·키 오류는 VWorldAPIError(0곳과 구분한다).
+        """
+
+        if not self.enabled:
+            raise VWorldAPIError("VWorld API 키가 설정되지 않았습니다.")
+        places: list[VWorldPlace] = []
+        seen: set[str] = set()
+        async with httpx.AsyncClient(
+            timeout=self.timeout, transport=self._transport, verify=shared_verify()
+        ) as client:
+            for page in range(1, max_pages + 1):
+                params = {
+                    "service": "search",
+                    "request": "search",
+                    "version": "2.0",
+                    "type": "place",
+                    "query": query,
+                    "bbox": f"{west},{south},{east},{north}",
+                    "crs": "EPSG:4326",
+                    "size": str(MAX_PAGE_SIZE),
+                    "page": str(page),
+                    "format": "json",
+                    "key": self.api_key,
+                    "domain": self.domain,
+                }
+                try:
+                    response = await client.get(VWORLD_SEARCH_URL, params=params)
+                except httpx.HTTPError as exc:
+                    raise VWorldAPIError(f"VWorld 장소검색 요청에 실패했습니다: {exc}") from exc
+                if response.status_code != 200:
+                    raise VWorldAPIError(
+                        f"VWorld 장소검색 응답 오류 ({response.status_code})",
+                        response.status_code,
+                    )
+                try:
+                    body = response.json().get("response") or {}
+                except ValueError as exc:
+                    raise VWorldAPIError("VWorld 장소검색 응답을 해석하지 못했습니다.") from exc
+                status = body.get("status")
+                if status in EMPTY_STATUSES:
+                    break
+                if status != "OK":
+                    error = body.get("error") or {}
+                    detail = error.get("text") or status or "알 수 없는 오류"
+                    raise VWorldAPIError(f"VWorld 장소검색 오류: {detail}")
+                items = (body.get("result") or {}).get("items") or []
+                for item in items:
+                    place = _vworld_place(item)
+                    if place is None or place.id in seen:
+                        continue
+                    seen.add(place.id)
+                    places.append(place)
+                try:
+                    total = int((body.get("record") or {}).get("total") or 0)
+                except (TypeError, ValueError):
+                    total = 0
+                if len(items) < MAX_PAGE_SIZE or page * MAX_PAGE_SIZE >= total:
+                    return places
+            else:
+                raise VWorldAPIError(
+                    f"VWorld 장소검색 결과가 {max_pages * MAX_PAGE_SIZE}건을 넘어 잘렸습니다: {query}"
+                )
+        return places
+
+    async def places_around(
+        self,
+        query: str,
+        center: Coordinates,
+        radius_m: float,
+        max_pages: int = PLACE_SEARCH_MAX_PAGES,
+    ) -> list[VWorldPlace]:
+        """반경 안의 장소. 반경을 품는 사각형으로 묻고 직선거리로 다시 거른다."""
+
+        dlat = radius_m / 111_320.0
+        dlng = radius_m / (111_320.0 * max(math.cos(math.radians(center.lat)), 1e-6))
+        places = await self.search_places(
+            query,
+            center.lat - dlat,
+            center.lng - dlng,
+            center.lat + dlat,
+            center.lng + dlng,
+            max_pages=max_pages,
+        )
+        return [p for p in places if haversine_meters(center, p.coordinates) <= radius_m]
 
     async def parcel_at(self, lat: float, lng: float) -> ParcelFeature | None:
         """좌표를 품는 필지를 조회한다.

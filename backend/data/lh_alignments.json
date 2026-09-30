@@ -128,6 +128,27 @@
       "date": "2026-09-30"
     },
     {
+      "id": "terminal-jeonju-express-parcel",
+      "scope": "amenity",
+      "name": "전주고속버스터미널",
+      "aliases": [],
+      "group": "terminal",
+      "action": "point",
+      "lh": {
+        "name": "전주고속버스터미널",
+        "address": "전라북도 전주시 덕진구 금암동 767-9",
+        "lat": 35.8345785,
+        "lng": 127.1294355,
+        "pnu": "5211310700107670009",
+        "evidence": [
+          {"site": "115 전주시 덕진구 금암동 762-1 외 1필지", "lh_distance_m": 92, "before_m": 41.5, "after_m": 91.9, "note": "이전 값은 VWorld 장소검색 좌표가 놓인 옆 필지(금암동 767-2) 경계 거리"}
+        ]
+      },
+      "reason": "공공 API(VWorld 장소검색)의 터미널 좌표는 옆 필지(금암동 767-2, 6,643㎡)에 놓여 그 경계로 재면 41.5m 입니다. LH 데이터셋은 터미널 PNU(금암동 767-9)로 잽니다. 지도 회사 좌표에 따라 필지가 바뀌지 않도록 LH 데이터셋 기준 필지 경계에서 잽니다.",
+      "source": "facilities.xlsx 생활편의시설 16210행(id 62443 대중교통터미널 「전주고속버스터미널」, 50_bus_terminals.csv 26행, PNU 5211310700107670009)",
+      "date": "2026-09-30"
+    },
+    {
       "id": "terminal-iksan-station-merge",
       "scope": "amenity",
       "name": "익산",

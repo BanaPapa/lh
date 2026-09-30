@@ -56,6 +56,8 @@ from app.services.naver_search import NaverSearchClient
 from app.services.hira_hospital import HiraHospitalClient
 from app.services.school_locations import SchoolLocationClient
 from app.services.traditional_market import TraditionalMarketClient
+from app.services.public_library import PublicLibraryClient
+from app.services.rail_stations import KorailStationClient
 from app.services.city_parks import CityParkClient
 from app.services.ncmc_hospital import NcmcHospitalClient
 from app.services.safemap_facilities import SafemapFacilityFeed
@@ -123,6 +125,10 @@ def get_screening_service() -> ScreeningService:
             market_client=TraditionalMarketClient(config.public_data_key),
             # 공원 1순위: LH 생활권공원과 같은 전국도시공원정보표준데이터.
             park_client=CityParkClient(config.public_data_key),
+            # 공공도서관 1순위: 전국도서관표준데이터(15013109). 미승인·장애면 VWorld 장소검색.
+            library_client=PublicLibraryClient(config.public_data_key),
+            # 철도역 1순위: 한국철도공사 역위치 정보(15127532). 미승인·장애면 VWorld 장소검색.
+            korail_client=KorailStationClient(config.public_data_key),
             front_door_store=get_front_door_store(),
             cadastral_store=get_cadastral_store(),
             # 대학 정문 좌표 확보(LH 과업내용서 예외기준: 대학교=정문).
