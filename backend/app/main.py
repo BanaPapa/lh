@@ -120,9 +120,8 @@ async def provider_status(config: Settings = Depends(get_settings)) -> dict[str,
         "kakao_reason": reason,
         "notice": (
             "카카오 API 일일 사용 한도를 넘어 지도를 네이버 지도로 바꿨습니다. 주소 검색은 "
-            "네이버·VWorld 로 대신하고, 카카오 지도 검색에만 의존하는 일부 편의시설(철도역·"
-            "터미널·마트·백화점·도서관 등)은 「검토 필요」로 표시됩니다. 한도는 매일 자정(KST)에 "
-            "풀립니다."
+            "네이버·VWorld 로 대신하고, 편의시설 판정은 공공 원천을 써서 결과가 같습니다. "
+            "한도는 매일 자정(KST)에 풀립니다."
             if limited
             else ""
         ),

@@ -829,14 +829,6 @@ function App() {
 
   return (
     <main className="screening-app solo-app" data-module-view="solo">
-      {kakaoNotice && (
-        <div className="provider-outage-banner" role="status">
-          <span>{kakaoNotice}</span>
-          <button type="button" aria-label="안내 닫기" onClick={() => setKakaoNotice("")}>
-            ×
-          </button>
-        </div>
-      )}
       <TopSearchBar
         query={query}
         onQueryChange={(nextQuery) => {
@@ -871,6 +863,7 @@ function App() {
         screeningError={screeningError}
         onOpenSheet={() => setSheetOpen(true)}
         theme={theme}
+        kakaoNotice={kakaoNotice}
         onToggleTheme={toggleTheme}
       />
 

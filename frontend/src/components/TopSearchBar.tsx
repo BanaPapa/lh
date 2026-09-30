@@ -54,6 +54,8 @@ interface TopSearchBarProps {
   canPrint: boolean;
   theme: ThemeMode;
   onToggleTheme: () => void;
+  /** 카카오 API 한도 초과 안내(전문). 있으면 테마 버튼 왼쪽 상태 줄에 짧게 보인다. */
+  kakaoNotice?: string;
   /** 일괄 심사(신청자 엑셀 올리기) 모달을 연다. */
   onOpenBatch: () => void;
   /** 검색 뒤 검색창 바로 아래에 보이는 사업지 요약(필지 수·면적·지번). */
@@ -111,6 +113,7 @@ export function TopSearchBar({
   canPrint,
   theme,
   onToggleTheme,
+  kakaoNotice = "",
   onOpenBatch,
   siteSummary = null,
   applicationTypes,
@@ -276,7 +279,7 @@ export function TopSearchBar({
       </div>
 
       <div className="solo-bar-actions">
-          <ServerWakeNotice />
+          <ServerWakeNotice kakaoNotice={kakaoNotice} />
           <button
             type="button"
             className="solo-icon-button"
