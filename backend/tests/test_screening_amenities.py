@@ -1018,9 +1018,10 @@ async def test_hospital_is_measured_by_parcel_boundary_not_gate() -> None:
 
 @pytest.mark.asyncio
 async def test_university_gates_from_kakao_use_nearest_named_gate() -> None:
+    # 네이버가 없을 때만 카카오 「입출구」로 문 후보를 찾는다.
     kakao = FakeKakao(
-        categories={"SC4": [place("건국대학교", 900, "교육,학문 > 학교 > 대학교")]},
         keywords={
+            "대학교": [place("건국대학교", 900, "교육,학문 > 학교 > 대학교")],
             "건국대학교 문": [
                 gate_place("건국대학교 상허문", 600),
                 gate_place("건국대학교 일감문", 750),
@@ -1131,8 +1132,13 @@ async def test_hospital_layer_fills_in_when_ncmc_is_absent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_university_layer_supplements_without_duplicating_kakao() -> None:
-    kakao = FakeKakao(keywords={"대학교": [place("전주대학교", 900, "교육,학문 > 학교 > 대학교")]})
+async def test_university_layer_is_the_only_source_when_it_answers() -> None:
+    # 교육부 레이어(IF_0034)가 지정 원천이다. 지도 검색(「대학교」)·학교 분류(SC4)의
+    # 대학은 섞지 않는다 — 지도사 사정에 따라 대학 목록이 달라지면 안 된다.
+    kakao = FakeKakao(
+        keywords={"대학교": [place("지도대학교", 400, "교육,학문 > 학교 > 대학교")]},
+        categories={"SC4": [place("분류대학교", 500, "교육,학문 > 학교 > 대학교")]},
+    )
     universities = FakeLayerFeed([("전주대학교", 950, "대학교"), ("전북대학교", 1500, "대학교")])
     collector = AmenityCollector(
         kakao=kakao, tago=FakeTago([]), safemap_universities=universities
@@ -1140,9 +1146,99 @@ async def test_university_layer_supplements_without_duplicating_kakao() -> None:
 
     result = await collector.collect([], CENTER)
 
-    names = [f.name for f in result["university"].facilities]
-    assert names == ["전주대학교", "전북대학교"]
-    assert "IF_0034" in result["university"].actual_source
+    group = result["university"]
+    assert [f.name for f in group.facilities] == ["전주대학교", "전북대학교"]
+    assert group.state == "connected"
+    assert group.actual_source == "교육부 대학교 위치(생활안전지도 IF_0034)"
+    assert "대학교" not in kakao.calls
+    assert not group.source_alert
+
+
+@pytest.mark.asyncio
+async def test_university_layer_keeps_campus_whose_gate_is_inside_radius() -> None:
+    # 레이어 주소점은 반경(3km) 밖이지만 정문은 안인 캠퍼스(094 원광대 2,848m)는 싣고,
+    # 정문까지 잰 거리가 반경 밖인 학교는 뺀다.
+    from app.screening.front_door import DatasetGate
+
+    universities = FakeLayerFeed([("원광대학교", 3400, "대학교"), ("먼대학교", 3500, "대학교")])
+    gates = (
+        DatasetGate("원광대학교", "원광대학교정문", offset_coordinates(CENTER, 2850, 0)),
+    )
+    collector = AmenityCollector(
+        kakao=DisabledKakao(), tago=FakeTago([]), safemap_universities=universities,
+        dataset_gates=gates, alignments=(),
+    )
+
+    result = await collector.collect([], CENTER)
+
+    facilities = result["university"].facilities
+    assert [f.name for f in facilities] == ["원광대학교"]
+    assert facilities[0].distance_m == pytest.approx(2850, abs=10)
+    assert facilities[0].measurement_tier == "front_door_point"
+
+
+@pytest.mark.asyncio
+async def test_university_layer_works_without_kakao() -> None:
+    universities = FakeLayerFeed([("전주대학교", 950, "대학교")])
+    collector = AmenityCollector(
+        kakao=DisabledKakao(), tago=FakeTago([]), safemap_universities=universities
+    )
+
+    result = await collector.collect([], CENTER)
+
+    assert [f.name for f in result["university"].facilities] == ["전주대학교"]
+    assert result["university"].state == "connected"
+
+
+@pytest.mark.asyncio
+async def test_university_layer_failure_falls_back_to_kakao_with_alert() -> None:
+    kakao = FakeKakao(keywords={"대학교": [place("지도대학교", 400, "교육,학문 > 학교 > 대학교")]})
+    collector = AmenityCollector(
+        kakao=kakao, tago=FakeTago([]), safemap_universities=FakeLayerFeed([], fail=True)
+    )
+
+    result = await collector.collect([], CENTER)
+
+    group = result["university"]
+    assert group.state == "substituted"
+    assert [f.name for f in group.facilities] == ["지도대학교"]
+    assert "IF_0034" in group.source_alert and "카카오" in group.source_alert
+
+
+@pytest.mark.asyncio
+async def test_retail_does_not_spend_kakao_quota() -> None:
+    # 상업시설은 대규모점포 원장·전통시장 표준데이터로만 센다. 카카오 MT1·「백화점」·
+    # 「전통시장」은 쓰는 시설군이 없어 부르지 않는다.
+    kakao = FakeKakao()
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]))
+
+    await collector.collect([], CENTER)
+
+    assert not {"MT1", "백화점", "전통시장"} & set(kakao.calls)
+
+
+@pytest.mark.asyncio
+async def test_public_keeps_office_layer_when_library_search_fails() -> None:
+    # 2026-09-30 카카오 한도 소진: 도서관 검색 하나가 실패해 주민센터까지 공공시설이
+    # 통째로 빠졌다. 관공서 레이어로 세고 도서관 원천 실패는 경고로 올린다.
+    kakao = FakeKakao(fail={"도서관", "PO3"})
+    offices = FakeLayerFeed(
+        [("효자5동주민센터", 216, "관공서"), ("어양동행정복지센터", 451, "관공서"),
+         ("대산면사무소", 700, "관공서"), ("아파트관리사무소", 300, "관공서"),
+         ("전주효자동우체국", 100, "관공서")]
+    )
+    collector = AmenityCollector(kakao=kakao, tago=FakeTago([]), safemap_offices=offices)
+
+    result = await collector.collect([], CENTER)
+
+    group = result["public"]
+    assert group.state == "connected"
+    assert [f.name for f in group.facilities] == [
+        "효자5동주민센터", "어양동행정복지센터", "대산면사무소",
+    ]
+    # 도서관 feed 는 원천이 모두 빠지면 빈 결과 + 경고로 답한다(_libraries).
+    assert "도서관 없이" in group.source_alert
+    assert "다시 심사" in group.source_alert
 
 
 # ---------------------------------------------------------------------------
