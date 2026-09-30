@@ -56,7 +56,8 @@ try {
     --memory 1Gi --cpu 1 `
     --min-instances 0 --max-instances 1 `
     --timeout 900 `
-    --cpu-boost
+    --cpu-boost `
+    --no-cpu-throttling  # 심사는 요청이 끝난 뒤 백그라운드 작업으로 돈다. 기본값(요청 중에만 CPU)이면 진행 조회 때만 CPU 를 받아 10분 넘게 걸렸다
 } finally {
   Remove-Item $yaml -ErrorAction SilentlyContinue
 }
