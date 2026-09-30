@@ -256,10 +256,6 @@
       "source": "facilities.xlsx 생활편의시설 353행(id 46580 그 밖의 대규모점포 「성락시장」, 41_large_retail_stores.xlsx 88행, PNU 5211310400115750001)",
       "date": "2026-09-30"
     },
-      "reason": "공공 API(인허가 대규모점포 원장)의 점포 좌표를 품는 필지는 송천동2가 1422(파인트리몰 부지)라 그 경계로 재면 738.1m 입니다. LH 데이터셋은 점포 지번주소 488-3 으로 PNU 를 만들었지만 그 지번은 연속지적도(2026-08판·VWorld 현행)에 없어(1422 로 합병) LH앱은 점포 좌표(POLYGON_TO_POINT)에서 잽니다. 공공 API 자료를 LH 데이터셋 기준에 맞춰 같은 좌표에서 잽니다.",
-      "source": "facilities.xlsx 생활편의시설 14923행(id 편의-392 그 밖의 대규모점포 「파인트리몰」, JB_41_LARGE_RETAIL_STORES, PNU 5211312200104880003 LOT_ADDRESS_PNU_ASSEMBLY, 좌표 35.8670401, 127.1209407) · LH 연속지적도 LSMD_CONT_LDREG_52_202608 과 VWorld 모두 PNU 5211312200104880003 없음(2026-09-30 확인, 주소 「송천동2가 488-3」 좌표도 1422 필지) · LH앱 build-facilities.ts: PNU 필지 없으면 measured=POINT · LH앱 결과 004 거리 792.28m",
-      "date": "2026-09-30"
-    },
     {
       "id": "busstop-express-terminal-buddhist-point",
       "scope": "amenity",
