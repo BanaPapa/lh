@@ -70,6 +70,24 @@
    다필지일 때 옆 열의 「다시 검색」 버튼을 덮는다. 넘치는 지번은 칩 안에서 가로로 민다. */
 .solo-site-slot { grid-column: 4; grid-row: 2; justify-self: stretch; display: flex; min-width: 0; max-width: 100%; min-height: 24px; }
 
+/* 넓은 화면(일반 모니터)은 주택유형 오른쪽에 신청유형을 붙여 한 줄로 쓴다. 노트북처럼
+   좁으면 위 기본 배치(두 줄)로 돌아간다. 2행은 검색 뒤 판정·필지 칩·다시 검색이 생길
+   때만 높이를 가진다. */
+@media (min-width: 1800px) {
+  .solo-topbar {
+    grid-template-columns: max-content max-content max-content 18px minmax(200px, 448px) max-content minmax(max-content, 1fr);
+  }
+  .solo-application-slot { grid-column: 3; grid-row: 1; }
+  .solo-search-shell { grid-column: 5; }
+  .solo-run-slot { grid-column: 6; }
+  .solo-reset-slot { grid-column: 6; }
+  .solo-bar-actions { grid-column: 7; }
+  .solo-site-slot { grid-column: 5; }
+  .solo-type-measure { grid-column: 2 / span 2; }
+  .solo-brand-slot,
+  .solo-site-slot { min-height: 0; }
+}
+
 /* 실행(또는 검색·결과 상세)과 다시 검색은 같은 열에서 같은 크기다. */
 .solo-run-slot > button,
 .solo-reset-slot > button {
@@ -1941,17 +1959,16 @@
   white-space: nowrap;
 }
 
-/* 테마 버튼 왼쪽 상태 줄: 서버 기동 안내(잠깐) + 카카오 한도 초과 안내. 최대 두 줄. */
+/* 테마 버튼 왼쪽 상태 줄: 서버 기동 안내 + 카카오 한도 초과 안내. 최대 두 줄, 늘 보인다. */
 .server-status-notes {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  max-width: 320px;
-  font-size: 12px;
+  max-width: 360px;
+  font-size: 14px;
   line-height: 1.35;
   color: var(--muted);
-  animation: server-wake-in 200ms ease;
 }
 .server-status-notes > span {
   max-width: 100%;
@@ -1962,10 +1979,6 @@
 .server-status-notes > .is-warning {
   color: #b7791f;
   font-weight: 600;
-}
-@keyframes server-wake-in {
-  from { opacity: 0; transform: translateX(6px); }
-  to { opacity: 1; transform: none; }
 }
 @media (max-width: 720px) {
   .server-status-notes { display: none; }
