@@ -393,7 +393,7 @@ function App() {
     setSearchError("");
     setSearchNotice("");
     try {
-      const response = await searchAddress(query);
+      const response = await searchAddress(query, mapProvider);
       if (response.candidates.length === 0) {
         setSearchError(
           response.demo

@@ -9,9 +9,13 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 }
 
-export function searchAddress(query: string): Promise<GeocodeResponse> {
+// provider = 화면에서 고른 지도 세트. 검색도 같은 세트의 원천을 먼저 쓴다(결과는 같다).
+export function searchAddress(
+  query: string,
+  provider: "kakao" | "naver" = "kakao",
+): Promise<GeocodeResponse> {
   return request<GeocodeResponse>(
-    `/api/geocode?query=${encodeURIComponent(query.trim())}`,
+    `/api/geocode?query=${encodeURIComponent(query.trim())}&provider=${provider}`,
   );
 }
 

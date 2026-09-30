@@ -226,6 +226,19 @@ async def test_search_candidates_reports_fallback_notice() -> None:
     assert "네이버" in notice and "카카오" in notice
 
 
+@pytest.mark.asyncio
+async def test_naver_set_searches_naver_first_without_notice() -> None:
+    # 화면에서 네이버 세트를 고르면 검색도 네이버부터 — 카카오는 부르지 않고 안내도 없다.
+    naver, _ = naver_client(naver_ok())
+    kakao = FakeKakao(error=quota_error())
+    candidates, notice = await search_address_candidates(
+        ADDRESS, kakao=kakao, naver=naver, vworld=FakeVWorld(), prefer="naver"
+    )
+    assert [c.source for c in candidates] == ["naver"]
+    assert notice == ""
+    assert kakao.calls == []
+
+
 def _api_client(monkeypatch, kakao, naver, vworld) -> TestClient:
     settings = Settings(_env_file=None, demo_mode=False, kakao_rest_api_key="k")
     main.app.dependency_overrides[get_settings] = lambda: settings

@@ -249,55 +249,76 @@ def make_lenient_geocoder(geocoder: Geocoder) -> Geocoder:
     return geocode
 
 
-def _fallback_notice(errors: list[BaseException], source: str) -> str:
-    reason = next((str(e) for e in errors if str(e)), "응답 오류")
-    return (
-        f"카카오 주소 검색이 응답하지 않아({reason[:80]}) {source}에서 찾았습니다. "
-        "카카오가 복구되면 다시 검색해 확인해 주세요."
-    )
-
-
 async def search_address_candidates(
-    query: str, *, kakao, naver=None, vworld=None
+    query: str, *, kakao, naver=None, vworld=None, prefer: str = "kakao"
 ) -> tuple[list[GeocodeCandidate], str]:
-    """주소 검색창·일괄 심사용 후보 검색: 카카오 → 네이버 → VWorld.
+    """주소 검색창·일괄 심사용 후보 검색.
 
-    반환: (후보, 안내 문구). 카카오가 막혀 대체 원천으로 찾았으면 안내 문구를 채운다
-    (원천 장애는 조용히 넘기지 않는다). 아무도 못 찾았는데 오류가 섞였으면
+    prefer 는 화면에서 고른 지도 세트다. 「kakao」면 카카오 → 네이버 → VWorld,
+    「naver」면 네이버 → VWorld → 카카오 순으로 묻는다. 어느 세트든 같은 주소면 같은
+    필지로 이어지고, 판정은 공공 원천을 써서 결과가 같다.
+
+    반환: (후보, 안내 문구). 고른 세트의 검색이 막혀 다른 원천으로 찾았으면 안내 문구를
+    채운다(원천 장애는 조용히 넘기지 않는다). 아무도 못 찾았는데 오류가 섞였으면
     GeocodeUnavailable 을 올린다.
     """
 
     errors: list[BaseException] = []
-    found = await _ask_kakao(kakao, [query], errors)
-    if found:
-        return list(found), ""
-    kakao_errors = list(errors)
-    if _enabled(naver):
+
+    async def ask_kakao() -> list[GeocodeCandidate]:
+        return list(await _ask_kakao(kakao, [query], errors) or [])
+
+    async def ask_naver() -> list[GeocodeCandidate]:
+        if not _enabled(naver):
+            return []
         reason = _outage("네이버", naver)
         if reason is not None:
             errors.append(ProviderOutage("네이버", reason))
-        else:
-            try:
-                rows = await _retrying(lambda: naver.candidates(query))
-            except NaverGeocodeAuthError:
-                rows = []
-            except Exception as exc:  # noqa: BLE001
-                if isinstance(exc, NaverGeocodeError) and _is_http_failure(exc):
-                    _trip("네이버", naver, exc)
-                errors.append(exc)
-                rows = []
-            if rows:
-                return rows, _fallback_notice(kakao_errors, "네이버 지오코딩") if kakao_errors else ""
-    point = await _ask_vworld(vworld, [query], errors)
-    if point is not None:
-        candidate = GeocodeCandidate(
-            id=f"vworld-{point.lng}-{point.lat}",
-            name=query,
-            address=query,
-            coordinates=point,
-            source="vworld",
-        )
-        return [candidate], _fallback_notice(kakao_errors, "브이월드 주소검색") if kakao_errors else ""
+            return []
+        try:
+            return list(await _retrying(lambda: naver.candidates(query)))
+        except NaverGeocodeAuthError:
+            return []
+        except Exception as exc:  # noqa: BLE001
+            if isinstance(exc, NaverGeocodeError) and _is_http_failure(exc):
+                _trip("네이버", naver, exc)
+            errors.append(exc)
+            return []
+
+    async def ask_vworld() -> list[GeocodeCandidate]:
+        point = await _ask_vworld(vworld, [query], errors)
+        if point is None:
+            return []
+        return [
+            GeocodeCandidate(
+                id=f"vworld-{point.lng}-{point.lat}",
+                name=query,
+                address=query,
+                coordinates=point,
+                source="vworld",
+            )
+        ]
+
+    steps = {
+        "kakao": ("카카오 주소검색", ask_kakao),
+        "naver": ("네이버 지오코딩", ask_naver),
+        "vworld": ("브이월드 주소검색", ask_vworld),
+    }
+    order = ("naver", "vworld", "kakao") if prefer == "naver" else ("kakao", "naver", "vworld")
+    first_label = steps[order[0]][0]
+    for index, key in enumerate(order):
+        before = len(errors)
+        label, ask = steps[key]
+        rows = await ask()
+        if rows:
+            # 고른 세트가 막혀 뒤 원천에서 찾았을 때만 알린다(고른 세트로 찾으면 조용히).
+            first_errors = errors[:before] if index > 0 else []
+            if index > 0 and first_errors:
+                reason = next((str(e) for e in first_errors if str(e)), "응답 오류")
+                return rows, (
+                    f"{first_label}이 응답하지 않아({reason[:80]}) {label}에서 찾았습니다."
+                )
+            return rows, ""
     if errors:
         raise _unavailable(query, errors)
     return [], ""

@@ -131,6 +131,8 @@ async def provider_status(config: Settings = Depends(get_settings)) -> dict[str,
 @app.get("/api/geocode", response_model=GeocodeResponse)
 async def geocode(
     query: str = Query(min_length=2, max_length=120),
+    # 화면에서 고른 지도 세트(kakao·naver). 검색도 같은 세트의 원천을 먼저 쓴다.
+    provider: str = Query(default="kakao", pattern="^(kakao|naver)$"),
     config: Settings = Depends(get_settings),
 ) -> GeocodeResponse:
     if config.demo_mode:
@@ -144,11 +146,11 @@ async def geocode(
     kakao, naver, vworld = geocode_clients(config)
     try:
         candidates, notice = await search_address_candidates(
-            lookup, kakao=kakao, naver=naver, vworld=vworld
+            lookup, kakao=kakao, naver=naver, vworld=vworld, prefer=provider
         )
         if not candidates and lookup != query:
             candidates, notice = await search_address_candidates(
-                query, kakao=kakao, naver=naver, vworld=vworld
+                query, kakao=kakao, naver=naver, vworld=vworld, prefer=provider
             )
     except GeocodeUnavailable as exc:
         raise _geocode_http_error(exc) from exc
