@@ -65,7 +65,7 @@
 .solo-search-shell { grid-column: 4; grid-row: 1; min-width: 0; z-index: 2; }
 .solo-run-slot { grid-column: 5; grid-row: 1; }
 .solo-reset-slot { grid-column: 5; grid-row: 2; }
-.solo-bar-actions { grid-column: 6; grid-row: 1; justify-self: end; }
+.solo-bar-actions { grid-column: 6; grid-row: 1; justify-self: stretch; }
 /* 칩이 검색창 열 폭 안에서 줄어들게 flex 로 둔다. 블록이면 칩이 내용 폭만큼 늘어나
    다필지일 때 옆 열의 「다시 검색」 버튼을 덮는다. 넘치는 지번은 칩 안에서 가로로 민다. */
 .solo-site-slot { grid-column: 4; grid-row: 2; justify-self: stretch; display: flex; min-width: 0; max-width: 100%; min-height: 24px; }
@@ -410,7 +410,13 @@
 }
 /* 아이콘은 줄지 않고, 폭이 모자라면 상태 안내 글자만 말줄임으로 줄인다. */
 .solo-bar-actions > * { flex: none; }
-.solo-bar-actions > .server-status-notes { flex: 0 1 auto; min-width: 0; }
+.solo-bar-actions > .server-status-notes {
+  /* 글자 폭이 열 최소 폭 계산에 들어가지 않게 가둔다(아이콘이 먼저, 남는 폭만 안내). */
+  contain: inline-size;
+  flex: 0 1 360px;
+  min-width: 0;
+  overflow: hidden;
+}
 
 .solo-icon-button {
   width: var(--control-h);
