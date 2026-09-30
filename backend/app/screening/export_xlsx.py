@@ -13,6 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.kst import KST
 from app.hazard_review.rulebook import APPLICATION_TYPE_LABELS, HOUSING_TYPE_LABELS
 from app.rules_config import OPTION_DEFS, is_relaxed, option_enabled
 from app.screening.models import (
@@ -96,7 +97,7 @@ def _meters(value: float | None) -> object:
 def _stamp(value: datetime | None) -> str:
     if value is None:
         return ""
-    return value.astimezone().strftime("%Y-%m-%d %H:%M")
+    return value.astimezone(KST).strftime("%Y-%m-%d %H:%M")
 
 
 def _measurement(hit: ScreeningFacilityHit) -> str:
@@ -301,7 +302,7 @@ def xlsx_filename_header(prefix: str, generated_at: datetime) -> str:
 
     from urllib.parse import quote
 
-    stamp = generated_at.astimezone().strftime("%Y%m%d_%H%M")
+    stamp = generated_at.astimezone(KST).strftime("%Y%m%d_%H%M")
     ascii_name = f"LH_screening_{stamp}.xlsx"
     utf8_name = quote(f"{prefix}_{stamp}.xlsx")
     return f"attachment; filename={ascii_name}; filename*=UTF-8''{utf8_name}"

@@ -14,6 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.kst import KST
 from app.models import Coordinates
 from app.services.gg_chemical import GG_CHEMICAL_DATASET_PAGE_URL
 from app.services.casino_registry import CASINO_REGISTRY_URL
@@ -189,7 +190,7 @@ async def _probe_logistics_warehouse(hazard: Any, screening: Any) -> str:
     failed = len(client.geocode_failures)
     origin = ""
     if client.loaded_from == "store" and client.synced_at is not None:
-        stamp = client.synced_at.astimezone().strftime("%m-%d %H:%M")
+        stamp = client.synced_at.astimezone(KST).strftime("%m-%d %H:%M")
         origin = f" · 저장분 재사용({stamp} 수집)"
     return (
         f"환경부 창고 {len(rows)}건"
@@ -223,7 +224,7 @@ async def _probe_lpg_retailer_file(hazard: Any, screening: Any) -> str:
     failed = len(client.geocode_failures)
     origin = ""
     if client.loaded_from == "store" and client.synced_at is not None:
-        stamp = client.synced_at.astimezone().strftime("%m-%d %H:%M")
+        stamp = client.synced_at.astimezone(KST).strftime("%m-%d %H:%M")
         origin = f" · 저장분 재사용({stamp} 수집)"
     return f"판매소 {len(rows):,}건" + (f" · 지오코딩 실패 {failed}건" if failed else "") + origin
 

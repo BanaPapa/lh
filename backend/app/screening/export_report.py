@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from app.kst import KST
 from app.screening.export_xlsx import (
     JUDGEMENT_LABELS,
     MEASUREMENT_TIER_LABELS,
@@ -103,7 +104,7 @@ def fmt_points(value: int | None) -> str:
 def stamp(value: datetime | None, with_time: bool = True) -> str:
     if value is None:
         return ""
-    local = value.astimezone()
+    local = value.astimezone(KST)
     return local.strftime("%Y-%m-%d %H:%M" if with_time else "%Y-%m-%d")
 
 
@@ -779,7 +780,7 @@ def attachment_header(prefix: str, generated_at: datetime, extension: str) -> st
 
     from urllib.parse import quote
 
-    stamp_text = generated_at.astimezone().strftime("%Y%m%d_%H%M")
+    stamp_text = generated_at.astimezone(KST).strftime("%Y%m%d_%H%M")
     ascii_name = f"LH_batch_{stamp_text}.{extension}"
     utf8_name = quote(f"{prefix}_{stamp_text}.{extension}")
     return f"attachment; filename={ascii_name}; filename*=UTF-8''{utf8_name}"

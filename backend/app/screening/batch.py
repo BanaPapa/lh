@@ -31,6 +31,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from app.kst import KST
 from app.config import get_settings
 from app.hazard_review.models import HazardParcelResolveRequest, HazardReviewResult, HazardSite
 from app.hazard_review.multi_parcel import representative_address
@@ -739,7 +740,7 @@ def build_report(
 
 
 def export_zip(batch: BatchStatus) -> bytes:
-    stamp = batch.created_at.astimezone().strftime("%Y-%m-%d")
+    stamp = batch.created_at.astimezone(KST).strftime("%Y-%m-%d")
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for name, rows in export_rows(batch).items():
@@ -880,7 +881,7 @@ async def get_batch_row_result(batch_id: str, row_id: str) -> ScreeningResult:
 @router.get("/{batch_id}/export")
 async def export_batch(batch_id: str) -> Response:
     batch = _batch_or_404(batch_id)
-    stamp = batch.created_at.astimezone().strftime("%Y-%m-%d")
+    stamp = batch.created_at.astimezone(KST).strftime("%Y-%m-%d")
     return Response(
         content=export_zip(batch),
         media_type="application/zip",
