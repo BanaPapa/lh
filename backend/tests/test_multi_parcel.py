@@ -9,6 +9,7 @@ from __future__ import annotations
 from app.hazard_review.multi_parcel import (
     OESILJI_NO_LIST_NOTE,
     parse_multi_parcel_address,
+    representative_address,
 )
 
 
@@ -99,3 +100,36 @@ def test_sibling_pnu_reuses_anchor_legal_dong_code() -> None:
     assert _sibling_pnu("전주시 덕진구 인후동1가 산 7-1", anchor) == "5211310700200070001"
     # 다른 법정동이면 조립하지 않는다.
     assert _sibling_pnu("전주시 덕진구 금암동 5-1", anchor) is None
+
+
+def test_mountain_prefix_with_space_applies_only_to_its_own_lot() -> None:
+    # 원장 109 「서서학동 산 10, 102-12」 — 「산」과 본번 사이에 공백이 있어도 「산」은 그
+    # 지번(산 10)에만 붙는다. 뒤의 본번-부번(102-12)은 일반 지번이다(LH앱: 2필지).
+    # 예전에는 「산」이 법정동 접두에 남아 「산 102-12」(없는 지번)로 풀려 필지를 잃었다.
+    parsed = parse_multi_parcel_address("전주시 완산구 서서학동 산 10, 102-12")
+    assert parsed.jibun_addresses == [
+        "전주시 완산구 서서학동 산10",
+        "전주시 완산구 서서학동 102-12",
+    ]
+    assert parsed.is_multi
+    assert representative_address("전주시 완산구 서서학동 산 10, 102-12") == (
+        "전주시 완산구 서서학동 산10"
+    )
+
+
+def test_mountain_lot_later_in_list_still_starts_a_mountain_lot() -> None:
+    # 원장 005 「인후동1가 517-1, -2, 산 7-1」 — 목록 뒤쪽의 「, 산 7-1」은 산 지번이고,
+    # 앞의 「-2」는 직전 일반 본번(517)을 이어받는다.
+    parsed = parse_multi_parcel_address("전주시 덕진구 인후동1가 517-1, -2, 산 7-1")
+    assert [a.split()[-1] for a in parsed.jibun_addresses] == ["517-1", "517-2", "산7-1"]
+
+
+def test_bubun_list_and_oe_n_inherit_the_mountain_flag_of_their_lot() -> None:
+    # 「-부번」 목록과 「외 N필지(...)」는 붙어 있는 지번의 본번·산 여부를 그대로 잇는다.
+    def lots(address: str) -> list[str]:
+        return [a.split()[-1] for a in parse_multi_parcel_address(address).jibun_addresses]
+
+    assert lots("서서학동 산 10, -12") == ["산10", "산10-12"]
+    assert lots("서서학동 산 10 외 2필지(11,12)") == ["산10", "산10-11", "산10-12"]
+    # 산 지번 뒤에 일반 지번이 오고 그 뒤에 「-부번」이 오면 일반 본번을 잇는다.
+    assert lots("서서학동 산 10, 102-12, -13") == ["산10", "102-12", "102-13"]
