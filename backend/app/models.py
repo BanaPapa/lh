@@ -21,13 +21,15 @@ class GeocodeCandidate(BaseModel):
     address: str
     road_address: str = ""
     coordinates: Coordinates
-    source: Literal["kakao", "demo"] = "kakao"
+    source: Literal["kakao", "naver", "vworld", "demo"] = "kakao"
 
 
 class GeocodeResponse(BaseModel):
     query: str
     candidates: list[GeocodeCandidate]
     demo: bool = False
+    # 카카오가 막혀 대체 원천(네이버·브이월드)으로 찾았을 때의 안내. 조용히 넘기지 않는다.
+    notice: str = ""
 
 
 class RegionInfo(BaseModel):

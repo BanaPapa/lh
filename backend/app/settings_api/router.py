@@ -249,6 +249,8 @@ class KeysUpdateRequest(BaseModel):
     public_data_service_key: str | None = None
     naver_search_client_id: str | None = None
     naver_search_client_secret: str | None = None
+    naver_map_client_id: str | None = None
+    naver_map_client_secret: str | None = None
     vworld_api_key: str | None = None
     opinet_api_key: str | None = None
     safemap_api_key: str | None = None

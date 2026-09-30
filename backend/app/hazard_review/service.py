@@ -1176,6 +1176,10 @@ class HazardReviewService:
         except Exception:  # noqa: BLE001 — 원천 장애는 failed_sources 로 드러낸다
             failed_sources.add("factory_registry")
             return []
+        if getattr(self.factory_registry, "last_geocode_outages", 0):
+            # 주소 지오코딩 원천(카카오·네이버)이 막혀 좌표를 못 붙인 공장이 있다 — 빠진
+            # 공장이 있을 수 있으니 조용히 넘기지 않고 재심사 안내를 띄운다.
+            failed_sources.add("factory_registry")
         return self._records_to_facilities(
             request,
             tuple(records),

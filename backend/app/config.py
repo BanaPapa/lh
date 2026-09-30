@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     public_data_service_key: str = ""
     naver_search_client_id: str = ""
     naver_search_client_secret: str = ""
+    # 네이버 클라우드 플랫폼(NCP) Maps Geocoding — 카카오 주소검색이 막힐 때(일일 쿼터 초과 등)의 대체.
+    naver_map_client_id: str = ""
+    naver_map_client_secret: str = ""
     vworld_api_key: str = ""
     opinet_api_key: str = ""
     safemap_api_key: str = ""
@@ -60,6 +63,10 @@ class Settings(BaseSettings):
     @property
     def naver_search_configured(self) -> bool:
         return bool(self.naver_search_client_id and self.naver_search_client_secret)
+
+    @property
+    def naver_geocode_configured(self) -> bool:
+        return bool(self.naver_map_client_id and self.naver_map_client_secret)
 
 
 @lru_cache

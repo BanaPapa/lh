@@ -33,15 +33,17 @@ RETRY_FAILED_AFTER_SECONDS = 60.0
 
 
 def localdata_client(settings: Settings) -> LocalDataClient:
-    """좌표 없는 영업 중 행을 주소로 살리는 지오코더(카카오 → VWorld)를 붙인 인허가 클라이언트."""
+    """좌표 없는 영업 중 행을 주소로 살리는 지오코더(카카오 → 네이버 → VWorld)를 붙인 인허가 클라이언트."""
 
     from app.services.address_geocoder import make_address_geocoder
     from app.services.kakao import KakaoClient
+    from app.services.naver_geocode import NaverGeocodeClient
     from app.services.vworld import VWorldClient
 
     geocode = make_address_geocoder(
         KakaoClient(settings.kakao_rest_api_key),
         VWorldClient(settings.vworld_api_key, domain=settings.vworld_domain),
+        naver=NaverGeocodeClient(settings.naver_map_client_id, settings.naver_map_client_secret),
     )
     return LocalDataClient(settings.public_data_key, geocode=geocode)
 

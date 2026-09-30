@@ -19,8 +19,8 @@ from collections.abc import Callable
 
 from app.config import Settings
 from app.hazard_review.service import HazardReviewService
-from app.models import Coordinates
 from app.rules_config import option_enabled
+from app.services.address_geocoder import make_address_geocoder, make_lenient_geocoder
 from app.services.address_pnu_kakao import KakaoAddressPnu
 from app.services.building_register import BuildingRegisterClient
 from app.services.cadastral_local import CadastralLocalStore
@@ -47,6 +47,7 @@ from app.services.local_wiring import (
     LocalSourcesBundle,
     build_local_sources_bundle,
 )
+from app.services.naver_geocode import NaverGeocodeClient
 from app.services.noise_emission import NoiseEmissionClient
 from app.services.opinet import OpinetClient
 from app.services.pnu_resolver import (
@@ -146,17 +147,26 @@ def build_hazard_service(
     """
 
     kakao = KakaoClient(config.kakao_rest_api_key)
+    vworld = VWorldClient(config.vworld_api_key, domain=config.vworld_domain)
+    naver_geocode = NaverGeocodeClient(
+        config.naver_map_client_id, config.naver_map_client_secret
+    )
 
-    async def geocode_address(address: str) -> Coordinates | None:
-        """화장시설 주소 → 좌표. 화장시설 API 는 좌표를 주지 않아 필요하다."""
-
-        if not kakao.enabled:
-            return None
-        try:
-            candidates = await kakao.geocode(address)
-        except Exception:
-            return None
-        return candidates[0].coordinates if candidates else None
+    # 명단·원장 주소 → 좌표(화장시설·카지노·LPG 판매소 등 좌표 없는 원천).
+    # 카카오가 정상일 때는 카카오 결과만 쓰고(LH 앱과 맞춰 온 결과 유지), 카카오가 막히면
+    # (일일 쿼터 초과 등) 네이버 지오코딩 → VWorld 주소검색으로 넘어간다. 기존 호출 쪽은
+    # 예외를 다루지 않으므로 원천 오류는 None 으로 삼킨다 — 실패는 각 원천의 지오코딩
+    # 실패 목록(설정 패널 API 연결)으로 드러난다.
+    geocode_address = make_lenient_geocoder(
+        make_address_geocoder(
+            kakao, vworld=vworld, naver=naver_geocode, fallback_on_miss=False
+        )
+    )
+    # 등록공장 지오캐시는 원천 오류를 「없음」으로 굳히지 않도록 예외를 받는다. VWorld 는
+    # 관리자 스위치(factory_geocode_vworld_fallback)가 따로 다루므로 여기서 빼 둔다.
+    geocode_factory = make_address_geocoder(
+        kakao, naver=naver_geocode, fallback_on_miss=False
+    )
 
     # 전북 연속지적도 로컬 인덱스. 인덱스가 없으면 status().available=False 라
     # 시설 필지 폴백에서 조용히 빠진다(다른 PC 엔 원본 없음). PNU 확정기와 서비스가
@@ -191,7 +201,6 @@ def build_hazard_service(
         ),
     )
 
-    vworld = VWorldClient(config.vworld_api_key, domain=config.vworld_domain)
     building_register = BuildingRegisterClient(config.public_data_key)
     service = HazardReviewService(
         kakao=kakao,
@@ -228,7 +237,7 @@ def build_hazard_service(
         # 카카오가 못 찾은 옛 지번은 VWorld 주소검색으로 한 번 더(관리자 스위치 · LH 기준 켬).
         factory_registry=FactoryRegistryClient(
             config.public_data_key,
-            geocoder=geocode_address,
+            geocoder=geocode_factory,
             fallback_geocoder=vworld.search_address_point,
             fallback_enabled=lambda: option_enabled("factory_geocode_vworld_fallback"),
         ),

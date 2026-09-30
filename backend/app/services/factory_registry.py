@@ -156,6 +156,9 @@ class FactoryRegistryClient:
         # 주소 → 좌표(없으면 None). 디스크 캐시와 동기화한다.
         self._geocache: dict[str, dict[str, float] | None] | None = None
         self._geocode_failures: list[str] = []
+        # 직전 factories_near 에서 원천 오류(카카오 쿼터 초과 등)로 좌표를 못 붙인 주소 수.
+        # 0 보다 크면 결과가 빠졌을 수 있어 심사가 「조회 실패 — 재심사 필요」로 드러낸다.
+        self.last_geocode_outages = 0
 
     @property
     def enabled(self) -> bool:
@@ -259,7 +262,10 @@ class FactoryRegistryClient:
         try:
             found = await geocoder(geocode_query(address))
         except Exception:  # noqa: BLE001 — 지오코딩 장애는 격리로 남기고 계속 간다
-            found = None
+            # 원천 오류(카카오 쿼터 초과 등)는 「주소 없음」이 아니다. 캐시에 굳히지 않고
+            # 이번만 좌표 없음(격리 목록)으로 두어 다음 조회에 다시 묻는다.
+            self.last_geocode_outages += 1
+            return None
         cache[key] = {"lat": found.lat, "lng": found.lng} if found else None
         return found
 
@@ -275,6 +281,7 @@ class FactoryRegistryClient:
         if not rows:
             return []
         semaphore = asyncio.Semaphore(GEOCODE_CONCURRENCY)
+        self.last_geocode_outages = 0
 
         async def locate(row: dict[str, str]) -> FactoryRecord:
             address = row.get("rnAdres") or ""

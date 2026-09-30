@@ -47,6 +47,8 @@ export interface KeysUpdatePayload {
   public_data_service_key?: string | null;
   naver_search_client_id?: string | null;
   naver_search_client_secret?: string | null;
+  naver_map_client_id?: string | null;
+  naver_map_client_secret?: string | null;
   vworld_api_key?: string | null;
   opinet_api_key?: string | null;
   safemap_api_key?: string | null;

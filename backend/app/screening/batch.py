@@ -55,7 +55,10 @@ from app.screening.service import ScreeningProgressCallback, ScreeningService
 
 # 심사 엔진이 보고하는 4단계(screening.router.PROGRESS_ITEMS 와 같다).
 STAGE_IDS = ("STAGE1_COLLECT", "STAGE1_JUDGE", "STAGE2_COLLECT", "STAGE2_SCORE")
+from app.services.address_geocoder import search_address_candidates
 from app.services.kakao import KakaoClient
+from app.services.naver_geocode import NaverGeocodeClient
+from app.services.vworld import VWorldClient
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -473,17 +476,25 @@ async def run_row(
     kakao: KakaoClient,
     rule_pack_id: str,
     progress: ScreeningProgressCallback | None = None,
+    naver: NaverGeocodeClient | None = None,
+    vworld: VWorldClient | None = None,
 ) -> ScreeningResult:
     """한 건 심사 경로 그대로: 좌표 → 필지 → 심사."""
 
+    geocode_notice = ""
     if source.lat is not None and source.lng is not None:
         coordinates = Coordinates(lat=source.lat, lng=source.lng)
     else:
         # 여러 지번이 든 주소는 대표필지로 좌표를 잡고, 합집합은 필지 확보가 원문으로 푼다.
+        # 카카오가 막히면(일일 쿼터 초과 등) 네이버 → 브이월드로 찾고 그 사실을 행에 남긴다.
         lookup = representative_address(source.address)
-        candidates = await kakao.geocode(lookup)
+        candidates, geocode_notice = await search_address_candidates(
+            lookup, kakao=kakao, naver=naver, vworld=vworld
+        )
         if not candidates and lookup != source.address:
-            candidates = await kakao.geocode(source.address)
+            candidates, geocode_notice = await search_address_candidates(
+                source.address, kakao=kakao, naver=naver, vworld=vworld
+            )
         if not candidates:
             raise RuntimeError("주소를 찾지 못했습니다. 소재지를 확인해 주세요.")
         coordinates = candidates[0].coordinates
@@ -505,6 +516,8 @@ async def run_row(
     )
     result = await screening.screen(request, progress)
     _fill_row(row, result, len(resolved.parcels), resolved.note)
+    if geocode_notice:
+        row.resolve_note = " ".join(part for part in (geocode_notice, row.resolve_note) if part)
     return result
 
 
@@ -518,6 +531,8 @@ async def run_batch(
     rule_pack_id: str,
     cancel: asyncio.Event,
     concurrency: int = CONCURRENCY,
+    naver: NaverGeocodeClient | None = None,
+    vworld: VWorldClient | None = None,
 ) -> None:
     batch.status = "running"
     semaphore = asyncio.Semaphore(max(1, concurrency))
@@ -567,7 +582,7 @@ async def run_batch(
             try:
                 result = await run_row(
                     row, source, screening=screening, resolver=resolver, kakao=kakao,
-                    rule_pack_id=rule_pack_id, progress=report,
+                    rule_pack_id=rule_pack_id, progress=report, naver=naver, vworld=vworld,
                 )
                 batch_results[(batch.batch_id, row.id)] = result
                 row.status = "completed"
@@ -777,11 +792,14 @@ async def start_batch(
     batches[batch_id] = batch
     cancel = asyncio.Event()
     batch_cancel[batch_id] = cancel
-    kakao = KakaoClient(get_settings().kakao_rest_api_key)
+    config = get_settings()
+    kakao = KakaoClient(config.kakao_rest_api_key)
+    naver = NaverGeocodeClient(config.naver_map_client_id, config.naver_map_client_secret)
+    vworld = VWorldClient(config.vworld_api_key, domain=config.vworld_domain)
     task = asyncio.create_task(
         run_batch(
             batch, payload.rows, screening=screening, resolver=resolver, kakao=kakao,
-            rule_pack_id=payload.rule_pack_id, cancel=cancel,
+            rule_pack_id=payload.rule_pack_id, cancel=cancel, naver=naver, vworld=vworld,
         )
     )
     _batch_tasks.add(task)
