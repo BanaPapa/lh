@@ -22,7 +22,7 @@ export interface CadastralTile {
   key: string;
   row: number;
   col: number;
-  /** 분할 깊이. 0=0.008°, 1=0.004°, 2=0.002°. truncated 타일을 쿼드 분할한다. */
+  /** 분할 깊이. 0=0.004°, 1=0.002°, 2=0.001°. truncated 타일을 쿼드 분할한다. */
   depth: number;
   box: LatLngBox;
 }
@@ -31,13 +31,13 @@ export interface CadastralTile {
 export const CADASTRAL_MAX_RADIUS_M = 3000;
 
 /**
- * 타일 한 칸의 위·경도 폭(deg). 위·경도 모두 0.008° 로 둔다.
- * 백엔드 parcels/in-bounds 는 요청당 MAX_BOUNDS_SPAN_DEG(0.01°) 를 넘으면 422 다.
- * 0.008 < 0.01 이라 위·경도 어느 쪽으로도 상한을 넘지 않는다. 경도를 위도
- * 보정(0.008/cos φ)으로 늘리면 서울 위도에서 0.0101° 가 되어 상한을 넘으므로
- * 늘리지 않는다. 대신 3km·뷰포트↔타일 거리 계산에서만 경도를 위도 보정한다.
+ * 타일 한 칸의 위·경도 폭(deg). 위·경도 모두 0.004°(약 440m×360m)로 둔다.
+ * 0.008° 칸은 전주 도심에서 응답 상한(800필지)에 걸려 2.1초 걸린 뒤 다시 4칸으로 쪼개
+ * 받았다. 0.004° 는 0.8초에 잘리지 않고 온다(2026-09-30 실측). 백엔드
+ * parcels/in-bounds 의 요청당 상한(0.01°)보다 작다. 3km·뷰포트↔타일 거리
+ * 계산에서만 경도를 위도 보정한다.
  */
-export const TILE_SPAN_DEG = 0.008;
+export const TILE_SPAN_DEG = 0.004;
 
 export const METERS_PER_DEGREE_LAT = 111_320;
 
@@ -50,7 +50,7 @@ export const CADASTRAL_MAX_LEVEL = 3;
 
 /**
  * 타일 분할 최대 깊이. truncated(응답 상한 초과) 타일을 폭 절반의 하위 4타일로
- * 쿼드 분할해 재요청한다. 깊이 2면 0.008°→0.004°→0.002°(약 220m)까지 좁혀,
+ * 쿼드 분할해 재요청한다. 깊이 2면 0.004°→0.002°→0.001°(약 110m)까지 좁혀,
  * 도심에서도 나머지 필지를 확대해 볼 수 있다. 깊이 2에서도 잘리면 그때만
  * "일부만 표시" 로 남긴다.
  */

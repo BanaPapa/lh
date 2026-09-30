@@ -52,6 +52,7 @@ import {
   MAX_CADASTRAL_POLYGONS,
   MAX_TILE_DEPTH,
   boxCenter,
+  nearestDistanceToBoxM,
   boxesOverlap,
   isNonFacilityParcel,
   metersBetween,
@@ -114,9 +115,10 @@ interface MapViewport {
   level: number;
 }
 
-// 검색 직후 첫 화면에 즉시 요청할 사업지 주변 반경(m). 인접 필지를 고르기에
-// 충분하다. 이후는 지도 idle 마다 뷰포트와 겹치는 타일을 반경 3km 까지 채운다.
-const CADASTRAL_RADIUS_M = 350;
+// 검색 직후 지도가 자리를 잡기 전에 먼저 요청할 사업지 주변 반경(m). 사업지와
+// 바로 옆 필지만 곧장 보이게 한다. 나머지는 지도 idle 마다 화면에 보이는 타일만
+// 가운데부터(반경 3km 까지) 받는다.
+const CADASTRAL_RADIUS_M = 120;
 // 시설 영역이 아닌 자리를 눌렀을 때 그 주변으로 새로 받는 반경(m). 검색 직후
 // 사업지 주변과 같은 폭이다.
 const CADASTRAL_CLICK_RADIUS_M = 350;
@@ -135,8 +137,9 @@ const ZOOM_MAX_LEVEL = 14;
 const ZOOM_LEVEL_STEP = 0.5;
 
 // 검색 직후, 아직 분석 결과가 없을 때의 축척. 반경 원에 맞춰 넓게 잡으면
-// 어느 동네인지만 보이고 대지경계가 점이 된다. 필지가 보이는 정도로 든다.
-const SITE_PREVIEW_LEVEL = 3;
+// 어느 동네인지만 보이고 대지경계가 점이 된다. 레벨 3은 한 화면 필지가 많아 지적도를
+// 다 받기까지 오래 걸렸다 — 레벨 2로 보여 주고 보이는 만큼만 받는다(2026-09-30).
+const SITE_PREVIEW_LEVEL = 2;
 
 
 let kakaoLoader: Promise<any> | null = null;
@@ -1377,10 +1380,20 @@ export function MapPanel({
     }
 
     cadastralViewportRef.current = box;
-    // 지도를 옮긴다고 새로 받지 않는다. 타일은 검색 직후 사업지 주변 350m 와
-    // 빈 자리 클릭 주변 350m 에서만 받고, 여기서는 받아 둔 것을 뷰포트에 맞춰 그린다.
+    // 지적도가 켜져 있으면 화면에 보이는 타일만 받는다(가운데부터, 반경 3km 까지).
+    // 이미 받은 타일은 다시 받지 않고, 받아 둔 것은 뷰포트에 맞춰 그린다.
+    if (cadastralAutoRef.current) {
+      const middle = boxCenter(box);
+      const visible = tilesForViewport(box)
+        .filter((tile) => tileWithinRadius(center, tile, CADASTRAL_MAX_RADIUS_M))
+        .sort(
+          (a, b) =>
+            nearestDistanceToBoxM(middle, a.box) - nearestDistanceToBoxM(middle, b.box),
+        );
+      enqueueTiles(visible, cadastralGenRef.current);
+    }
     recomputeVisibleParcels();
-  }, [mapReady, site, recomputeVisibleParcels]);
+  }, [mapReady, site, recomputeVisibleParcels, enqueueTiles]);
 
   /** 누른 자리 주변 350m 타일만 따로 받는다(스위치 상태와 무관). */
   const loadCadastralAround = useCallback(
