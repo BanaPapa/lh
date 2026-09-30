@@ -118,9 +118,10 @@ class KakaoClient:
                 )
 
         if not candidates:
-            errors = [item for item in results if isinstance(item, Exception)]
-            if len(errors) == len(results):
-                raise errors[0]
+            # 주소검색이 오류였으면 키워드검색이 비었어도 「없음」이 아니다(쿼터 초과 등) —
+            # 올려서 대체 원천으로 넘기고, 호출 쪽이 「주소 없음」으로 캐시하지 않게 한다.
+            if isinstance(address_result, BaseException):
+                raise address_result
 
         return candidates[:8]
 

@@ -1,7 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,7 +11,14 @@ from app.models import GeocodeResponse
 from app.screening.batch import router as screening_batch_router
 from app.screening.router import router as screening_router
 from app.services.demo import demo_geocode
+from app.services.address_geocoder import (
+    GeocodeUnavailable,
+    ProviderOutage,
+    search_address_candidates,
+)
 from app.services.kakao import KakaoAPIError, KakaoClient
+from app.services.naver_geocode import NaverGeocodeClient
+from app.services.vworld import VWorldClient
 from app.rate_limit import rate_limit_middleware
 from app.settings_api.router import router as settings_router
 
@@ -78,6 +84,7 @@ async def health(config: Settings = Depends(get_settings)) -> dict[str, object]:
         "tago_configured": bool(config.tago_service_key),
         "public_data_configured": bool(config.public_data_key),
         "naver_search_configured": config.naver_search_configured,
+        "naver_geocode_configured": config.naver_geocode_configured,
     }
 
 
@@ -91,26 +98,53 @@ async def geocode(
 
     # 「363-2, -4, 364-1」·「764-10 외 3필지」처럼 여러 지번이 든 검색어는 대표필지로
     # 지오코딩한다. 필지 합집합은 이어지는 필지 확보(parcels/resolve)가 원문으로 푼다.
+    # 카카오가 막히면(일일 쿼터 초과 등) 네이버 지오코딩 → 브이월드 주소검색으로 찾고,
+    # 그 사실을 notice 로 알린다.
     lookup = representative_address(query)
+    kakao, naver, vworld = geocode_clients(config)
     try:
-        candidates = await KakaoClient(config.kakao_rest_api_key).geocode(lookup)
+        candidates, notice = await search_address_candidates(
+            lookup, kakao=kakao, naver=naver, vworld=vworld
+        )
         if not candidates and lookup != query:
-            candidates = await KakaoClient(config.kakao_rest_api_key).geocode(query)
-    except KakaoAPIError as exc:
-        if exc.status_code in {401, 403}:
-            raise HTTPException(
-                status_code=503,
-                detail="카카오 REST API 키 또는 호출 허용 IP 설정을 확인해 주세요.",
-            ) from exc
-        if exc.status_code == 429:
-            raise HTTPException(
-                status_code=429,
-                detail="카카오 API 쿼터를 초과했습니다.",
-            ) from exc
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=502, detail="카카오 주소 검색에 연결하지 못했습니다. 잠시 후 다시 검색해 주세요."
-        ) from exc
+            candidates, notice = await search_address_candidates(
+                query, kakao=kakao, naver=naver, vworld=vworld
+            )
+    except GeocodeUnavailable as exc:
+        raise _geocode_http_error(exc) from exc
 
-    return GeocodeResponse(query=query, candidates=candidates, demo=False)
+    return GeocodeResponse(query=query, candidates=candidates, demo=False, notice=notice)
+
+
+def geocode_clients(config: Settings) -> tuple[KakaoClient, NaverGeocodeClient, VWorldClient]:
+    return (
+        KakaoClient(config.kakao_rest_api_key),
+        NaverGeocodeClient(config.naver_map_client_id, config.naver_map_client_secret),
+        VWorldClient(config.vworld_api_key, domain=config.vworld_domain),
+    )
+
+
+def _geocode_http_error(exc: GeocodeUnavailable) -> HTTPException:
+    """모든 원천이 못 찾았고 오류가 섞였을 때 사용자에게 줄 응답. 카카오 사유를 앞세운다."""
+
+    kakao_error = next(
+        (e for e in exc.errors if isinstance(e, (KakaoAPIError, ProviderOutage))), None
+    )
+    fallback = " 대체 검색(네이버·브이월드)에서도 찾지 못했습니다."
+    if isinstance(kakao_error, KakaoAPIError):
+        if kakao_error.status_code in {401, 403}:
+            return HTTPException(
+                status_code=503,
+                detail="카카오 REST API 키 또는 호출 허용 IP 설정을 확인해 주세요." + fallback,
+            )
+        if kakao_error.status_code == 429 or "limit" in str(kakao_error).lower():
+            return HTTPException(status_code=429, detail="카카오 API 쿼터를 초과했습니다." + fallback)
+        return HTTPException(status_code=502, detail=f"{kakao_error}.{fallback}")
+    if isinstance(kakao_error, ProviderOutage):
+        return HTTPException(
+            status_code=429,
+            detail="카카오 주소 검색이 일시 중단 상태입니다(쿼터 초과 등)." + fallback,
+        )
+    return HTTPException(
+        status_code=502, detail="주소 검색 원천에 연결하지 못했습니다. 잠시 후 다시 검색해 주세요."
+    )

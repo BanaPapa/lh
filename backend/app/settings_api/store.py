@@ -71,6 +71,20 @@ SERVER_KEY_SPECS: list[KeySpec] = [
         issuer_url="https://developers.naver.com/apps/#/list",
     ),
     KeySpec(
+        "NAVER_MAP_CLIENT_ID",
+        "네이버 지오코딩(NCP) Client ID",
+        "카카오 주소검색이 막힐 때(일일 쿼터 초과 등) 주소 → 좌표 대체에 씁니다.",
+        issuer_name="네이버 클라우드 플랫폼",
+        issuer_url="https://console.ncloud.com/naver-service/application",
+    ),
+    KeySpec(
+        "NAVER_MAP_CLIENT_SECRET",
+        "네이버 지오코딩(NCP) Client Secret",
+        "카카오 주소검색이 막힐 때(일일 쿼터 초과 등) 주소 → 좌표 대체에 씁니다.",
+        issuer_name="네이버 클라우드 플랫폼",
+        issuer_url="https://console.ncloud.com/naver-service/application",
+    ),
+    KeySpec(
         "VWORLD_API_KEY",
         "브이월드 API 키",
         "지적도 필지 경계 조회에 씁니다.",

@@ -390,6 +390,9 @@ function App() {
           setSearchNotice(
             "데모 모드: 실제 검색이 아니라 예시 후보를 보여주고 있습니다. 설정에서 카카오 API 키를 등록하면 실데이터로 전환됩니다.",
           );
+        } else if (response.notice) {
+          // 카카오 장애로 대체 원천에서 찾은 결과 — 조용히 넘기지 않고 알린다.
+          setSearchNotice(response.notice);
         }
         const nextCandidate = response.candidates[0];
         const siteChanged =

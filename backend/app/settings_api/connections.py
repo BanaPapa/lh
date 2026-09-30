@@ -103,6 +103,40 @@ async def _probe_naver(hazard: Any, screening: Any) -> str:
     return f"지역검색 {len(rows)}건"
 
 
+class _NaverGeocodeEntry:
+    """연결 표용 네이버 지오코딩 클라이언트. 인증 실패로 꺼져도 「키 있음」으로 보이게
+    enabled 를 키 유무로 둔다(꺼진 사유는 disabled_reason 으로 따로 보인다)."""
+
+    def __init__(self) -> None:
+        from app.config import get_settings
+        from app.services.naver_geocode import NaverGeocodeClient
+
+        config = get_settings()
+        self.client = NaverGeocodeClient(config.naver_map_client_id, config.naver_map_client_secret)
+
+    @property
+    def enabled(self) -> bool:
+        return self.client.configured
+
+    @property
+    def disabled_reason(self) -> str | None:
+        return self.client.disabled_reason
+
+
+def _naver_geocode_client(hazard: Any, screening: Any) -> Any:
+    return _NaverGeocodeEntry()
+
+
+async def _probe_naver_geocode(hazard: Any, screening: Any) -> str:
+    from app.services.naver_geocode import clear_auth_failure
+
+    entry = _NaverGeocodeEntry()
+    # 콘솔에서 사용 설정을 고친 뒤 다시 점검할 수 있게 이전 인증 실패 표시를 지우고 묻는다.
+    clear_auth_failure(entry.client.client_id)
+    rows = await entry.client.search("서울특별시 중구 세종대로 110")
+    return f"주소 {len(rows)}건" + (f" · {rows[0].road_address}" if rows else "")
+
+
 async def _probe_vworld(hazard: Any, screening: Any) -> str:
     parcel = await hazard.vworld.parcel_at(PROBE_POINT.lat, PROBE_POINT.lng)
     return f"필지 {parcel.jibun or parcel.pnu}" if parcel else "필지 응답 없음"
@@ -309,6 +343,13 @@ CONNECTION_SPECS: tuple[ConnectionSpec, ...] = (
         "카카오 개발자", "https://developers.kakao.com/",
     ),
     ConnectionSpec(
+        "naver_geocode", "네이버 지오코딩(NCP)",
+        "카카오 주소검색이 막힐 때(일일 쿼터 초과 등) 주소 → 좌표 대체 — 번지까지 맞는 결과만 채택. "
+        "인증 실패면 NCP 콘솔에서 Client ID 와 Maps 「Geocoding」 사용 설정을 확인",
+        "NAVER_MAP_CLIENT_ID", _naver_geocode_client, _probe_naver_geocode,
+        "네이버 클라우드 플랫폼", "https://console.ncloud.com/naver-service/application",
+    ),
+    ConnectionSpec(
         "vworld", "브이월드(국토부 지적도)",
         "사업지 필지 경계, 유해시설·편의시설 필지 경계, 용도지역",
         "VWORLD_API_KEY", lambda h, s: h.vworld, _probe_vworld,
@@ -489,6 +530,9 @@ def build_connections(hazard: Any, screening: Any, demo_mode: bool) -> Connectio
         last = _last_results.get(spec.id)
         if not configured:
             state, detail, at = "missing_key", "키가 없어 이 원천은 쓰지 않습니다.", None
+        elif last is None and getattr(client, "disabled_reason", None):
+            # 점검 전이라도 실제 호출에서 인증 실패로 꺼진 원천은 실패로 보인다.
+            state, detail, at = "failed", f"인증 실패 — {client.disabled_reason}", None
         elif last is None:
             state, detail, at = "ready", "키 있음 · 미점검", None
         else:
