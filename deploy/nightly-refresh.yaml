@@ -27,6 +27,13 @@ steps:
       - -c
       - |
         set -euo pipefail
+        # 다른 갱신이 돌고 있으면(표시가 아직 유효하면) 겹쳐 돌지 않는다 — 스케줄러 재시도·수동 실행 겹침 방지.
+        if gcloud storage cat "gs://${_BUCKET}/status/maintenance.json" > /workspace/prev.json 2>/dev/null; then
+          if python3 -c "import json,sys,datetime as d; f=json.load(open('/workspace/prev.json')); e=d.datetime.fromisoformat(f['expires_at'].replace('Z','+00:00')); sys.exit(0 if e>d.datetime.now(d.timezone.utc) else 1)"; then
+            echo "다른 사본 갱신이 진행 중입니다. 이번 실행은 건너뜁니다."; exit 1
+          fi
+        fi
+        set -euo pipefail
         gcloud run services describe ${_SERVICE} --region ${_REGION} --format=json > /workspace/svc.json
         python3 - <<'PY'
         import json
