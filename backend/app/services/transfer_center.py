@@ -6,11 +6,14 @@
 호출부(amenities)가 지도 검색으로 근사하고 그 사실을 고지한다.
 
 전량을 받아 24시간 캐시하고 반경으로 거른다(가스안전공사 LPG 어댑터와 같은 방식).
+받아 둔 목록은 서버 사본(transfer_centers_cache.json)으로 실어 켜지자마자 쓰고, 하루가
+지났으면 뒤에서 새로 받는다(snapshot_store 참고).
 """
 
 from __future__ import annotations
 
-import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -19,7 +22,7 @@ from app.models import Coordinates
 from app.services.geo import haversine_meters
 from app.services.http_client import shared_verify
 from app.services.kgs import PublicDataAPIError
-from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, SnapshotList, trim_rows
 
 TRANSFER_CENTER_URL = (
     "https://api.data.go.kr/openapi/tn_pubr_public_pbtrnspt_rnsit_cnter_api"
@@ -27,6 +30,13 @@ TRANSFER_CENTER_URL = (
 PAGE_SIZE = 1000
 MAX_PAGES = 20
 CACHE_TTL_SECONDS = 24 * 3600
+
+# 전량 목록 사본(앱 배선만 이 경로를 준다)과 사본에 남기는 열.
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "transfer_centers_cache.json"
+SNAPSHOT_KEY = "centers"
+SNAPSHOT_COLUMNS = (
+    "trnsitlcCnterNm", "rdnmadr", "lnmadr", "latitude", "longitude", "trnsitlcFclty", "operYn",
+)
 
 
 class TransferCenter(NamedTuple):
@@ -60,23 +70,46 @@ def _center(row: dict[str, Any]) -> TransferCenter | None:
     )
 
 
+def centers_from_rows(rows: list[Any]) -> list[TransferCenter]:
+    """표준데이터 행 목록 → 환승센터 목록(API 행·사본 행 공통)."""
+
+    return [
+        center
+        for center in (_center(row) for row in rows if isinstance(row, dict))
+        if center is not None
+    ]
+
+
 class TransferCenterClient:
     def __init__(
         self,
         service_key: str,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self.timeout = timeout
         self._transport = transport
-        self._cache: list[TransferCenter] = []
-        self._cached_at = 0.0
-        self._fill_lock = LoopSafeLock()
+        # 전량 목록(메모리 하루 캐시 + 서버 사본). 동시 조회는 한 번만 원격을 탄다.
+        self._list: SnapshotList[TransferCenter] = SnapshotList(
+            snapshot_path, SNAPSHOT_KEY, "전국대중교통환승센터표준데이터",
+            fetch=self._fetch_rows, parse=centers_from_rows, error=PublicDataAPIError,
+        )
 
     @property
     def enabled(self) -> bool:
         return bool(self.service_key)
+
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self._list.notice
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        return self._list.as_of
 
     async def centers_around(
         self, center: Coordinates, radius_m: float
@@ -89,26 +122,30 @@ class TransferCenterClient:
         ]
 
     async def all_centers(self) -> list[TransferCenter]:
+        """전국 목록. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
         if not self.enabled:
             return []
-        if self._cache and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS:
-            return self._cache
-        async with self._fill_lock.get():
-            if self._cache and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS:
-                return self._cache
-            rows: list[dict[str, Any]] = []
-            async with httpx.AsyncClient(
-                timeout=self.timeout, transport=self._transport, verify=shared_verify()
-            ) as client:
-                for page in range(1, MAX_PAGES + 1):
-                    page_rows, total = await self._page(client, page)
-                    rows.extend(page_rows)
-                    if len(page_rows) < PAGE_SIZE or len(rows) >= total:
-                        break
-            centers = [c for c in (_center(row) for row in rows) if c is not None]
-            self._cache = centers
-            self._cached_at = time.monotonic()
-            return centers
+        return await self._list.get()
+
+    async def refresh(self, force: bool = False) -> list[TransferCenter]:
+        """전국 목록을 API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다."""
+
+        if not self.enabled:
+            return []
+        return await self._list.refresh(force)
+
+    async def _fetch_rows(self, _previous: list[TransferCenter]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        async with httpx.AsyncClient(
+            timeout=self.timeout, transport=self._transport, verify=shared_verify()
+        ) as client:
+            for page in range(1, MAX_PAGES + 1):
+                page_rows, total = await self._page(client, page)
+                rows.extend(page_rows)
+                if len(page_rows) < PAGE_SIZE or len(rows) >= total:
+                    break
+        return trim_rows(rows, SNAPSHOT_COLUMNS)
 
     async def _page(
         self, client: httpx.AsyncClient, page: int

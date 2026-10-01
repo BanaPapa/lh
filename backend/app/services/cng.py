@@ -17,6 +17,8 @@ ODcloud 파일변환 API 는 공공데이터포털 일반 API 와 응답 모양�
 from __future__ import annotations
 
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -29,7 +31,7 @@ from app.services.kgs import (
     QuarantinedStation,
     coordinate_quarantine_reason,
 )
-from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, SnapshotList
 
 
 CNG_DATASET_ID = "15001508"
@@ -48,6 +50,11 @@ MAX_PAGES = 20
 
 # 분기 갱신 자료라 하루 한 번이면 충분하다.
 CACHE_TTL_SECONDS = 24 * 60 * 60
+
+# 전국 목록 서버 사본(services/snapshot_store). 켜지자마자 쓰고 하루 지나면 뒤에서 새로
+# 받는다. 앱 배선만 이 경로를 준다.
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "cng_stations_cache.json"
+SNAPSHOT_KEY = "cng_stations"
 
 # 인증 실패(401/403 = 활용신청 전·키 오류)는 재시도해도 같은 답이다. 심사마다
 # 헛호출하지 않도록 잠시 기억했다가 그동안은 호출 없이 같은 예외를 올린다.
@@ -123,22 +130,35 @@ class CngStationClient:
         service_key: str,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self.timeout = timeout
         self._transport = transport
-        self._cache: list[CngStation] = []
         self._quarantined: list[QuarantinedStation] = []
-        self._cached_at = 0.0
         # 마지막 인증 실패 시각·상태코드. 쿨다운 동안은 호출 없이 같은 예외를 올린다.
         self._auth_failed_at = 0.0
         self._auth_failed_status: int | None = None
-        # 전국 목록 캐시 채우기를 직렬화하는 single-flight 잠금(캐시 스탬피드 방지).
-        self._fill_lock = LoopSafeLock()
+        # 전국 목록(메모리 하루 캐시 + 서버 사본). 동시 호출이 여럿이어도 원격 조회는 한 번
+        # (캐시 스탬피드 방지). 사본에는 API 행을 그대로 두어 좌표 위생 검사를 다시 탄다.
+        self._list: SnapshotList[CngStation] = SnapshotList(
+            snapshot_path, SNAPSHOT_KEY, "가스안전공사 CNG 충전소",
+            fetch=self._fetch_rows, parse=self._ingest, error=PublicDataAPIError,
+        )
 
     @property
     def enabled(self) -> bool:
         return bool(self.service_key)
+
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self._list.notice
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        return self._list.as_of
 
     @property
     def quarantined(self) -> list[QuarantinedStation]:
@@ -180,9 +200,6 @@ class CngStationClient:
             if haversine_meters(center, station.coordinates) <= radius_m
         ]
 
-    def _is_warm(self) -> bool:
-        return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
-
     def _raise_if_auth_cooldown(self) -> None:
         """직전 인증 실패 뒤 쿨다운 중이면 호출 없이 같은 예외를 올린다."""
 
@@ -198,39 +215,41 @@ class CngStationClient:
         )
 
     async def all_stations(self) -> list[CngStation]:
+        """전국 목록. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
         if not self.enabled:
             return []
-        if self._is_warm():
-            return self._cache
+        return await self._list.get()
 
-        async with self._fill_lock.get():
-            if self._is_warm():
-                return self._cache
-            self._raise_if_auth_cooldown()
+    async def refresh(self, force: bool = False) -> list[CngStation]:
+        """전국 목록을 API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다."""
 
-            all_rows: list[dict[str, Any]] = []
-            # 조회가 실패하면 예외가 그대로 전파돼 캐시를 건드리지 않는다.
-            async with httpx.AsyncClient(
-                timeout=self.timeout,
-                transport=self._transport,
-                verify=shared_verify(),
-            ) as client:
-                for page in range(1, MAX_PAGES + 1):
-                    try:
-                        rows, total_count = await self._page(client, page)
-                    except PublicDataAPIError as exc:
-                        if exc.status_code in (401, 403):
-                            self._auth_failed_at = time.monotonic()
-                            self._auth_failed_status = exc.status_code
-                        raise
-                    all_rows.extend(rows)
-                    if len(rows) < PAGE_SIZE or len(all_rows) >= total_count:
-                        break
+        if not self.enabled:
+            return []
+        return await self._list.refresh(force)
 
-            stations = self._ingest(all_rows)
-            self._cache = stations
-            self._cached_at = time.monotonic()
-            return stations
+    async def _fetch_rows(self, _previous: list[CngStation]) -> list[dict[str, Any]]:
+        self._raise_if_auth_cooldown()
+
+        all_rows: list[dict[str, Any]] = []
+        # 조회가 실패하면 예외가 그대로 전파돼 캐시를 건드리지 않는다.
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            transport=self._transport,
+            verify=shared_verify(),
+        ) as client:
+            for page in range(1, MAX_PAGES + 1):
+                try:
+                    rows, total_count = await self._page(client, page)
+                except PublicDataAPIError as exc:
+                    if exc.status_code in (401, 403):
+                        self._auth_failed_at = time.monotonic()
+                        self._auth_failed_status = exc.status_code
+                    raise
+                all_rows.extend(rows)
+                if len(rows) < PAGE_SIZE or len(all_rows) >= total_count:
+                    break
+        return all_rows
 
     async def _page(
         self,

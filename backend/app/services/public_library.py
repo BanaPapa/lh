@@ -17,12 +17,15 @@ LH 내부망 앱 표준 데이터셋의 공공시설 「도서관」(JB_45, 전�
   같은 앞머리 없이 「인후도서관」 꼴이다. 그래서 amenities 가 VWorld 장소검색 「공공도서관」
   분류(LH 66곳과 이름까지 같음)로 빠진 곳을 보충하고 이름을 맞춘다.
 - 장애 동안에는 amenities 가 VWorld 분류로 대체하고 경고를 띄운다.
+
+서버 사본(2026-10-01): 받아 둔 공공도서관 목록을 파일(public_libraries_cache.json)로 실어
+서버가 켜지자마자 쓰고, 하루가 지났으면 뒤에서 새로 받는다(snapshot_store 참고).
 """
 
 from __future__ import annotations
 
-import asyncio
-import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -30,6 +33,7 @@ import httpx
 from app.models import Coordinates
 from app.services.geo import haversine_meters
 from app.services.http_client import shared_verify
+from app.services.snapshot_store import DATA_DIR, SnapshotList, trim_rows
 
 
 PUBLIC_LIBRARY_URL = "https://api.data.go.kr/openapi/tn_pubr_public_lbrry_api"
@@ -38,6 +42,10 @@ PUBLIC_LIBRARY_DATASET_ID = "15013109"
 PAGE_SIZE = 1000
 MAX_PAGES = 30
 CACHE_TTL_SECONDS = 24 * 60 * 60
+
+# 공공도서관 목록 사본(앱 배선만 이 경로를 준다).
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "public_libraries_cache.json"
+SNAPSHOT_KEY = "libraries"
 
 LIBRARY_STANDARD_SOURCE = "전국도서관표준데이터(공공도서관)"
 
@@ -50,6 +58,8 @@ TYPE_KEYS = ("lbrrySe", "도서관유형")
 ROAD_KEYS = ("rdnmadr", "소재지도로명주소")
 LAT_KEYS = ("latitude", "위도")
 LNG_KEYS = ("longitude", "경도")
+# 사본에 남기는 열(판정이 읽는 것만 — 영문·한글 열 이름 모두).
+SNAPSHOT_COLUMNS = NAME_KEYS + TYPE_KEYS + ROAD_KEYS + LAT_KEYS + LNG_KEYS
 
 
 class PublicLibraryAPIError(RuntimeError):
@@ -95,25 +105,49 @@ def library_record(row: dict[str, Any]) -> LibraryRecord | None:
     return LibraryRecord(name, kind, _pick(row, ROAD_KEYS), coordinates)
 
 
+def libraries_from_rows(rows: list[Any]) -> list[LibraryRecord]:
+    """표준데이터 행 목록 → 공공도서관(API 행·사본 행 공통)."""
+
+    return [
+        record
+        for record in (library_record(row) for row in rows if isinstance(row, dict))
+        if record is not None
+    ]
+
+
 class PublicLibraryClient:
-    """전국도서관표준데이터 전량 → 공공도서관만 → 하루 캐시."""
+    """전국도서관표준데이터 전량 → 공공도서관만 → 하루 캐시(+ 서버 사본)."""
 
     def __init__(
         self,
         service_key: str,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self.timeout = timeout
         self._transport = transport
-        self._loaded_at = 0.0
-        self._libraries: list[LibraryRecord] = []
-        self._lock = asyncio.Lock()
+        # 전량 목록(메모리 하루 캐시 + 서버 사본). 동시에 여러 심사가 처음 불러도 한 번만 받는다.
+        self._list: SnapshotList[LibraryRecord] = SnapshotList(
+            snapshot_path, SNAPSHOT_KEY, "전국도서관표준데이터",
+            fetch=self._fetch_rows, parse=libraries_from_rows, error=PublicLibraryAPIError,
+            empty_message="전국도서관표준데이터에 공공도서관이 없습니다.",
+        )
 
     @property
     def enabled(self) -> bool:
         return bool(self.service_key)
+
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self._list.notice
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        return self._list.as_of
 
     async def libraries_around(
         self, center: Coordinates, radius_m: float
@@ -128,30 +162,32 @@ class PublicLibraryClient:
         ]
 
     async def _all_libraries(self) -> list[LibraryRecord]:
-        if self._libraries and time.monotonic() - self._loaded_at < CACHE_TTL_SECONDS:
-            return self._libraries
-        async with self._lock:
-            if self._libraries and time.monotonic() - self._loaded_at < CACHE_TTL_SECONDS:
-                return self._libraries
-            libraries: list[LibraryRecord] = []
-            async with httpx.AsyncClient(
-                timeout=self.timeout,
-                transport=self._transport,
-                follow_redirects=True,
-                verify=shared_verify(),
-            ) as client:
-                for page in range(1, MAX_PAGES + 1):
-                    rows, total = await self._page(client, page)
-                    libraries.extend(
-                        record for record in (library_record(row) for row in rows) if record
-                    )
-                    if len(rows) < PAGE_SIZE or page * PAGE_SIZE >= total:
-                        break
-            if not libraries:
-                raise PublicLibraryAPIError("전국도서관표준데이터에 공공도서관이 없습니다.")
-            self._libraries = libraries
-            self._loaded_at = time.monotonic()
-            return libraries
+        """전국 공공도서관. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
+        return await self._list.get()
+
+    async def refresh(self, force: bool = False) -> list[LibraryRecord]:
+        """전국 목록을 API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다."""
+
+        return await self._list.refresh(force)
+
+    async def _fetch_rows(self, _previous: list[LibraryRecord]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            transport=self._transport,
+            follow_redirects=True,
+            verify=shared_verify(),
+        ) as client:
+            for page in range(1, MAX_PAGES + 1):
+                page_rows, total = await self._page(client, page)
+                rows.extend(page_rows)
+                if len(page_rows) < PAGE_SIZE or page * PAGE_SIZE >= total:
+                    break
+        # 사본에는 공공도서관 행만, 판정이 읽는 열만 둔다(작은도서관 2천여 행은 버린다).
+        return trim_rows(
+            [row for row in rows if library_record(row) is not None], SNAPSHOT_COLUMNS
+        )
 
     async def _page(
         self, client: httpx.AsyncClient, page: int

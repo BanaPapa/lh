@@ -25,8 +25,14 @@ from app.services.address_pnu_kakao import KakaoAddressPnu
 from app.services.building_register import BuildingRegisterClient
 from app.services.cadastral_local import CadastralLocalStore
 from app.services.cadastral_vworld import VWorldCadastralStore
+from app.services import casino_registry as casino_source
+from app.services import city_gas_registry as city_gas_source
+from app.services import cng as cng_source
+from app.services import cng_gyeongnam as cng_gyeongnam_source
 from app.services import crematorium as crematorium_source
+from app.services import gg_chemical as gg_chemical_source
 from app.services import kgs as kgs_source
+from app.services import lpg_station_file as lpg_file_source
 from app.services import lpg_municipal as lpg_municipal_source
 from app.services import lpg_seoul as lpg_seoul_source
 from app.services import safemap as safemap_source
@@ -218,7 +224,9 @@ def build_hazard_service(
         ),
         # 가스안전공사 CNG 충전소(ODcloud 15001508). 같은 공공데이터포털 키를 쓰되
         # 데이터셋 활용신청 전에는 401 이라 조회 실패로 기록된다(로컬 CSV 가 보조).
-        cng=CngStationClient(config.public_data_key),
+        cng=CngStationClient(
+            config.public_data_key, snapshot_path=cng_source.DEFAULT_SNAPSHOT_PATH
+        ),
         facility_store=FacilityStore(),
         vworld=vworld,
         # 전국 주유시설 서버 사본 — 켜진 직후 첫 심사가 「아직 준비되지 않음」을 받지 않게 한다.
@@ -258,23 +266,35 @@ def build_hazard_service(
             fallback_enabled=lambda: not option_enabled("factory_geocode_kakao_only"),
         ),
         # 가스안전공사 LPG 충전소 파일(15001643) — kgs 조회 API 의 보조(중복 40m 제거).
-        lpg_file=LpgStationFileClient(config.public_data_key),
+        lpg_file=LpgStationFileClient(
+            config.public_data_key, snapshot_path=lpg_file_source.DEFAULT_SNAPSHOT_PATH
+        ),
         # 경남 천연가스 충전소(15055157) — 전국 CNG 의 지역 보조(주소 지오코딩).
-        cng_gyeongnam=CngGyeongnamClient(config.public_data_key, geocode=geocode_address),
+        cng_gyeongnam=CngGyeongnamClient(
+            config.public_data_key,
+            geocode=geocode_address,
+            snapshot_path=cng_gyeongnam_source.DEFAULT_SNAPSHOT_PATH,
+        ),
         # 생활안전지도 화학물취급시설(IF_0049) — 마목 유독물 참고 핀(판정 아님).
         chemical_feed=SafemapFacilityFeed(
             config.safemap_api_key, "IF_0049", snapshot_path=layer_snapshot_path("IF_0049")
         ),
         # 경기데이터드림 유해화학물질 취급사업장(ChmstryMttrBizplc) — 마목 참고 핀(경기 한정).
-        gg_chemical=GgChemicalClient(config.gg_open_api_key),
+        gg_chemical=GgChemicalClient(
+            config.gg_open_api_key, snapshot_path=gg_chemical_source.DEFAULT_SNAPSHOT_PATH
+        ),
         # 국토부 물류창고업 등록정보(3048029) — 환경부 보관·저장 창고 286곳, 마목 참고 핀.
         logistics_warehouse=LogisticsWarehouseClient(
             config.public_data_key, geocode=geocode_address, store=FacilityStore()
         ),
         # 카지노영업소 명단(문체부 허가 18곳) — 바목 판정 원천, 주소 지오코딩.
-        casino_registry=CasinoRegistryClient(geocode=geocode_address),
+        casino_registry=CasinoRegistryClient(
+            geocode=geocode_address, snapshot_path=casino_source.DEFAULT_SNAPSHOT_PATH
+        ),
         # 도시가스 제조시설 명단(LNG 생산기지·터미널·바이오가스 12곳) — 아목 판정 원천, 주소 지오코딩.
-        city_gas_registry=CityGasRegistryClient(geocode=geocode_address),
+        city_gas_registry=CityGasRegistryClient(
+            geocode=geocode_address, snapshot_path=city_gas_source.DEFAULT_SNAPSHOT_PATH
+        ),
         # 전국 LPG 판매소 파일(15091481) — 4,542건 주소 지오코딩, 저장소 30일 캐시.
         lpg_retailer_file=LpgRetailerFileClient(
             config.public_data_key, geocode=geocode_address, store=FacilityStore()

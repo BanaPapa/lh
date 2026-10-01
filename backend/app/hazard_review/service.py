@@ -1697,6 +1697,8 @@ class HazardReviewService:
             except PublicDataAPIError:
                 failed_sources.add("lpg_file")
                 file_stations = []
+            else:
+                self._note_snapshot("lpg_file", self.lpg_file)
             for station in file_stations:
                 distance = self._measure_distance(request, station.coordinates, None)
                 if distance > search_limit_m:
@@ -1747,6 +1749,8 @@ class HazardReviewService:
                 # 활용신청 전 401 등. 스냅샷이 없으므로 실패로 기록한다.
                 failed_sources.add("cng")
                 cng_stations = []
+            else:
+                self._note_snapshot("cng", self.cng)
             for station in cng_stations:
                 distance = self._measure_distance(request, station.coordinates, None)
                 if distance > search_limit_m:
@@ -1795,6 +1799,8 @@ class HazardReviewService:
             except PublicDataAPIError:
                 failed_sources.add("cng_gyeongnam")
                 gn_stations = []
+            else:
+                self._note_snapshot("cng_gyeongnam", self.cng_gyeongnam)
             for station in gn_stations:
                 distance = self._measure_distance(request, station.coordinates, None)
                 if distance > search_limit_m:
@@ -4381,6 +4387,10 @@ class HazardReviewService:
             "safemap_chemical": self.chemical_feed,
             "safemap_waste": self.waste_feed,
             "safemap_emission": self.emission_feed,
+            "cng": self.cng,
+            "lpg_file": self.lpg_file,
+            "cng_gyeongnam": self.cng_gyeongnam,
+            "gg_chemical": self.gg_chemical,
         }
         notices = _snapshot_notices.get() or {}
         return [

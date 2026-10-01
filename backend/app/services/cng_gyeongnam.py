@@ -10,8 +10,9 @@
 
 from __future__ import annotations
 
-import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -21,7 +22,7 @@ from app.services.cng import CngStation
 from app.services.geo import haversine_meters
 from app.services.http_client import shared_verify
 from app.services.kgs import PublicDataAPIError
-from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, SnapshotList
 
 CNG_GYEONGNAM_DATASET_ID = "15055157"
 CNG_GYEONGNAM_URL = (
@@ -33,6 +34,10 @@ CNG_GYEONGNAM_DATASET_PAGE_URL = "https://www.data.go.kr/data/15055157/fileData.
 PAGE_SIZE = 100
 MAX_PAGES = 5
 CACHE_TTL_SECONDS = 24 * 60 * 60
+
+# 좌표까지 붙인 목록 서버 사본(services/snapshot_store). 앱 배선만 이 경로를 준다.
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "cng_gyeongnam_cache.json"
+SNAPSHOT_KEY = CNG_GYEONGNAM_DATASET_ID
 
 Geocoder = Callable[[str], Awaitable[Coordinates | None]]
 
@@ -50,8 +55,42 @@ def _text(row: dict[str, Any], *keys: str) -> str:
     return ""
 
 
+def snapshot_row(station: CngStation) -> dict[str, Any]:
+    """사본 한 행 — 지오코딩한 좌표까지 둔다(켜질 때마다 다시 지오코딩하지 않는다)."""
+
+    return {
+        "name": station.name,
+        "addr": station.address,
+        "region": station.region,
+        "branch": station.branch,
+        "lat": station.coordinates.lat,
+        "lng": station.coordinates.lng,
+    }
+
+
+def stations_from_snapshot(rows: list[Any]) -> list[CngStation]:
+    stations: list[CngStation] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            coordinates = Coordinates(lat=float(row["lat"]), lng=float(row["lng"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+        stations.append(
+            CngStation(
+                name=str(row.get("name") or ""),
+                address=str(row.get("addr") or ""),
+                region=str(row.get("region") or ""),
+                coordinates=coordinates,
+                branch=str(row.get("branch") or ""),
+            )
+        )
+    return stations
+
+
 class CngGyeongnamClient:
-    """경남 CNG 충전소 목록을 받아 지오코딩해 캐시한다."""
+    """경남 CNG 충전소 목록을 받아 지오코딩해 캐시한다(메모리 하루 + 서버 사본)."""
 
     def __init__(
         self,
@@ -59,15 +98,17 @@ class CngGyeongnamClient:
         geocode: Geocoder | None = None,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self._geocode = geocode
         self.timeout = timeout
         self._transport = transport
-        self._cache: list[CngStation] = []
         self._failures: list[GeocodeFailure] = []
-        self._cached_at = 0.0
-        self._fill_lock = LoopSafeLock()
+        self._list: SnapshotList[CngStation] = SnapshotList(
+            snapshot_path, SNAPSHOT_KEY, "경상남도 천연가스 충전소",
+            fetch=self._located_rows, parse=stations_from_snapshot, error=PublicDataAPIError,
+        )
 
     @property
     def enabled(self) -> bool:
@@ -77,6 +118,16 @@ class CngGyeongnamClient:
     def geocode_failures(self) -> list[GeocodeFailure]:
         return list(self._failures)
 
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self._list.notice
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        return self._list.as_of
+
     async def stations_around(
         self, center: Coordinates, radius_m: float
     ) -> list[CngStation]:
@@ -84,42 +135,47 @@ class CngGyeongnamClient:
         return [s for s in stations if haversine_meters(center, s.coordinates) <= radius_m]
 
     async def all_stations(self) -> list[CngStation]:
+        """경남 목록. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
         if not self.enabled:
             return []
-        if self._is_warm():
-            return self._cache
-        async with self._fill_lock.get():
-            if self._is_warm():
-                return self._cache
-            rows = await self._fetch_rows()
-            assert self._geocode is not None
-            stations: list[CngStation] = []
-            failures: list[GeocodeFailure] = []
-            for row in rows:
-                name = _text(row, "충전소명")
-                address = _text(row, "위치")
-                if not name or not address:
-                    continue
-                coordinates = await self._geocode(address)
-                if coordinates is None:
-                    failures.append(GeocodeFailure(name, address))
-                    continue
-                stations.append(
-                    CngStation(
-                        name=name,
-                        address=address,
-                        region=f"경남 {_text(row, '시군명')}".strip(),
-                        coordinates=coordinates,
-                        branch=_text(row, "도시가스공급사"),
-                    )
-                )
-            self._cache = stations
-            self._failures = failures
-            self._cached_at = time.monotonic()
-            return stations
+        return await self._list.get()
 
-    def _is_warm(self) -> bool:
-        return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
+    async def refresh(self, force: bool = False) -> list[CngStation]:
+        """목록을 새로 받아 좌표를 붙이고 메모리와 서버 사본을 갈아 끼운다."""
+
+        if not self.enabled:
+            return []
+        return await self._list.refresh(force)
+
+    async def _located_rows(self, previous: list[CngStation]) -> list[dict[str, Any]]:
+        """파일 행을 받아 좌표를 붙인 사본 행으로. 이름·주소가 그대로면 직전 좌표를 다시 쓴다."""
+
+        rows = await self._fetch_rows()
+        assert self._geocode is not None
+        known = {(s.name, s.address): s.coordinates for s in previous}
+        stations: list[CngStation] = []
+        failures: list[GeocodeFailure] = []
+        for row in rows:
+            name = _text(row, "충전소명")
+            address = _text(row, "위치")
+            if not name or not address:
+                continue
+            coordinates = known.get((name, address)) or await self._geocode(address)
+            if coordinates is None:
+                failures.append(GeocodeFailure(name, address))
+                continue
+            stations.append(
+                CngStation(
+                    name=name,
+                    address=address,
+                    region=f"경남 {_text(row, '시군명')}".strip(),
+                    coordinates=coordinates,
+                    branch=_text(row, "도시가스공급사"),
+                )
+            )
+        self._failures = failures
+        return [snapshot_row(station) for station in stations]
 
     async def _fetch_rows(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []

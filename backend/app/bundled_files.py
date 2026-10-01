@@ -31,11 +31,24 @@ from pydantic import BaseModel
 from app.kst import KST
 from app.lh_alignments import load_registry as load_lh_alignments
 from app.screening.front_door import DATASET_GATES_PATH
+from app.services import casino_registry as casino_source
+from app.services import city_gas_registry as city_gas_source
+from app.services import city_parks as park_source
+from app.services import cng as cng_source
+from app.services import cng_gyeongnam as cng_gyeongnam_source
 from app.services import crematorium as crematorium_source
+from app.services import gg_chemical as gg_chemical_source
 from app.services import kgs as kgs_source
 from app.services import lpg_municipal as lpg_municipal_source
 from app.services import lpg_seoul as lpg_seoul_source
+from app.services import lpg_station_file as lpg_file_source
+from app.services import public_library as library_source
+from app.services import rail_stations as rail_source
 from app.services import safemap as safemap_source
+from app.services import school_locations as school_source
+from app.services import seoul_bus as seoul_bus_source
+from app.services import traditional_market as market_source
+from app.services import transfer_center as transfer_source
 from app.services.facility_store import DEFAULT_DB_PATH as FACILITY_DB_PATH
 from app.services.factory_registry import DEFAULT_GEOCODE_CACHE, DEFAULT_ROWS_CACHE
 from app.services.localdata import GEOCODE_CACHE_PATH as LOCALDATA_GEOCODE_CACHE
@@ -212,6 +225,41 @@ SNAPSHOT_NOTE = (
     "계속 쓰되 결과에 「서버 사본 사용(기준일)」을 밝히고, 7일을 넘기면 조회 실패로 올립니다 "
     "(python -m app.refresh_snapshots 로 다시 만듭니다)."
 )
+
+
+COORDINATE_NOTE = (
+    "주소 지오코딩 결과를 파일로 둔 것이라 git 에는 없고 배포 이미지에만 실립니다. 주소가 바뀐 "
+    "항목과 새 항목만 다시 지오코딩합니다(python -m app.refresh_snapshots 가 채웁니다)."
+)
+
+
+def _snapshot_file(
+    file_id: str,
+    name: str,
+    path: Path,
+    purpose: str,
+    source: str,
+    source_id: str,
+    source_url: str,
+    count_unit: str = "곳",
+    note: str = SNAPSHOT_NOTE,
+) -> BundledFile:
+    """전량 목록 API 사본 한 줄(기준일·건수는 사본 파일에서 읽는다)."""
+
+    return BundledFile(
+        id=file_id,
+        name=name,
+        path=path,
+        purpose=purpose,
+        source=source,
+        source_id=source_id,
+        source_url=source_url,
+        as_of_reader=snapshot_as_of,
+        count_unit=count_unit,
+        note=note,
+        counter=snapshot_row_count,
+        api_snapshot=True,
+    )
 
 
 def _layer_snapshot_files() -> tuple[BundledFile, ...]:
@@ -466,6 +514,96 @@ BUNDLED_FILES: tuple[BundledFile, ...] = (
         api_snapshot=True,
     ),
     *_layer_snapshot_files(),
+    _snapshot_file(
+        "city_parks", "전국 도시공원 사본", park_source.DEFAULT_SNAPSHOT_PATH,
+        "2차 주거여건 「공원」의 전국 목록입니다(19쪽). 서버가 켜진 직후 붐빌 때 받다가 시간이 넘어 "
+        "지도 검색 대체 + 원천 경고가 뜨던 것을 사본으로 없앱니다.",
+        "전국도시공원정보표준데이터 사본", "data.go.kr tn_pubr_public_cty_park_info_api",
+        park_source.CITY_PARK_URL,
+    ),
+    _snapshot_file(
+        "school_locations", "전국 초·중·고 위치 사본", school_source.DEFAULT_SNAPSHOT_PATH,
+        "2차 교육여건 초·중·고의 전국 목록입니다(12쪽).",
+        "전국초중등학교위치표준데이터 사본", "data.go.kr tn_pubr_public_elesch_mskul_lc_api",
+        school_source.SCHOOL_LOCATION_URL,
+    ),
+    _snapshot_file(
+        "traditional_markets", "전국 전통시장 사본", market_source.DEFAULT_SNAPSHOT_PATH,
+        "2차 상업시설에 더하는 전통시장의 전국 목록입니다.",
+        "전국전통시장표준데이터 사본", "data.go.kr tn_pubr_public_trdit_mrkt_api",
+        market_source.TRADITIONAL_MARKET_URL,
+    ),
+    _snapshot_file(
+        "public_libraries", "전국 공공도서관 사본", library_source.DEFAULT_SNAPSHOT_PATH,
+        "2차 공공시설에 세는 공공도서관의 전국 목록입니다(작은도서관·학교도서관은 뺀 행만 둡니다).",
+        "전국도서관표준데이터 사본", f"data.go.kr {library_source.PUBLIC_LIBRARY_DATASET_ID}",
+        library_source.PUBLIC_LIBRARY_URL,
+    ),
+    _snapshot_file(
+        "korail_stations", "한국철도공사 역위치 사본", rail_source.DEFAULT_SNAPSHOT_PATH,
+        "2차 철도역·KTX역의 전국 역 목록입니다(출구 좌표는 station_exits_jeonbuk.csv).",
+        "한국철도공사 역위치 정보(ODcloud) 사본",
+        f"data.go.kr {rail_source.KORAIL_STATION_DATASET_ID}", rail_source.KORAIL_STATION_URL,
+        count_unit="역",
+    ),
+    _snapshot_file(
+        "transfer_centers", "전국 환승센터 사본", transfer_source.DEFAULT_SNAPSHOT_PATH,
+        "2차 환승시설의 전국 목록입니다.",
+        "전국대중교통환승센터표준데이터 사본", "data.go.kr 15034541",
+        transfer_source.TRANSFER_CENTER_URL,
+    ),
+    _snapshot_file(
+        "seoul_bus_stops", "서울 버스정류소 사본", seoul_bus_source.DEFAULT_SNAPSHOT_PATH,
+        "서울 사업지의 2차 버스정류장 목록입니다(국토부 TAGO 는 서울을 주지 않습니다).",
+        "서울 열린데이터광장 버스정류소 위치정보 사본", "data.seoul.go.kr busStopLocationXyInfo",
+        "https://data.seoul.go.kr/",
+    ),
+    _snapshot_file(
+        "cng_stations", "가스안전공사 전국 CNG 충전소 사본", cng_source.DEFAULT_SNAPSHOT_PATH,
+        "1차 CNG 충전소(25m) 판정의 전국 목록입니다.",
+        "한국가스안전공사 전국 도시가스충전소 현황(ODcloud) 사본",
+        f"data.go.kr {cng_source.CNG_DATASET_ID}", cng_source.CNG_DATASET_PAGE_URL,
+        count_unit="행",
+    ),
+    _snapshot_file(
+        "lpg_station_file", "가스안전공사 LPG 충전소 현황(파일) 사본",
+        lpg_file_source.DEFAULT_SNAPSHOT_PATH,
+        "1차 LPG 충전소(25m) 판정의 보조 목록입니다(조회 API 와 같은 명부의 파일본).",
+        "한국가스안전공사 전국 LPG 충전소 현황(ODcloud) 사본",
+        f"data.go.kr {lpg_file_source.LPG_FILE_DATASET_ID}",
+        lpg_file_source.LPG_FILE_DATASET_PAGE_URL, count_unit="행",
+    ),
+    _snapshot_file(
+        "cng_gyeongnam", "경남 천연가스 충전소 좌표 사본",
+        cng_gyeongnam_source.DEFAULT_SNAPSHOT_PATH,
+        "1차 CNG 충전소의 경남 보조 목록에 주소 지오코딩 좌표를 붙여 둔 사본입니다.",
+        "경상남도 천연가스 충전소 설치 현황(ODcloud) + 주소 지오코딩 사본",
+        f"data.go.kr {cng_gyeongnam_source.CNG_GYEONGNAM_DATASET_ID}",
+        cng_gyeongnam_source.CNG_GYEONGNAM_DATASET_PAGE_URL,
+    ),
+    _snapshot_file(
+        "gg_chemical", "경기 유해화학물질 취급사업장 사본", gg_chemical_source.DEFAULT_SNAPSHOT_PATH,
+        "1차 마목 유독물 참고 핀(경기 한정 · 판정 아님)의 전량 목록입니다. 위험물 Rule 이 사업지 "
+        "지역과 무관하게 이 목록을 묻기 때문에 첫 심사가 기다리지 않게 실어 둡니다.",
+        "경기데이터드림 유해화학물질 취급사업장 현황 사본", "openapi.gg.go.kr ChmstryMttrBizplc",
+        gg_chemical_source.GG_CHEMICAL_DATASET_PAGE_URL,
+    ),
+    _snapshot_file(
+        "casino_registry", "카지노영업소 좌표 사본", casino_source.DEFAULT_SNAPSHOT_PATH,
+        "1차 카지노영업소(25m · 다자녀) 명단 18곳의 주소 지오코딩 좌표입니다. 명단은 코드에 있고 "
+        "여기에는 좌표만 둡니다(켤 때마다 다시 지오코딩하지 않습니다).",
+        "한국카지노업관광협회 회원사 명단(코드) + 주소 지오코딩 좌표",
+        f"명단 기준 {casino_source.CASINO_REGISTRY_AS_OF}", casino_source.CASINO_REGISTRY_URL,
+        note=COORDINATE_NOTE,
+    ),
+    _snapshot_file(
+        "city_gas_registry", "도시가스 제조시설 좌표 사본", city_gas_source.DEFAULT_SNAPSHOT_PATH,
+        "1차 도시가스 제조시설 명단 12곳의 주소 지오코딩 좌표입니다. 명단은 코드에 있고 여기에는 "
+        "좌표만 둡니다.",
+        "도시가스 제조시설 명단(코드) + 주소 지오코딩 좌표",
+        f"명단 기준 {city_gas_source.CITY_GAS_REGISTRY_AS_OF}",
+        city_gas_source.CITY_GAS_REGISTRY_URL, note=COORDINATE_NOTE,
+    ),
 )
 
 

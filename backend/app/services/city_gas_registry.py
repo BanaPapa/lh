@@ -23,17 +23,23 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import NamedTuple
 
 from app.models import Coordinates
 from app.services.address_candidates import address_candidates
 from app.services.geo import haversine_meters
 from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, CoordinateSnapshot
 
 CITY_GAS_REGISTRY_URL = "https://www.lngkorea.or.kr/2_2_2.php"
 CITY_GAS_REGISTRY_LABEL = "도시가스 제조시설 명단(LNG 생산기지·터미널·바이오가스 제조소 12곳)"
 CITY_GAS_REGISTRY_AS_OF = "2026-09-18"
 CACHE_TTL_SECONDS = 24 * 60 * 60
+
+# 명단 주소의 지오코딩 좌표 사본(앱 배선만 이 경로를 준다).
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "city_gas_registry_cache.json"
+SNAPSHOT_KEY = "plants"
 
 Geocoder = Callable[[str], Awaitable[Coordinates | None]]
 
@@ -108,8 +114,13 @@ def _facility_id(entry: CityGasPlantEntry) -> str:
 class CityGasRegistryClient:
     """명단 12곳을 지오코딩해 캐시(24시간)하고 반경으로 거른다."""
 
-    def __init__(self, geocode: Geocoder | None = None) -> None:
+    def __init__(
+        self, geocode: Geocoder | None = None, snapshot_path: Path | None = None
+    ) -> None:
         self._geocode = geocode
+        # 명단 주소의 지오코딩 좌표 사본. 켤 때마다 12곳(+ 재시도)을 다시 묻지 않는다 —
+        # 명단은 코드가 정본이고, 주소가 바뀐 시설과 새 시설만 지오코딩한다.
+        self._coordinates = CoordinateSnapshot(snapshot_path, SNAPSHOT_KEY)
         self._cache: list[CityGasPlant] = []
         self._failures: list[GeocodeFailure] = []
         self._cached_at = 0.0
@@ -140,11 +151,17 @@ class CityGasRegistryClient:
             failures: list[GeocodeFailure] = []
             for entry in CITY_GAS_PLANTS:
                 # 산단·항만 부지는 지번이 지오코더에 없기도 하다. 뒤 토큰을 떼며 재시도한다.
-                coordinates: Coordinates | None = None
-                for candidate in address_candidates(entry.address):
-                    coordinates = await self._geocode(candidate)
-                    if coordinates is not None:
-                        break
+                coordinates: Coordinates | None = self._coordinates.get(
+                    _facility_id(entry), entry.address
+                )
+                if coordinates is None:
+                    for candidate in address_candidates(entry.address):
+                        coordinates = await self._geocode(candidate)
+                        if coordinates is not None:
+                            self._coordinates.put(
+                                _facility_id(entry), entry.address, coordinates
+                            )
+                            break
                 if coordinates is None:
                     failures.append(GeocodeFailure(entry.name, entry.address))
                     continue
@@ -161,6 +178,7 @@ class CityGasRegistryClient:
                         coordinates=coordinates,
                     )
                 )
+            self._coordinates.save()
             self._cache = plants
             self._failures = failures
             self._cached_at = time.monotonic()

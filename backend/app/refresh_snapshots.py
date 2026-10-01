@@ -122,6 +122,53 @@ async def _lpg_seoul(context: Context) -> tuple[int | None, str]:
     return len(facilities), f"지오코딩 실패 {failures}건" if failures else ""
 
 
+def _list_step(
+    owner: str, attr: str, what: str
+) -> Callable[[Context], Awaitable[tuple[int | None, str]]]:
+    """전량 목록 클라이언트 하나를 새로 받는 단계(client.refresh(force=True)).
+
+    owner 는 "hazard"(1차 판정 서비스) 또는 "amenities"(2차 수집기)다. 활용신청 승인 전
+    (401·403)은 실패가 아니라 건너뜀으로 센다.
+    """
+
+    async def run(context: Context) -> tuple[int | None, str]:
+        client = _require(getattr(getattr(context, owner), attr, None), what)
+        try:
+            items = await client.refresh(force=True)
+        except Exception as exc:
+            if getattr(exc, "status_code", None) in (401, 403):
+                raise StepSkipped("공공데이터포털 활용신청 승인 전") from exc
+            raise
+        notes: list[str] = []
+        quarantined = len(getattr(client, "quarantined", []) or [])
+        if quarantined:
+            notes.append(f"좌표 격리 {quarantined}건")
+        failures = len(getattr(client, "geocode_failures", []) or [])
+        if failures:
+            notes.append(f"지오코딩 실패 {failures}건")
+        return len(items), " · ".join(notes)
+
+    return run
+
+
+def _registry_step(
+    attr: str, method: str
+) -> Callable[[Context], Awaitable[tuple[int | None, str]]]:
+    """코드에 둔 명단(카지노·도시가스 제조시설)의 좌표 사본을 채운다(새 주소만 지오코딩)."""
+
+    async def run(context: Context) -> tuple[int | None, str]:
+        client = _require(getattr(context.hazard, attr, None), "지오코더")
+        items = await getattr(client, method)()
+        failures = client.geocode_failures
+        if not items:
+            raise RuntimeError(f"좌표를 하나도 붙이지 못했습니다(지오코딩 실패 {len(failures)}곳)")
+        # 좌표를 못 붙인 명단 항목은 판정에서 빠진다. 요약 줄에 이름을 남겨 드러낸다.
+        names = ", ".join(failure.name for failure in failures)
+        return len(items), f"지오코딩 실패 {len(failures)}곳: {names}" if failures else ""
+
+    return run
+
+
 async def _lpg_municipal(context: Context) -> tuple[int | None, str]:
     """전북 시군구 파일 + 이미 사본에 든 다른 시군구 파일."""
 
@@ -301,7 +348,56 @@ def build_steps() -> list[Step]:
         )
         for layer_id in SNAPSHOT_LAYER_IDS
     ]
+    public_data = "공공데이터포털"
     steps += [
+        # 1차 판정의 소형 전국 목록.
+        Step("cng_stations", "가스안전공사 전국 CNG 충전소", _list_step("hazard", "cng", public_data)),
+        Step(
+            "lpg_station_file", "가스안전공사 LPG 충전소 현황(파일)",
+            _list_step("hazard", "lpg_file", public_data),
+        ),
+        Step(
+            "cng_gyeongnam", "경남 천연가스 충전소(좌표 포함)",
+            _list_step("hazard", "cng_gyeongnam", "공공데이터포털·지오코더"),
+        ),
+        Step(
+            "gg_chemical", "경기 유해화학물질 취급사업장",
+            _list_step("hazard", "gg_chemical", "경기데이터드림(GG_OPEN_API_KEY)"),
+        ),
+        Step("casino_registry", "카지노영업소 명단 좌표", _registry_step("casino_registry", "all_casinos")),
+        Step(
+            "city_gas_registry", "도시가스 제조시설 명단 좌표",
+            _registry_step("city_gas_registry", "all_plants"),
+        ),
+        # 2차 생활편의시설의 전국 목록(표준데이터).
+        Step(
+            "school_locations", "전국 초·중·고 위치 표준데이터",
+            _list_step("amenities", "school_client", public_data),
+        ),
+        Step(
+            "traditional_markets", "전국 전통시장 표준데이터",
+            _list_step("amenities", "market_client", public_data),
+        ),
+        Step(
+            "city_parks", "전국 도시공원 표준데이터",
+            _list_step("amenities", "park_client", public_data),
+        ),
+        Step(
+            "public_libraries", "전국 도서관 표준데이터(공공도서관)",
+            _list_step("amenities", "library_client", public_data),
+        ),
+        Step(
+            "korail_stations", "한국철도공사 역위치 정보",
+            _list_step("amenities", "korail_client", public_data),
+        ),
+        Step(
+            "transfer_centers", "전국 대중교통 환승센터 표준데이터",
+            _list_step("amenities", "transfer_client", public_data),
+        ),
+        Step(
+            "seoul_bus_stops", "서울 버스정류소 위치정보",
+            _list_step("amenities", "seoul_bus", "서울 열린데이터광장(SEOUL_OPEN_DATA_KEY)"),
+        ),
         Step("lpg_municipal", "시군구 액화석유가스업 파일(전북 + 사본에 든 시군구)", _lpg_municipal),
         Step("lpg_seoul", "서울 액화석유가스업(열린데이터광장)", _lpg_seoul),
         Step("factory_rows", "산단공 등록공장 목록(전북 15개 시군구)", _factory_rows),

@@ -1735,6 +1735,9 @@ class AmenityCollector:
                         for r in records
                     ),
                     SCHOOL_STANDARD_SOURCE,
+                    snapshot_note=_snapshot_note(
+                        self.school_client, "전국초중등학교위치표준데이터"
+                    ),
                 )
             except Exception:
                 logger.warning("학교 위치 표준데이터 실패: 생활안전지도 레이어로 대체", exc_info=True)
@@ -1775,6 +1778,7 @@ class AmenityCollector:
                 for r in records
             ),
             market_source.MARKET_SOURCE,
+            snapshot_note=_snapshot_note(self.market_client, "전국전통시장표준데이터"),
         )
 
     async def _parks(self, center: Coordinates, radius_m: int) -> FeedResult:
@@ -1796,7 +1800,10 @@ class AmenityCollector:
             RawPlace(r.name, r.address, park_source.standard_category(r.kind), r.coordinates)
             for r in records
         )
-        standard = FeedResult(places, park_source.PARK_STANDARD_SOURCE)
+        park_snapshot_note = _snapshot_note(self.park_client, "전국도시공원정보표준데이터")
+        standard = FeedResult(
+            places, park_source.PARK_STANDARD_SOURCE, snapshot_note=park_snapshot_note
+        )
         if not (
             self.kakao.enabled and option_enabled(park_source.PARK_SUPPLEMENT_OPTION)
         ):
@@ -1813,7 +1820,9 @@ class AmenityCollector:
             if _is_park(p) and not park_source.is_duplicate(p.name, p.coordinates, known)
         )
         return FeedResult(
-            places + extra, f"{park_source.PARK_STANDARD_SOURCE} + {KAKAO_PLACE_SOURCE}"
+            places + extra,
+            f"{park_source.PARK_STANDARD_SOURCE} + {KAKAO_PLACE_SOURCE}",
+            snapshot_note=park_snapshot_note,
         )
 
     # -- 생활안전지도 시설 레이어 ----------------------------------------------
@@ -2161,6 +2170,9 @@ class AmenityCollector:
                             for s in stops
                         ),
                         SEOUL_BUS_SOURCE,
+                        snapshot_note=_snapshot_note(
+                            self.seoul_bus, "서울시 버스정류소 위치정보"
+                        ),
                     )
             except Exception:
                 logger.warning("서울시 정류소 조회 실패: 지도 검색으로 대체", exc_info=True)
@@ -2202,6 +2214,9 @@ class AmenityCollector:
                         )
                     ),
                     TRANSFER_STANDARD_SOURCE,
+                    snapshot_note=_snapshot_note(
+                        self.transfer_client, "전국대중교통환승센터표준데이터"
+                    ),
                 )
         if not self.kakao.enabled:
             if standard_error is not None:
@@ -2272,7 +2287,10 @@ class AmenityCollector:
                 logger.warning("전국도서관표준데이터 실패: VWorld 로 대체 (%s)", exc)
                 failures.append(("전국도서관표준데이터(15013109)는", exc))
             else:
-                return await self._standard_libraries(records, center, radius_m)
+                result = await self._standard_libraries(records, center, radius_m)
+                return result._replace(
+                    snapshot_note=_snapshot_note(self.library_client, "전국도서관표준데이터")
+                )
         if self._place_search_ready():
             try:
                 found = await self._vworld_places(
@@ -2389,6 +2407,9 @@ class AmenityCollector:
                         for r in records
                     ),
                     KORAIL_STATION_SOURCE,
+                    snapshot_note=_snapshot_note(
+                        self.korail_client, "한국철도공사 역위치 정보"
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("한국철도공사 역위치 정보 실패: VWorld 로 대체 (%s)", exc)
@@ -2797,6 +2818,9 @@ class AmenityCollector:
                 markets = _market_facilities(outcome, stored, rings, center)
                 facilities = sorted(facilities + markets, key=lambda f: f.distance_m)
                 actual_source = f"{LOCALDATA_SOURCE} + {market_source.MARKET_SOURCE}"
+                # 전통시장 목록을 서버 사본(받은 지 하루 넘음)으로 답했으면 기준일을 드러낸다.
+                if outcome.snapshot_note:
+                    note = f"{note} {outcome.snapshot_note}".strip()
             else:
                 note = market_source.RETAIL_STORES_ONLY_NOTE
         return GroupCollection(

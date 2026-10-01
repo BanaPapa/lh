@@ -14,7 +14,8 @@ UA 를 보낸다. 응답 봉투: {"ChmstryMttrBizplc":[{"head":[{"list_total_cou
 
 from __future__ import annotations
 
-import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -23,8 +24,12 @@ from app.models import Coordinates
 from app.services.geo import haversine_meters
 from app.services.http_client import shared_verify
 from app.services.kgs import PublicDataAPIError
-from app.services.safemap_facilities import SafemapFacility
-from app.services.single_flight import LoopSafeLock
+from app.services.safemap_facilities import (
+    SafemapFacility,
+    facility_from_snapshot,
+    snapshot_row,
+)
+from app.services.snapshot_store import DATA_DIR, SnapshotList
 
 GG_CHEMICAL_SERVICE = "ChmstryMttrBizplc"
 GG_CHEMICAL_URL = f"https://openapi.gg.go.kr/{GG_CHEMICAL_SERVICE}"
@@ -38,6 +43,10 @@ GG_CHEMICAL_LAYER_ID = "GG_CHEM"
 PAGE_SIZE = 1000
 MAX_PAGES = 20
 CACHE_TTL_SECONDS = 24 * 60 * 60
+# 전량 목록 서버 사본(services/snapshot_store). 어느 사업지든 위험물 Rule 이 이 목록을 묻기
+# 때문에, 켜진 직후 첫 심사가 전량 수신을 기다리지 않게 실어 둔다. 앱 배선만 경로를 준다.
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "gg_chemical_cache.json"
+SNAPSHOT_KEY = GG_CHEMICAL_LAYER_ID
 # 원천이 WAF 로 기본 UA(python-httpx) 를 차단한다(2026-09-17 실측).
 BROWSER_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -89,8 +98,16 @@ def parse_row(row: dict[str, Any], ordinal: int) -> SafemapFacility | None:
     )
 
 
+def _facilities_from_snapshot(rows: list[Any]) -> list[SafemapFacility]:
+    return [
+        facility
+        for facility in (facility_from_snapshot(GG_CHEMICAL_LAYER_ID, row) for row in rows)
+        if facility is not None
+    ]
+
+
 class GgChemicalClient:
-    """경기 유해화학물질 취급사업장 전량 캐시(24시간) + 반경 조회.
+    """경기 유해화학물질 취급사업장 전량 캐시(24시간 + 서버 사본) + 반경 조회.
 
     SafemapFacilityFeed 와 같은 모양(enabled · all_facilities · facilities_around)이라
     hazard_review 의 참고 핀 헬퍼가 그대로 받는다.
@@ -103,17 +120,30 @@ class GgChemicalClient:
         service_key: str,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self.timeout = timeout
         self._transport = transport
-        self._cache: list[SafemapFacility] = []
-        self._cached_at = 0.0
-        self._fill_lock = LoopSafeLock()
+        # 전량 목록(메모리 하루 캐시 + 서버 사본). 사본에는 파싱한 핀 레코드를 둔다.
+        self._list: SnapshotList[SafemapFacility] = SnapshotList(
+            snapshot_path, SNAPSHOT_KEY, "경기 유해화학물질 취급사업장",
+            fetch=self._facility_rows, parse=_facilities_from_snapshot, error=PublicDataAPIError,
+        )
 
     @property
     def enabled(self) -> bool:
         return bool(self.service_key)
+
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self._list.notice
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        return self._list.as_of
 
     async def facilities_around(
         self, center: Coordinates, radius_m: float
@@ -122,22 +152,23 @@ class GgChemicalClient:
         return [f for f in facilities if haversine_meters(center, f.coordinates) <= radius_m]
 
     async def all_facilities(self) -> list[SafemapFacility]:
+        """경기 전량. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
         if not self.enabled:
             return []
-        if self._is_warm():
-            return self._cache
-        async with self._fill_lock.get():
-            if self._is_warm():
-                return self._cache
-            rows = await self._fetch_rows()
-            parsed = (parse_row(row, ordinal) for ordinal, row in enumerate(rows))
-            facilities = [facility for facility in parsed if facility is not None]
-            self._cache = facilities
-            self._cached_at = time.monotonic()
-            return facilities
+        return await self._list.get()
 
-    def _is_warm(self) -> bool:
-        return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
+    async def refresh(self, force: bool = False) -> list[SafemapFacility]:
+        """전량을 API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다."""
+
+        if not self.enabled:
+            return []
+        return await self._list.refresh(force)
+
+    async def _facility_rows(self, _previous: list[SafemapFacility]) -> list[dict[str, Any]]:
+        rows = await self._fetch_rows()
+        parsed = (parse_row(row, ordinal) for ordinal, row in enumerate(rows))
+        return [snapshot_row(facility) for facility in parsed if facility is not None]
 
     async def _fetch_rows(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []

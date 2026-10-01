@@ -49,6 +49,13 @@ from app.screening.export_xlsx import (
 )
 from app.screening.front_door import FrontDoorRef, FrontDoorStore
 from app.screening.service import ScreeningService
+from app.services import city_parks as park_source
+from app.services import public_library as library_source
+from app.services import rail_stations as rail_source
+from app.services import school_locations as school_source
+from app.services import seoul_bus as seoul_bus_source
+from app.services import traditional_market as market_source
+from app.services import transfer_center as transfer_source
 from app.services.cadastral_local import CadastralLocalStore
 from app.services.facility_store import FacilityStore
 from app.services.kakao import KakaoClient
@@ -129,15 +136,27 @@ def get_screening_service() -> ScreeningService:
             # 종합병원 1순위: 심사표 지정 원천이자 LH 데이터셋과 같은 심평원 목록.
             hira_client=HiraHospitalClient(config.public_data_key),
             # 초·중·고 1순위: 이전한 학교도 현재 위치로 주는 학교 위치 표준데이터.
-            school_client=SchoolLocationClient(config.public_data_key),
+            # 전량 목록 원천은 서버 사본 경로를 붙인다 — 켜지자마자 쓰고 하루 지나면 뒤에서
+            # 새로 받는다(켜진 직후 붐빌 때 시간 초과 → 대체+경고가 나던 틈을 막는다).
+            school_client=SchoolLocationClient(
+                config.public_data_key, snapshot_path=school_source.DEFAULT_SNAPSHOT_PATH
+            ),
             # 상업시설 = 대규모점포(localdata) + 전통시장(전국전통시장표준데이터, LH 최종보고서).
-            market_client=TraditionalMarketClient(config.public_data_key),
+            market_client=TraditionalMarketClient(
+                config.public_data_key, snapshot_path=market_source.DEFAULT_SNAPSHOT_PATH
+            ),
             # 공원 1순위: LH 생활권공원과 같은 전국도시공원정보표준데이터.
-            park_client=CityParkClient(config.public_data_key),
+            park_client=CityParkClient(
+                config.public_data_key, snapshot_path=park_source.DEFAULT_SNAPSHOT_PATH
+            ),
             # 공공도서관 1순위: 전국도서관표준데이터(15013109). 미승인·장애면 VWorld 장소검색.
-            library_client=PublicLibraryClient(config.public_data_key),
+            library_client=PublicLibraryClient(
+                config.public_data_key, snapshot_path=library_source.DEFAULT_SNAPSHOT_PATH
+            ),
             # 철도역 1순위: 한국철도공사 역위치 정보(15127532). 미승인·장애면 VWorld 장소검색.
-            korail_client=KorailStationClient(config.public_data_key),
+            korail_client=KorailStationClient(
+                config.public_data_key, snapshot_path=rail_source.DEFAULT_SNAPSHOT_PATH
+            ),
             front_door_store=get_front_door_store(),
             cadastral_store=get_cadastral_store(),
             # 대학 정문 좌표 확보(LH 과업내용서 예외기준: 대학교=정문).
@@ -152,9 +171,13 @@ def get_screening_service() -> ScreeningService:
                 config.naver_map_client_id, config.naver_map_client_secret
             ),
             # 환승시설 지정 원천(환승센터 표준데이터 15034541). 활용신청 전엔 지도 근사.
-            transfer_client=TransferCenterClient(config.public_data_key),
+            transfer_client=TransferCenterClient(
+                config.public_data_key, snapshot_path=transfer_source.DEFAULT_SNAPSHOT_PATH
+            ),
             # 서울 버스정류소(TAGO 미제공 지역). 서울 열린데이터광장 키.
-            seoul_bus=SeoulBusStopClient(config.seoul_open_data_key),
+            seoul_bus=SeoulBusStopClient(
+                config.seoul_open_data_key, snapshot_path=seoul_bus_source.DEFAULT_SNAPSHOT_PATH
+            ),
             # 생활안전지도 시설 레이어(2026-09-17 승인). 초·중·고·관공서는 지정 원천,
             # 대학교는 후보 보강, 종합병원은 국립중앙의료원 시도 조회의 전국본 폴백.
             # 전량 목록 서버 사본을 붙인다 — 켜지자마자 쓰고 하루 지나면 뒤에서 새로 받는다.

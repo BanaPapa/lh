@@ -58,6 +58,11 @@ class TestStepSelection:
         assert {"facilities", "factory_rows", "factory_geocode", "safemap_fuel", "kgs_lpg",
                 "crematorium", "lpg_municipal", "lpg_seoul", "logistics_warehouse",
                 "lpg_retailer"} <= set(names)
+        # 2차 표준데이터·1차 소형 목록(2026-10-01 추가) — 사본 파일마다 단계가 있다.
+        assert {"city_parks", "school_locations", "traditional_markets", "public_libraries",
+                "korail_stations", "transfer_centers", "seoul_bus_stops", "cng_stations",
+                "lpg_station_file", "cng_gyeongnam", "gg_chemical", "casino_registry",
+                "city_gas_registry"} <= set(names)
         layer_steps = [s for s in steps if s.group == refresh_snapshots.LAYER_GROUP]
         assert [s.name for s in layer_steps] == [f"safemap_layer_{i}" for i in SNAPSHOT_LAYER_IDS]
 
@@ -162,6 +167,14 @@ class TestSnapshotFileList:
             "crematorium_cache.json", "lpg_municipal_cache.json", "lpg_seoul_cache.json",
         } <= set(names)
         assert {f"safemap_layer_{layer_id}.json" for layer_id in SNAPSHOT_LAYER_IDS} <= set(names)
+        assert {
+            "city_parks_cache.json", "school_locations_cache.json",
+            "traditional_markets_cache.json", "public_libraries_cache.json",
+            "korail_stations_cache.json", "transfer_centers_cache.json",
+            "seoul_bus_stops_cache.json", "cng_stations_cache.json",
+            "lpg_station_file_cache.json", "cng_gyeongnam_cache.json", "gg_chemical_cache.json",
+            "casino_registry_cache.json", "city_gas_registry_cache.json",
+        } <= set(names)
         assert len(names) == len(set(names))
         # 경로 구분자·상위 폴더 없이 data 폴더 기준 이름만.
         assert all("/" not in name and "\\" not in name for name in names)
@@ -238,6 +251,42 @@ class TestWiring:
         for layer_id in ("IF_0022", "IF_0031", "IF_0034", "IF_0035", "IF_0038"):
             assert layer_id in SNAPSHOT_LAYER_IDS
             assert _layer_feed("k", layer_id).snapshot.store.path == layer_snapshot_path(layer_id)
+
+    def test_every_whole_list_client_in_the_app_has_a_registered_snapshot(self) -> None:
+        """앱이 조립한 전량 목록 클라이언트마다 사본 경로가 있고, 그 파일이 등록부·단계에 있다.
+
+        사본으로 옮기지 않은 전량 목록 원천이 하나라도 남으면 켜진 직후 그 원천만 시간이
+        넘어 대체 + 경고가 난다(2026-10-01 공원). 새 원천을 붙일 때 이 시험이 잡는다.
+        """
+
+        from app.hazard_review import router as hazard_router
+        from app.screening import router as screening_router
+
+        hazard_router.get_hazard_service.cache_clear()
+        screening_router.get_screening_service.cache_clear()
+        try:
+            screening = screening_router.get_screening_service()
+            hazard, amenities = screening.hazard, screening.amenities
+            lists = {
+                "cng": hazard.cng, "lpg_file": hazard.lpg_file,
+                "cng_gyeongnam": hazard.cng_gyeongnam, "gg_chemical": hazard.gg_chemical,
+                "school": amenities.school_client, "market": amenities.market_client,
+                "park": amenities.park_client, "library": amenities.library_client,
+                "korail": amenities.korail_client, "transfer": amenities.transfer_client,
+                "seoul_bus": amenities.seoul_bus,
+            }
+            paths = {name: client._list.guard.store.path for name, client in lists.items()}
+            paths["casino"] = hazard.casino_registry._coordinates.store.path
+            paths["city_gas"] = hazard.city_gas_registry._coordinates.store.path
+        finally:
+            screening_router.get_screening_service.cache_clear()
+            hazard_router.get_hazard_service.cache_clear()
+
+        registered = set(bundled_files.snapshot_file_names())
+        for name, path in paths.items():
+            assert path is not None, name
+            assert path.parent == DATA_DIR, name
+            assert path.name in registered, name
 
     @pytest.mark.parametrize(
         "client",

@@ -30,11 +30,14 @@ import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Generic, NamedTuple, TypeVar
 
 from app.kst import KST
+from app.services.single_flight import LoopSafeLock
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 # 사본 파일이 놓이는 곳(backend/data). 코드 위치 기준이라 로컬·컨테이너(/app/data)가 같다.
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
@@ -48,6 +51,8 @@ SNAPSHOT_MAX_STALE_SECONDS = 7 * 24 * 60 * 60
 REFRESH_RETRY_SECONDS = 10 * 60
 # 새로 받은 목록이 직전 사본의 이 비율에 못 미치면 응답 이상으로 보고 갈아 쓰지 않는다.
 MIN_KEEP_RATIO = 0.5
+# 사본 고지에서 「새로 받기가 실패했다」를 알리는 문구(연결 점검이 이 문구로 실패를 가린다).
+REFRESH_FAILED_MARK = "실시간 조회 실패"
 
 
 class Snapshot(NamedTuple):
@@ -215,7 +220,7 @@ class SnapshotGuard:
             return ""
         date = as_of_date(self.fetched_at)
         if self.error:
-            return f"서버 사본 사용(기준일 {date} · 실시간 조회 실패: {self.error})"
+            return f"서버 사본 사용(기준일 {date} · {REFRESH_FAILED_MARK}: {self.error})"
         return f"서버 사본 사용(기준일 {date} · 새 목록을 받는 중)"
 
     def outage_message(self) -> str:
@@ -266,6 +271,184 @@ class SnapshotGuard:
 
         self._task = loop.create_task(run())
         return self._task
+
+
+class CoordinateSnapshot:
+    """코드에 둔 명단(카지노·도시가스 제조시설)의 주소 지오코딩 좌표 사본.
+
+    명단은 코드가 정본이라 「오래됨」이 없다 — 여기 두는 것은 (식별자, 주소) → 좌표뿐이다.
+    주소가 그대로면 다시 지오코딩하지 않고, 주소가 바뀌었거나 새로 든 항목만 묻는다.
+    좌표가 새로 생겼을 때만 파일을 쓴다.
+    """
+
+    def __init__(self, path: Path | None, key: str) -> None:
+        self.store = SnapshotStore(path)
+        self.key = key
+        self._known: dict[tuple[str, str], tuple[float, float]] | None = None
+        self._dirty = False
+
+    def _load(self) -> dict[tuple[str, str], tuple[float, float]]:
+        if self._known is None:
+            known: dict[tuple[str, str], tuple[float, float]] = {}
+            snapshot = self.store.load(self.key)
+            for row in snapshot.rows if snapshot is not None else []:
+                try:
+                    known[(str(row["id"]), str(row["addr"]))] = (
+                        float(row["lat"]), float(row["lng"]),
+                    )
+                except (KeyError, TypeError, ValueError):
+                    continue
+            self._known = known
+        return self._known
+
+    def get(self, identifier: str, address: str) -> Any:
+        """사본에 있는 좌표(Coordinates). 없으면 None."""
+
+        from app.models import Coordinates
+
+        hit = self._load().get((identifier, address))
+        return Coordinates(lat=hit[0], lng=hit[1]) if hit else None
+
+    def put(self, identifier: str, address: str, coordinates: Any) -> None:
+        self._load()[(identifier, address)] = (coordinates.lat, coordinates.lng)
+        self._dirty = True
+
+    def save(self) -> None:
+        """새로 생긴 좌표가 있으면 파일에 쓴다."""
+
+        if not self._dirty:
+            return
+        rows = [
+            {"id": identifier, "addr": address, "lat": lat, "lng": lng}
+            for (identifier, address), (lat, lng) in self._load().items()
+        ]
+        if self.store.save(self.key, rows) or not self.store.enabled:
+            self._dirty = False
+
+
+def trim_rows(rows: list[Any], columns: tuple[str, ...]) -> list[dict[str, Any]]:
+    """원천 행에서 판정이 읽는 열만 남긴다(사본 파일을 줄인다). 없는 열은 싣지 않는다."""
+
+    return [
+        {column: row[column] for column in columns if column in row}
+        for row in rows
+        if isinstance(row, dict)
+    ]
+
+
+class SnapshotList(Generic[T]):
+    """전량 목록 하나의 메모리 캐시 + 서버 사본 수명 관리.
+
+    클라이언트는 「행 받기」와 「행 → 레코드」만 주고, 나머지(메모리 → 사본 → API 순서,
+    하루 넘은 목록의 뒤에서 갱신, 7일 넘은 사본의 장애 승격, 크게 줄어든 응답 거르기,
+    동시 조회 1회)는 여기서 한다. 사본에는 「행」을 둔다 — API 가 준 행(쓰는 열만)이면
+    읽어 올릴 때도 같은 파서를 타고, 지오코딩한 원천이면 좌표를 넣은 행을 둔다.
+
+        fetch(previous)  직전 목록을 받아 새 행 목록을 준다(실패는 예외). 지오코딩 원천은
+                         previous 에서 좌표를 물려받아 새 주소만 지오코딩한다.
+        parse(rows)      행 목록 → 레코드 목록(API 행·사본 행 공통).
+        error(message)   이 원천의 예외를 만든다(장애 승격·응답 이상에 쓴다).
+        empty_message    목록이 비면 이 문구로 예외를 올린다(빈 목록이 곧 응답 이상인 원천).
+    """
+
+    def __init__(
+        self,
+        path: Path | None,
+        key: str,
+        label: str,
+        *,
+        fetch: Callable[[list[T]], Awaitable[list[Any]]],
+        parse: Callable[[list[Any]], list[T]],
+        error: Callable[[str], Exception],
+        empty_message: str = "",
+        ttl_seconds: float = SNAPSHOT_TTL_SECONDS,
+    ) -> None:
+        self.guard = SnapshotGuard(path, key, label, ttl_seconds=ttl_seconds)
+        self._fetch = fetch
+        self._parse = parse
+        self._error = error
+        self._empty_message = empty_message
+        self._ttl_seconds = ttl_seconds
+        self.items: list[T] = []
+        self._cached_at = 0.0
+        self._lock = LoopSafeLock()
+
+    def is_warm(self) -> bool:
+        return bool(self.items) and time.monotonic() - self._cached_at < self._ttl_seconds
+
+    def adopt(self) -> None:
+        """메모리가 비어 있으면 서버 사본을 올린다(프로세스에서 한 번)."""
+
+        if self.items:
+            return
+        snapshot = self.guard.load()
+        if snapshot is None:
+            return
+        try:
+            items = self._parse(snapshot.rows)
+        except Exception:  # noqa: BLE001 — 읽지 못하는 사본은 없는 것으로 친다
+            logger.warning("%s 서버 사본을 해석하지 못했습니다(새로 받습니다)", self.guard.label)
+            return
+        if not items:
+            return
+        self.items = items
+        # 받은 지 지난 시간만큼 캐시 시각을 물려, 하루 넘은 사본은 「오래됨」으로 읽힌다.
+        self._cached_at = time.monotonic() - snapshot.age_seconds
+        self.guard.adopt(snapshot)
+
+    @property
+    def has_data(self) -> bool:
+        """즉시 답할 목록이 있는가(메모리 또는 서버 사본)."""
+
+        self.adopt()
+        return bool(self.items)
+
+    @property
+    def notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self.guard.notice if self.items else ""
+
+    @property
+    def as_of(self) -> datetime | None:
+        return self.guard.as_of if self.items else None
+
+    async def get(self) -> list[T]:
+        """목록. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
+        if self.is_warm():
+            return self.items
+        self.adopt()
+        if self.is_warm():
+            return self.items
+        if self.items:
+            # 받은 지 하루 넘은 목록. 그대로 쓰면서 뒤에서 새로 받는다.
+            self.guard.refresh_in_background(self.refresh)
+            if self.guard.expired_and_failing:
+                raise self._error(self.guard.outage_message())
+            return self.items
+        return await self.refresh()
+
+    async def refresh(self, force: bool = False) -> list[T]:
+        """API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다. 실패는 예외(사본은 그대로)."""
+
+        async with self._lock.get():
+            # 잠금을 기다리는 동안 먼저 들어간 호출이 채웠으면 다시 받지 않는다.
+            if not force and self.is_warm():
+                return self.items
+            # 직전 목록이 있어야 새 목록이 크게 줄었는지 가리고 좌표를 물려줄 수 있다.
+            self.adopt()
+            rows = await self._fetch(self.items)
+            items = self._parse(rows)
+            if not items and self._empty_message:
+                raise self._error(self._empty_message)
+            shrunk = self.guard.shrink_reason(len(items), len(self.items))
+            if shrunk:
+                raise self._error(shrunk)
+            self.items = items
+            self._cached_at = time.monotonic()
+            self.guard.mark_live(rows)
+            return items
 
 
 # -- bundled_files · refresh_snapshots 가 쓰는 파일 요약 ---------------------------

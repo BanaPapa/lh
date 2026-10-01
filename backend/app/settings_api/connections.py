@@ -25,6 +25,7 @@ from app.services.lpg_retailer_file import LPG_RETAILER_DATASET_PAGE_URL
 from app.services.gas_product_file import GAS_PRODUCT_AS_OF, GAS_PRODUCT_DATASET_PAGE_URL
 from app.services.lpg_seoul import SEOUL_LPG_PAGE_URL
 from app.services.safemap_layers import SAFEMAP_LAYERS, SafemapLayerClient
+from app.services.snapshot_store import REFRESH_FAILED_MARK
 
 # 점검용 고정 지점(강남역). 정류장·주유소·필지 모두 이 지점 근처에 결과가 있다.
 PROBE_POINT = Coordinates(lat=37.4979, lng=127.0276)
@@ -156,11 +157,11 @@ def _snapshot_state(client: Any) -> str:
     사유를 올려 점검을 실패로 표시한다.
     """
 
-    guard = getattr(client, "snapshot", None)
     notice = getattr(client, "snapshot_notice", "")
-    if getattr(guard, "error", "") and isinstance(notice, str) and notice:
-        raise RuntimeError(notice)
     if isinstance(notice, str) and notice:
+        # 고지에 실패 사유가 실렸으면 새로 받기가 실패한 상태다(snapshot_store.SnapshotGuard.notice).
+        if REFRESH_FAILED_MARK in notice:
+            raise RuntimeError(notice)
         return f" · {notice}"
     as_of = getattr(client, "data_as_of", None)
     return f" · 목록 수신 {as_of.astimezone(KST):%m-%d %H:%M}" if as_of is not None else ""
@@ -178,23 +179,27 @@ async def _probe_kgs(hazard: Any, screening: Any) -> str:
 
 async def _probe_cng(hazard: Any, screening: Any) -> str:
     rows = await hazard.cng.all_stations()
-    return f"전국 {len(rows):,}건"
+    return f"전국 {len(rows):,}건" + _snapshot_state(hazard.cng)
 
 
 async def _probe_lpg_file(hazard: Any, screening: Any) -> str:
     rows = await hazard.lpg_file.all_stations()
-    return f"전국 {len(rows):,}건"
+    return f"전국 {len(rows):,}건" + _snapshot_state(hazard.lpg_file)
 
 
 async def _probe_cng_gyeongnam(hazard: Any, screening: Any) -> str:
     rows = await hazard.cng_gyeongnam.all_stations()
     failed = len(hazard.cng_gyeongnam.geocode_failures)
-    return f"경남 {len(rows)}건" + (f" · 지오코딩 실패 {failed}건" if failed else "")
+    return (
+        f"경남 {len(rows)}건"
+        + (f" · 지오코딩 실패 {failed}건" if failed else "")
+        + _snapshot_state(hazard.cng_gyeongnam)
+    )
 
 
 async def _probe_gg_chemical(hazard: Any, screening: Any) -> str:
     rows = await hazard.gg_chemical.all_facilities()
-    return f"경기 {len(rows):,}건"
+    return f"경기 {len(rows):,}건" + _snapshot_state(hazard.gg_chemical)
 
 
 async def _probe_logistics_warehouse(hazard: Any, screening: Any) -> str:
@@ -317,13 +322,15 @@ async def _probe_ncmc(hazard: Any, screening: Any) -> str:
 
 
 async def _probe_seoul_bus(hazard: Any, screening: Any) -> str:
-    rows = await _amenities(screening).seoul_bus.all_stops()
-    return f"서울 정류소 {len(rows):,}건"
+    client = _amenities(screening).seoul_bus
+    rows = await client.all_stops()
+    return f"서울 정류소 {len(rows):,}건" + _snapshot_state(client)
 
 
 async def _probe_transfer_center(hazard: Any, screening: Any) -> str:
-    rows = await _amenities(screening).transfer_client.all_centers()
-    return f"환승센터 {len(rows):,}건"
+    client = _amenities(screening).transfer_client
+    rows = await client.all_centers()
+    return f"환승센터 {len(rows):,}건" + _snapshot_state(client)
 
 
 async def _probe_factory_registry(hazard: Any, screening: Any) -> str:

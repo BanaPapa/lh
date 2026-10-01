@@ -34,6 +34,9 @@ backend/data/crematorium_cache.json
 backend/data/lpg_municipal_cache.json
 backend/data/lpg_seoul_cache.json
 backend/data/safemap_layer_*.json
+# 나머지 전량 목록·좌표 사본(공원·학교·전통시장·도서관·역·환승센터·CNG·LPG 파일 등)도 같은
+# 이름 규칙(*_cache.json)을 쓴다. 목록은 python -m app.refresh_snapshots --list-files.
+backend/data/*_cache.json
 backend/data/*.json.tmp
 backend/data/cadastral_*.sqlite
 backend/data/cadastral_*.db

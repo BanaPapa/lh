@@ -12,7 +12,8 @@
 
 from __future__ import annotations
 
-import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -26,7 +27,7 @@ from app.services.kgs import (
     QuarantinedStation,
     coordinate_quarantine_reason,
 )
-from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, SnapshotList, trim_rows
 
 LPG_FILE_DATASET_ID = "15001643"
 # 최신본(한국가스안전공사_전국 LPG 충전소 현황_20251127).
@@ -46,6 +47,12 @@ LAT_KEYS = ("위도",)
 LNG_KEYS = ("경도",)
 REGION_KEYS = ("행정구역", "행정 구역", "지역")
 USAGE_KEYS = ("관리구분",)
+
+# 전국 목록 서버 사본(services/snapshot_store). 켜지자마자 쓰고 하루 지나면 뒤에서 새로
+# 받는다. 앱 배선만 이 경로를 준다. 사본에는 판정이 읽는 열만 남긴다.
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "lpg_station_file_cache.json"
+SNAPSHOT_KEY = LPG_FILE_DATASET_ID
+SNAPSHOT_COLUMNS = NAME_KEYS + ADDRESS_KEYS + LAT_KEYS + LNG_KEYS + REGION_KEYS + USAGE_KEYS
 
 
 def _pick(row: dict[str, Any], keys: tuple[str, ...]) -> str:
@@ -88,14 +95,18 @@ class LpgStationFileClient:
         service_key: str,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self.timeout = timeout
         self._transport = transport
-        self._cache: list[LpgStation] = []
         self._quarantined: list[QuarantinedStation] = []
-        self._cached_at = 0.0
-        self._fill_lock = LoopSafeLock()
+        # 전량 목록(메모리 하루 캐시 + 서버 사본). 사본에는 파일 행(쓰는 열만)을 두어 좌표
+        # 위생 검사를 다시 탄다. 동시 조회는 한 번만 원격을 탄다.
+        self._list: SnapshotList[LpgStation] = SnapshotList(
+            snapshot_path, SNAPSHOT_KEY, "가스안전공사 LPG 충전소 현황(파일)",
+            fetch=self._fetch_rows, parse=self._ingest, error=PublicDataAPIError,
+        )
 
     @property
     def enabled(self) -> bool:
@@ -105,6 +116,16 @@ class LpgStationFileClient:
     def quarantined(self) -> list[QuarantinedStation]:
         return list(self._quarantined)
 
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self._list.notice
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        return self._list.as_of
+
     async def stations_around(
         self, center: Coordinates, radius_m: float
     ) -> list[LpgStation]:
@@ -112,28 +133,30 @@ class LpgStationFileClient:
         return [s for s in stations if haversine_meters(center, s.coordinates) <= radius_m]
 
     async def all_stations(self) -> list[LpgStation]:
+        """전국 목록. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
         if not self.enabled:
             return []
-        if self._is_warm():
-            return self._cache
-        async with self._fill_lock.get():
-            if self._is_warm():
-                return self._cache
-            rows: list[dict[str, Any]] = []
-            async with httpx.AsyncClient(
-                timeout=self.timeout, transport=self._transport, verify=shared_verify()
-            ) as client:
-                for page in range(1, MAX_PAGES + 1):
-                    page_rows, total = await self._page(client, page)
-                    rows.extend(page_rows)
-                    if len(page_rows) < PAGE_SIZE or len(rows) >= total:
-                        break
-            self._cache = self._ingest(rows)
-            self._cached_at = time.monotonic()
-            return self._cache
+        return await self._list.get()
 
-    def _is_warm(self) -> bool:
-        return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
+    async def refresh(self, force: bool = False) -> list[LpgStation]:
+        """전국 목록을 API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다."""
+
+        if not self.enabled:
+            return []
+        return await self._list.refresh(force)
+
+    async def _fetch_rows(self, _previous: list[LpgStation]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        async with httpx.AsyncClient(
+            timeout=self.timeout, transport=self._transport, verify=shared_verify()
+        ) as client:
+            for page in range(1, MAX_PAGES + 1):
+                page_rows, total = await self._page(client, page)
+                rows.extend(page_rows)
+                if len(page_rows) < PAGE_SIZE or len(rows) >= total:
+                    break
+        return trim_rows(rows, SNAPSHOT_COLUMNS)
 
     def _ingest(self, rows: list[dict[str, Any]]) -> list[LpgStation]:
         stations: list[LpgStation] = []

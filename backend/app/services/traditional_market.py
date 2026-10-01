@@ -17,13 +17,16 @@ markets.xlsx, 전북 59곳)에서 받아 시장 지번주소로 PNU 를 만들�
   16곳 있다(전북은 익산 함열시장 1곳) — 좌표 없이는 반경을 거를 수 없어 뺀다.
 - 전북 주소가 「전북특별차치도」로 오타가 나 있다. 주소 필지 조회(카카오 주소검색)가
   빗나가지 않게 「전북특별자치도」로 고쳐 쓴다.
+
+서버 사본(2026-10-01): 받아 둔 전량 목록을 파일(traditional_markets_cache.json)로 실어 서버가
+켜지자마자 쓰고, 하루가 지났으면 뒤에서 새로 받는다(snapshot_store 참고).
 """
 
 from __future__ import annotations
 
-import asyncio
-import time
 from collections.abc import Iterable, Sequence
+from datetime import datetime
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -31,6 +34,7 @@ import httpx
 from app.models import Coordinates
 from app.services.geo import haversine_meters
 from app.services.http_client import shared_verify
+from app.services.snapshot_store import DATA_DIR, SnapshotList, trim_rows
 
 
 TRADITIONAL_MARKET_URL = "https://api.data.go.kr/openapi/tn_pubr_public_trdit_mrkt_api"
@@ -38,6 +42,11 @@ TRADITIONAL_MARKET_URL = "https://api.data.go.kr/openapi/tn_pubr_public_trdit_mr
 PAGE_SIZE = 1000
 MAX_PAGES = 10
 CACHE_TTL_SECONDS = 24 * 60 * 60
+
+# 전량 목록 사본(앱 배선만 이 경로를 준다)과 사본에 남기는 열(판정이 읽는 것만).
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "traditional_markets_cache.json"
+SNAPSHOT_KEY = "markets"
+SNAPSHOT_COLUMNS = ("mrktNm", "mrktType", "lnmadr", "rdnmadr", "latitude", "longitude")
 
 # 대규모점포와 같은 자리로 보는 거리. 시장 건물이 대규모점포(「그 밖의 대규모점포」·
 # 「시장」)로도 인허가된 곳은 한 시설을 두 번 세지 않는다. 다른 시설군의 「같은 자리
@@ -120,24 +129,47 @@ def drop_duplicate_markets(
     return kept
 
 
+def markets_from_rows(rows: list[Any]) -> list[MarketRecord]:
+    """표준데이터 행 목록 → 좌표 있는 시장(API 행·사본 행 공통)."""
+
+    return [
+        record
+        for record in (_market(row) for row in rows if isinstance(row, dict))
+        if record is not None
+    ]
+
+
 class TraditionalMarketClient:
     def __init__(
         self,
         service_key: str,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self.timeout = timeout
         self._transport = transport
-        self._loaded_at = 0.0
-        self._markets: list[MarketRecord] = []
-        # 동시에 여러 심사가 처음 불러도 전량 적재는 한 번만 한다.
-        self._lock = asyncio.Lock()
+        # 전량 목록(메모리 하루 캐시 + 서버 사본). 동시에 여러 심사가 처음 불러도 한 번만 받는다.
+        self._list: SnapshotList[MarketRecord] = SnapshotList(
+            snapshot_path, SNAPSHOT_KEY, "전국전통시장표준데이터",
+            fetch=self._fetch_rows, parse=markets_from_rows, error=TraditionalMarketAPIError,
+            empty_message="전통시장 표준데이터가 비어 있습니다.",
+        )
 
     @property
     def enabled(self) -> bool:
         return bool(self.service_key)
+
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self._list.notice
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        return self._list.as_of
 
     async def markets_around(
         self, center: Coordinates, radius_m: float
@@ -152,30 +184,29 @@ class TraditionalMarketClient:
         ]
 
     async def _all_markets(self) -> list[MarketRecord]:
-        if self._markets and time.monotonic() - self._loaded_at < CACHE_TTL_SECONDS:
-            return self._markets
-        async with self._lock:
-            if self._markets and time.monotonic() - self._loaded_at < CACHE_TTL_SECONDS:
-                return self._markets
-            markets: list[MarketRecord] = []
-            async with httpx.AsyncClient(
-                timeout=self.timeout,
-                transport=self._transport,
-                follow_redirects=True,
-                verify=shared_verify(),
-            ) as client:
-                for page in range(1, MAX_PAGES + 1):
-                    rows, total = await self._page(client, page)
-                    markets.extend(
-                        record for record in (_market(row) for row in rows) if record
-                    )
-                    if len(rows) < PAGE_SIZE or page * PAGE_SIZE >= total:
-                        break
-            if not markets:
-                raise TraditionalMarketAPIError("전통시장 표준데이터가 비어 있습니다.")
-            self._markets = markets
-            self._loaded_at = time.monotonic()
-            return markets
+        """전국 목록. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
+        return await self._list.get()
+
+    async def refresh(self, force: bool = False) -> list[MarketRecord]:
+        """전국 목록을 API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다."""
+
+        return await self._list.refresh(force)
+
+    async def _fetch_rows(self, _previous: list[MarketRecord]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            transport=self._transport,
+            follow_redirects=True,
+            verify=shared_verify(),
+        ) as client:
+            for page in range(1, MAX_PAGES + 1):
+                page_rows, total = await self._page(client, page)
+                rows.extend(page_rows)
+                if len(page_rows) < PAGE_SIZE or page * PAGE_SIZE >= total:
+                    break
+        return trim_rows(rows, SNAPSHOT_COLUMNS)
 
     async def _page(
         self, client: httpx.AsyncClient, page: int

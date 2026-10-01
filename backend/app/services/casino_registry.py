@@ -15,16 +15,22 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import NamedTuple
 
 from app.models import Coordinates
 from app.services.geo import haversine_meters
 from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, CoordinateSnapshot
 
 CASINO_REGISTRY_URL = "http://koreacasino.or.kr/kcasino/asso/members.do"
 CASINO_REGISTRY_LABEL = "한국카지노업관광협회 회원사 명단(문체부 허가 18곳)"
 CASINO_REGISTRY_AS_OF = "2026-09-17"
 CACHE_TTL_SECONDS = 24 * 60 * 60
+
+# 명단 주소의 지오코딩 좌표 사본(앱 배선만 이 경로를 준다).
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "casino_registry_cache.json"
+SNAPSHOT_KEY = "casinos"
 
 Geocoder = Callable[[str], Awaitable[Coordinates | None]]
 
@@ -83,10 +89,18 @@ def _facility_id(entry: CasinoEntry) -> str:
 
 
 class CasinoRegistryClient:
-    """명단 18곳을 지오코딩해 캐시(24시간)하고 반경으로 거른다."""
+    """명단 18곳을 지오코딩해 캐시(24시간)하고 반경으로 거른다.
 
-    def __init__(self, geocode: Geocoder | None = None) -> None:
+    명단은 코드 상수라 받을 API 가 없고, 켤 때마다 드는 것은 주소 지오코딩 18회다. 그 좌표를
+    서버 사본(casino_registry_cache.json)에 두어 다시 지오코딩하지 않는다 — 주소가 바뀐
+    업소와 새 업소만 묻는다. 명단 자체는 늘 코드의 것이므로 사본이 오래돼도 고지할 게 없다.
+    """
+
+    def __init__(
+        self, geocode: Geocoder | None = None, snapshot_path: Path | None = None
+    ) -> None:
         self._geocode = geocode
+        self._coordinates = CoordinateSnapshot(snapshot_path, SNAPSHOT_KEY)
         self._cache: list[Casino] = []
         self._failures: list[GeocodeFailure] = []
         self._cached_at = 0.0
@@ -116,7 +130,11 @@ class CasinoRegistryClient:
             casinos: list[Casino] = []
             failures: list[GeocodeFailure] = []
             for entry in CASINOS:
-                coordinates = await self._geocode(entry.address)
+                coordinates = self._coordinates.get(_facility_id(entry), entry.address)
+                if coordinates is None:
+                    coordinates = await self._geocode(entry.address)
+                    if coordinates is not None:
+                        self._coordinates.put(_facility_id(entry), entry.address, coordinates)
                 if coordinates is None:
                     failures.append(GeocodeFailure(entry.name, entry.address))
                     continue
@@ -131,6 +149,7 @@ class CasinoRegistryClient:
                         coordinates=coordinates,
                     )
                 )
+            self._coordinates.save()
             self._cache = casinos
             self._failures = failures
             self._cached_at = time.monotonic()
