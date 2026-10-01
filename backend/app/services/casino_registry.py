@@ -149,6 +149,7 @@ class CasinoRegistryClient:
                         coordinates=coordinates,
                     )
                 )
+            self._coordinates.keep({(_facility_id(entry), entry.address) for entry in CASINOS})
             self._coordinates.save()
             self._cache = casinos
             self._failures = failures

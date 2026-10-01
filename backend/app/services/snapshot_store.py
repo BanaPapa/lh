@@ -313,8 +313,18 @@ class CoordinateSnapshot:
         self._load()[(identifier, address)] = (coordinates.lat, coordinates.lng)
         self._dirty = True
 
+    def keep(self, current: set[tuple[str, str]]) -> None:
+        """명단에서 빠졌거나 주소가 바뀐 항목의 옛 좌표를 버린다."""
+
+        known = self._load()
+        stale = [key for key in known if key not in current]
+        for key in stale:
+            del known[key]
+        if stale:
+            self._dirty = True
+
     def save(self) -> None:
-        """새로 생긴 좌표가 있으면 파일에 쓴다."""
+        """새로 생긴(또는 버린) 좌표가 있으면 파일에 쓴다."""
 
         if not self._dirty:
             return

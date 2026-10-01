@@ -30,6 +30,33 @@ def test_registry_lists_12_plants_with_kind_status_and_source() -> None:
     assert CITY_GAS_REGISTRY_URL.startswith("http")
 
 
+def test_every_address_ends_with_a_lot_or_building_number() -> None:
+    """지번·건물번호 없는 주소는 지오코더가 동 중심점을 돌려준다 — 시설이 엉뚱한 자리에 놓인다.
+
+    2026-10-01: 「여수시 묘도동」만 적힌 동북아LNG허브터미널이 부지에서 2.8km 떨어진 마을 안
+    (묘도동 915-1)에 놓여 있었다.
+    """
+
+    import re
+
+    for plant in CITY_GAS_PLANTS:
+        assert re.search(r"\d+(-\d+)?$", plant.address.split()[-1]), plant.name
+
+
+def test_addresses_corrected_against_cadastral_parcels() -> None:
+    """지오코딩이 안 되거나 엉뚱한 필지로 가던 세 곳은 지적도 현행 지번을 쓴다(2026-10-01).
+
+    통영: 「안정리 1179」·「안정로 770」은 주소검색에 없어 기지가 명단에서 빠졌다 → 2050(공장용지).
+    삼척: 「호산해변길 18」은 정문 옆 주차장 필지(505)로 갔다 → 500(공장용지).
+    동북아: 지번이 없어 동 중심점으로 갔다 → 2016(준설토 매립장).
+    """
+
+    address = {plant.name: plant.address for plant in CITY_GAS_PLANTS}
+    assert address["통영LNG생산기지"] == "경상남도 통영시 광도면 안정리 2050"
+    assert address["삼척LNG생산기지"] == "강원특별자치도 삼척시 원덕읍 호산리 500"
+    assert address["동북아LNG허브터미널"] == "전라남도 여수시 묘도동 2016"
+
+
 def test_geocoded_entries_become_plants_and_failures_are_kept() -> None:
     client = CityGasRegistryClient(geocode=geocode)
     plants = asyncio.run(client.all_plants())

@@ -60,9 +60,16 @@ CITY_GAS_PLANTS: tuple[CityGasPlantEntry, ...] = (
                       "LNG생산기지", "운영", "https://www.kogas.or.kr/site/koGas/goGisView.do?gisIdx=12"),
     CityGasPlantEntry("인천LNG생산기지", "한국가스공사", "인천", "인천광역시 연수구 송도동 364",
                       "LNG생산기지", "운영", "https://www.kogas.or.kr/site/koGas/goGisView.do?gisIdx=13"),
-    CityGasPlantEntry("통영LNG생산기지", "한국가스공사", "경남", "경상남도 통영시 광도면 안정리 1179",
+    # 공개 소재지는 「안정리 1179」(도로명 안정로 770)인데 두 주소 모두 카카오·VWorld 주소검색에
+    # 없어 지오코딩이 실패했고, 이 기지가 판정 목록에서 통째로 빠져 있었다(2026-10-01 확인).
+    # 기지 부지는 합병된 현행 지번 「안정리 2050」(공장용지 1,082,824㎡ · PNU 4822034027120500000)
+    # 이다 — 카카오 장소 「한국가스공사 통영기지본부」 좌표가 이 필지 안이다. 현행 지번을 쓴다.
+    CityGasPlantEntry("통영LNG생산기지", "한국가스공사", "경남", "경상남도 통영시 광도면 안정리 2050",
                       "LNG생산기지", "운영", "https://www.kogas.or.kr/site/koGas/goGisView.do?gisIdx=14"),
-    CityGasPlantEntry("삼척LNG생산기지", "한국가스공사", "강원", "강원특별자치도 삼척시 원덕읍 호산해변길 18",
+    # 도로명 「호산해변길 18」은 정문 옆 주차장 필지(호산리 505 · 1,179㎡)로 지오코딩돼, 경계
+    # 재측정이 기지가 아니라 주차장 필지로 잡혔다(2026-10-01 확인). 기지 본 부지는 「호산리 500」
+    # (공장용지 214,081㎡)이다 — 카카오 장소 「한국가스공사 삼척기지본부」의 지번·좌표가 이 필지다.
+    CityGasPlantEntry("삼척LNG생산기지", "한국가스공사", "강원", "강원특별자치도 삼척시 원덕읍 호산리 500",
                       "LNG생산기지", "운영", "https://www.kogas.or.kr/site/koGas/goGisView.do?gisIdx=15"),
     CityGasPlantEntry("제주LNG생산기지", "한국가스공사", "제주", "제주특별자치도 제주시 애월읍 애월해안로 59-38",
                       "LNG생산기지", "운영", "https://www.kogas.or.kr/site/koGas/goGisView.do?gisIdx=18"),
@@ -79,8 +86,12 @@ CITY_GAS_PLANTS: tuple[CityGasPlantEntry, ...] = (
     CityGasPlantEntry("통영에코파워 LNG터미널", "통영에코파워(HDC)", "경남",
                       "경상남도 통영시 광도면 황리 1608", "민간LNG터미널", "운영",
                       "https://www.lngkorea.or.kr/2_2_2.php"),
+    # 지번 없이 「묘도동」만 두었더니 카카오가 동 중심점(묘도동 915-1 · 대지 2,004㎡ · 마을 안)을
+    # 돌려줘, 터미널이 부지에서 약 2.8km 떨어진 주택가에 놓였다(2026-10-01 확인). 부지는 묘도
+    # 준설토 매립장 「묘도동 2016」(잡종지 1,854,150㎡)이다 — 카카오 장소 「동북아엘엔지허브터미널
+    # 현장사무소」의 지번·좌표가 이 필지다. 터미널은 이 필지의 일부만 쓰므로 경계는 넉넉하게 잡힌다.
     CityGasPlantEntry("동북아LNG허브터미널", "동북아엘엔지허브터미널(BS한양·GS에너지)", "전남",
-                      "전라남도 여수시 묘도동", "민간LNG터미널", "건설중",
+                      "전라남도 여수시 묘도동 2016", "민간LNG터미널", "건설중",
                       "https://www.lngkorea.or.kr/2_2_2.php"),
     # 일반도시가스사업자(예스코)의 바이오가스 자기제조 — 도시가스사업법 §3⑥ 허가 대상.
     CityGasPlantEntry("중랑 바이오가스 플랜트", "예스코", "서울", "서울특별시 성동구 자동차시장3길 64",
@@ -178,6 +189,9 @@ class CityGasRegistryClient:
                         coordinates=coordinates,
                     )
                 )
+            self._coordinates.keep(
+                {(_facility_id(entry), entry.address) for entry in CITY_GAS_PLANTS}
+            )
             self._coordinates.save()
             self._cache = plants
             self._failures = failures

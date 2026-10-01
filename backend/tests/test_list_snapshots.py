@@ -488,6 +488,13 @@ class TestRegistryCoordinates:
         # 주소가 바뀌면 사본 좌표를 쓰지 않는다(다시 지오코딩한다).
         assert second.get("a", "주소 2") is None
 
+        # 명단에서 주소가 바뀐 항목의 옛 좌표는 버린다.
+        second.put("a", "주소 2", Coordinates(lat=36.0, lng=128.0))
+        second.keep({("a", "주소 2")})
+        second.save()
+        rows = json.loads(path.read_text(encoding="utf-8"))["k"]["rows"]
+        assert [(row["id"], row["addr"]) for row in rows] == [("a", "주소 2")]
+
     @pytest.mark.parametrize(
         ("module", "client_class", "method", "count"),
         [
