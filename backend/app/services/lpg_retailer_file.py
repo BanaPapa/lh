@@ -26,6 +26,7 @@ from app.services.http_client import shared_verify
 from app.services.kgs import PublicDataAPIError
 from app.services.localdata import LocalDataRecord
 from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import MIN_KEEP_RATIO
 
 LPG_RETAILER_DATASET_ID = "15091481"
 LPG_RETAILER_URL = (
@@ -174,7 +175,35 @@ class LpgRetailerFileClient:
     def _is_warm(self) -> bool:
         return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
 
-    async def _load(self) -> tuple[list[LpgRetailer], list[GeocodeFailure]]:
+    async def refresh(self) -> list[LpgRetailer]:
+        """저장분 나이와 상관없이 전량을 새로 받아 저장소에 갈아 끼운다(야간 사본 갱신용).
+
+        상호·주소가 그대로인 판매소는 저장분의 좌표를 다시 써서 지오코딩(4,542건)은 새
+        주소에만 쓴다. 새 목록이 저장분의 절반에 못 미치면 응답 이상으로 보고 저장분을 둔다.
+        """
+
+        if not self.enabled:
+            return []
+        async with self._fill_lock.get():
+            previous = self._load_from_store(any_age=True) or []
+            known = {(r.name, r.address): r.coordinates for r in previous}
+            retailers, failures = await self._load(known)
+            if not retailers or len(retailers) < len(previous) * MIN_KEEP_RATIO:
+                raise PublicDataAPIError(
+                    f"LPG 판매소 파일 응답 이상 — 새 목록 {len(retailers):,}건이 저장분 "
+                    f"{len(previous):,}건에 크게 못 미쳐 저장분을 유지합니다"
+                )
+            self.loaded_from = "api"
+            self.synced_at = datetime.now(UTC)
+            self._save_to_store(retailers)
+            self._cache = retailers
+            self._failures = failures
+            self._cached_at = time.monotonic()
+            return retailers
+
+    async def _load(
+        self, known: dict[tuple[str, str], Coordinates] | None = None
+    ) -> tuple[list[LpgRetailer], list[GeocodeFailure]]:
         assert self._geocode is not None
         rows: list[dict[str, Any]] = []
         async with httpx.AsyncClient(
@@ -195,7 +224,7 @@ class LpgRetailerFileClient:
             if not address:
                 failures.append(GeocodeFailure(name, ""))
                 continue
-            coordinates = await self._geocode_any(address)
+            coordinates = (known or {}).get((name, address)) or await self._geocode_any(address)
             if coordinates is None:
                 failures.append(GeocodeFailure(name, address))
                 continue
@@ -210,7 +239,9 @@ class LpgRetailerFileClient:
                 return coordinates
         return None
 
-    def _load_from_store(self) -> list[LpgRetailer] | None:
+    def _load_from_store(self, any_age: bool = False) -> list[LpgRetailer] | None:
+        """저장분이 있고 STORE_MAX_AGE 안이면 그것. any_age 면 오래된 저장분도 돌려준다."""
+
         if self._store is None:
             return None
         state = self._store.sync_state_for(STORE_DATASET_KEY)
@@ -219,7 +250,7 @@ class LpgRetailerFileClient:
         synced = state.synced_at
         if synced.tzinfo is None:
             synced = synced.replace(tzinfo=UTC)
-        if datetime.now(UTC) - synced > STORE_MAX_AGE:
+        if not any_age and datetime.now(UTC) - synced > STORE_MAX_AGE:
             return None
         self.synced_at = synced
         return [

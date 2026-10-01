@@ -113,6 +113,9 @@ _api_sources_warmup_tasks: set[asyncio.Task[None]] = set()
 # (오피넷·LOCALDATA 캐시)은 예열 대상이 아니다. tools/lh_baseline/run_ours.py 의
 # WARMUP_SOURCES 와 같은 목록을 유지한다.
 API_WARMUP_SOURCES: tuple[tuple[str, str, str], ...] = (
+    # 생활안전지도 주유시설. 서버 사본이 있으면 기동 때 메모리에 올려 두고(첫 심사가 파일을
+    # 읽지 않는다), 없으면 첫 심사 요청을 기다리지 않고 기동 직후부터 전국 목록을 받는다.
+    ("safemap", "주유시설(생활안전지도 IF_0033)", "all_stations"),
     ("kgs_lpg", "LPG 충전소(가스안전공사)", "all_stations"),
     ("cng", "CNG 충전소(가스안전공사 ODcloud)", "all_stations"),
     ("crematorium", "화장시설(복지부)", "all_crematoriums"),

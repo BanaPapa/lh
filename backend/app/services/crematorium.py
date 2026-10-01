@@ -11,12 +11,19 @@
 - `apiType=JSON` 이면 JSON, 생략하면 XML. resultCode 00·totalCount 62.
 - 좌표가 없다. 주소를 지오코딩해야 한다. 62건뿐이라 카카오 지오코딩으로 붙인다.
   지오코딩 실패 건은 삭제하지 않고 격리해 사유와 함께 남긴다(룰북 §7 ⑤).
+
+서버 사본(2026-10-01): 켜질 때마다 전국 목록을 받고 62건을 다시 지오코딩했다(실측
+5.6초 · 카카오 60여 회). 좌표까지 붙인 목록을 파일(crematorium_cache.json)로 두어
+곧바로 쓰고, 하루가 지났으면 뒤에서 새로 받는다. 새로 받을 때 이름·주소가 그대로인
+시설은 사본의 좌표를 다시 써서 지오코딩은 새 주소에만 쓴다(snapshot_store 참고).
 """
 
 from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -25,9 +32,14 @@ from app.models import Coordinates
 from app.services.geo import haversine_meters
 from app.services.http_client import shared_verify
 from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, SnapshotGuard
 
 
 CREMATORIUM_URL = "https://apis.data.go.kr/1352000/ODMS_DATA_05_1/callData05_1Api"
+
+# 좌표까지 붙인 전국 화장시설 목록 사본. 앱 배선만 이 경로를 준다.
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "crematorium_cache.json"
+SNAPSHOT_KEY = "crematoriums"
 
 PAGE_SIZE = 100
 MAX_PAGES = 10
@@ -100,6 +112,41 @@ def _facility_id(row: dict[str, Any]) -> str:
     return f"{name}:{addr}"
 
 
+def snapshot_row(facility: Crematorium) -> dict[str, Any]:
+    return {
+        "id": facility.facility_id,
+        "name": facility.name,
+        "lat": facility.coordinates.lat,
+        "lng": facility.coordinates.lng,
+        "addr": facility.address,
+        "region": facility.region,
+        "sigungu": facility.sigungu,
+        "gubun": facility.gubun,
+        "braziers": facility.brazier_count,
+        "basis": facility.coordinate_basis,
+    }
+
+
+def crematorium_from_snapshot(row: Any) -> Crematorium | None:
+    if not isinstance(row, dict):
+        return None
+    try:
+        coordinates = Coordinates(lat=float(row["lat"]), lng=float(row["lng"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return Crematorium(
+        facility_id=str(row.get("id") or ""),
+        name=str(row.get("name") or ""),
+        coordinates=coordinates,
+        address=str(row.get("addr") or ""),
+        region=str(row.get("region") or ""),
+        sigungu=str(row.get("sigungu") or ""),
+        gubun=str(row.get("gubun") or ""),
+        brazier_count=str(row.get("braziers") or ""),
+        coordinate_basis=str(row.get("basis") or "geocode"),
+    )
+
+
 class CrematoriumClient:
     def __init__(
         self,
@@ -107,11 +154,13 @@ class CrematoriumClient:
         geocode: Geocoder | None = None,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self._geocode = geocode
         self.timeout = timeout
         self._transport = transport
+        self.snapshot = SnapshotGuard(snapshot_path, SNAPSHOT_KEY, "보건복지부 화장시설")
         self._cache: list[Crematorium] = []
         self._failures: list[GeocodeFailure] = []
         self._cached_at = 0.0
@@ -133,17 +182,66 @@ class CrematoriumClient:
     def _is_warm(self) -> bool:
         return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
 
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self.snapshot.notice if self._cache else ""
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        return self.snapshot.as_of if self._cache else None
+
+    def _adopt_snapshot(self) -> None:
+        """메모리가 비어 있으면 서버 사본을 올린다(프로세스에서 한 번)."""
+
+        if self._cache:
+            return
+        snapshot = self.snapshot.load()
+        if snapshot is None:
+            return
+        facilities = [f for f in map(crematorium_from_snapshot, snapshot.rows) if f is not None]
+        if not facilities:
+            return
+        self._cache = facilities
+        self._cached_at = time.monotonic() - snapshot.age_seconds
+        self.snapshot.adopt(snapshot)
+
     async def all_crematoriums(self) -> list[Crematorium]:
+        """전국 목록. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
         if not self.enabled:
             return []
         if self._is_warm():
             return self._cache
+        self._adopt_snapshot()
+        if self._is_warm():
+            return self._cache
+        if self._cache:
+            self.snapshot.refresh_in_background(self.refresh)
+            if self.snapshot.expired_and_failing:
+                raise CrematoriumAPIError(self.snapshot.outage_message())
+            return self._cache
+        return await self.refresh()
 
+    async def refresh(self, force: bool = False) -> list[Crematorium]:
+        """전국 목록을 새로 받아 좌표를 붙이고 메모리와 서버 사본을 갈아 끼운다. 실패는 예외."""
+
+        if not self.enabled:
+            return []
         async with self._fill_lock.get():
             # 잠금을 잡은 뒤 다시 확인한다. 먼저 들어간 호출이 이미 채웠으면
             # 재조회하지 않는다(double-checked).
-            if self._is_warm():
+            if not force and self._is_warm():
                 return self._cache
+            self._adopt_snapshot()
+            # 이름·주소가 그대로인 시설은 직전 목록의 지오코딩 좌표를 다시 쓴다. 지오코딩은
+            # 새 주소에만 쓰고, 지오코더가 막힌 날에도 아는 시설이 목록에서 빠지지 않는다.
+            known = {
+                facility.facility_id: facility.coordinates
+                for facility in self._cache
+                if facility.coordinate_basis == "geocode"
+            }
 
             # 조회가 실패하면 예외가 그대로 전파돼 캐시를 건드리지 않는다. 실패를
             # 캐시하지 않으므로 다음 호출이 다시 시도할 수 있다.
@@ -162,6 +260,8 @@ class CrematoriumClient:
                 elif not address:
                     failures.append(GeocodeFailure(name, address, "주소 없음"))
                     continue
+                elif _facility_id(row) in known:
+                    coordinates = known[_facility_id(row)]
                 else:
                     try:
                         coordinates = await self._geocode(address)
@@ -187,9 +287,13 @@ class CrematoriumClient:
                     )
                 )
 
+            shrunk = self.snapshot.shrink_reason(len(located), len(self._cache))
+            if shrunk:
+                raise CrematoriumAPIError(shrunk)
             self._cache = located
             self._failures = failures
             self._cached_at = time.monotonic()
+            self.snapshot.mark_live([snapshot_row(facility) for facility in located])
             return located
 
     async def crematoriums_around(

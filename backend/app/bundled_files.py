@@ -8,6 +8,12 @@
 BUNDLED_FILES 에 한 줄을 더한다(각 서비스의 경로·기준일 상수를 그대로 가져와 어긋나지 않게 한다).
 건수는 요청 때 파일을 직접 세고(CSV 행 · JSON 항목 · SQLite 행), 파일이 없으면 present=False 로
 드러낸다 — 목록만 있고 파일이 빠진 배포를 숨기지 않는다.
+
+API 사본(api_snapshot=True): 공공 API 로 받은 것을 파일로 둔 사본·지오코딩 캐시다. git 에는
+없고(.gitignore) 배포 이미지에만 실리며, `python -m app.refresh_snapshots` 가 한 번에 다시
+만든다. 야간 갱신 작업이 저장소(버킷)와 주고받을 파일 이름은 `snapshot_file_names()` —
+`python -m app.refresh_snapshots --list-files` 가 이 목록을 그대로 찍는다. 사본을 새로 만들면
+여기 한 줄만 더하면 화면 목록과 야간 갱신 파일 목록에 함께 들어간다.
 """
 
 from __future__ import annotations
@@ -22,10 +28,20 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from app.kst import KST
 from app.lh_alignments import load_registry as load_lh_alignments
 from app.screening.front_door import DATASET_GATES_PATH
+from app.services import crematorium as crematorium_source
+from app.services import kgs as kgs_source
+from app.services import lpg_municipal as lpg_municipal_source
+from app.services import lpg_seoul as lpg_seoul_source
+from app.services import safemap as safemap_source
 from app.services.facility_store import DEFAULT_DB_PATH as FACILITY_DB_PATH
-from app.services.factory_registry import DEFAULT_ROWS_CACHE
+from app.services.factory_registry import DEFAULT_GEOCODE_CACHE, DEFAULT_ROWS_CACHE
+from app.services.localdata import GEOCODE_CACHE_PATH as LOCALDATA_GEOCODE_CACHE
+from app.services.safemap_facilities import SNAPSHOT_LAYER_IDS, layer_snapshot_path
+from app.services.safemap_layers import LAYER_BY_ID
+from app.services.snapshot_store import DATA_DIR, snapshot_as_of, snapshot_row_count
 from app.services.factory_lots import (
     FACTORY_LOTS_AS_OF,
     FACTORY_LOTS_CSV,
@@ -82,6 +98,8 @@ class BundledFile:
     counter: Callable[[Path], int] | None = None
     # 기준일을 파일에서 읽어야 하면(동기화 시각 등) 요청 때 부른다.
     as_of_reader: Callable[[Path], str] | None = None
+    # 공공 API 로 받은 것을 파일로 둔 사본·캐시인가(git 에 없고 야간 갱신이 다시 만든다).
+    api_snapshot: bool = False
 
     def view(self) -> BundledFileView:
         present = self.path.is_file()
@@ -89,7 +107,7 @@ class BundledFile:
         if present:
             try:
                 count = (self.counter or count_csv_rows)(self.path)
-            except (OSError, ValueError, sqlite3.Error):
+            except (OSError, ValueError, AttributeError, sqlite3.Error):
                 count = None
         try:
             relative = self.path.relative_to(BACKEND_DIR).as_posix()
@@ -170,6 +188,52 @@ def _factory_rows_fetched(path: Path) -> str:
     if not stamps:
         return ""
     return datetime.fromtimestamp(min(stamps), UTC).strftime("%Y-%m-%d")
+
+
+def _count_json_keys(path: Path) -> int:
+    """지오코딩 캐시(주소 → 좌표)의 주소 수."""
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return len(data) if isinstance(data, dict) else 0
+
+
+def _file_modified(path: Path) -> str:
+    """파일을 마지막으로 쓴 날짜(YYYY-MM-DD · 한국 표준시). 읽지 못하면 빈 문자열."""
+
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, KST).strftime("%Y-%m-%d")
+    except OSError:
+        return ""
+
+
+SNAPSHOT_NOTE = (
+    "API 로 받은 자료를 파일로 둔 사본이라 git 에는 없고 배포 이미지에만 실립니다. 서버는 켜지자마자 "
+    "이 사본으로 답하고, 받은 지 하루가 지나면 뒤에서 새로 받습니다. 새로 받기가 실패하면 사본을 "
+    "계속 쓰되 결과에 「서버 사본 사용(기준일)」을 밝히고, 7일을 넘기면 조회 실패로 올립니다 "
+    "(python -m app.refresh_snapshots 로 다시 만듭니다)."
+)
+
+
+def _layer_snapshot_files() -> tuple[BundledFile, ...]:
+    """생활안전지도 시설 레이어 사본(레이어마다 파일 하나)."""
+
+    return tuple(
+        BundledFile(
+            id=f"safemap_layer_{layer_id}",
+            name=f"생활안전지도 {LAYER_BY_ID[layer_id].label} 사본",
+            path=layer_snapshot_path(layer_id),
+            purpose=LAYER_BY_ID[layer_id].purpose,
+            source=f"생활안전지도 오픈API {layer_id}({LAYER_BY_ID[layer_id].agency}) 사본",
+            source_id=f"safemap.go.kr {layer_id}",
+            source_url="https://www.safemap.go.kr/opna/data/dataList.do",
+            as_of_reader=snapshot_as_of,
+            count_unit="곳",
+            note=SNAPSHOT_NOTE,
+            counter=snapshot_row_count,
+            api_snapshot=True,
+        )
+        for layer_id in SNAPSHOT_LAYER_IDS
+    )
 
 
 BUNDLED_FILES: tuple[BundledFile, ...] = (
@@ -265,6 +329,23 @@ BUNDLED_FILES: tuple[BundledFile, ...] = (
         count_unit="행",
         note="API 로 받은 자료를 파일로 둔 것이라 git 에는 없고 배포 이미지에만 실립니다(sync_facilities.py 로 다시 만듭니다).",
         counter=_count_facility_rows,
+        api_snapshot=True,
+    ),
+    BundledFile(
+        id="localdata_geocode_cache",
+        name="인허가 원장 주소 지오코딩 캐시",
+        path=LOCALDATA_GEOCODE_CACHE,
+        purpose=(
+            "인허가 원장에서 좌표가 빈 영업 중 사업장의 주소 → 좌표 캐시입니다. 원장을 다시 받을 때 "
+            "새 주소만 지오코딩해 쿼터를 아낍니다."
+        ),
+        source="카카오·네이버·VWorld 주소검색 결과 캐시",
+        source_id="localdata_geocode_cache.json",
+        as_of_reader=_file_modified,
+        count_unit="주소",
+        note="원장 동기화(sync_facilities · refresh_snapshots) 때만 읽고 씁니다. 심사 경로는 쓰지 않습니다.",
+        counter=_count_json_keys,
+        api_snapshot=True,
     ),
     BundledFile(
         id="factory_rows",
@@ -281,8 +362,125 @@ BUNDLED_FILES: tuple[BundledFile, ...] = (
         count_unit="곳",
         note="API 로 받은 자료를 파일로 둔 것이라 git 에는 없고 배포 이미지에만 실립니다.",
         counter=_count_factory_rows,
+        api_snapshot=True,
     ),
+    BundledFile(
+        id="factory_geocode_cache",
+        name="등록공장 주소 지오코딩 캐시",
+        path=DEFAULT_GEOCODE_CACHE,
+        purpose=(
+            "산단공 등록공장 목록에는 좌표가 없어 도로명주소를 지오코딩해 둔 캐시입니다. 같은 주소를 "
+            "심사마다 다시 지오코딩하지 않습니다."
+        ),
+        source="카카오·네이버·VWorld 주소검색 결과 캐시",
+        source_id="factory_geocode_cache.json",
+        as_of_reader=_file_modified,
+        count_unit="주소",
+        note="심사 중 새 주소가 나오면 그때 더해집니다. git 에는 없고 배포 이미지에만 실립니다.",
+        counter=_count_json_keys,
+        api_snapshot=True,
+    ),
+    BundledFile(
+        id="safemap_fuel",
+        name="생활안전지도 전국 주유시설 사본",
+        path=safemap_source.DEFAULT_SNAPSHOT_PATH,
+        purpose=(
+            "1차 주유소·LPG 충전소(25m) 판정의 전국 목록입니다. 받는 데 15쪽이 걸려, 서버가 켜진 "
+            "직후 첫 심사에 「조회 실패 — 재심사 필요」가 뜨던 것을 사본으로 없앱니다."
+        ),
+        source="생활안전지도 오픈API IF_0033(전국 주유시설 현황) 사본",
+        source_id="safemap.go.kr IF_0033",
+        source_url="https://www.safemap.go.kr/opna/data/dataList.do",
+        as_of_reader=snapshot_as_of,
+        count_unit="곳",
+        note=SNAPSHOT_NOTE,
+        counter=snapshot_row_count,
+        api_snapshot=True,
+    ),
+    BundledFile(
+        id="kgs_lpg",
+        name="가스안전공사 전국 LPG 충전소 사본",
+        path=kgs_source.DEFAULT_SNAPSHOT_PATH,
+        purpose=(
+            "1차 LPG 충전소(25m) 판정의 전국 목록입니다. API 가 하루 종일 429 를 낸 날에도 받아 둔 "
+            "목록으로 판정합니다(그날 결과에는 「서버 사본 사용(기준일)」이 붙습니다)."
+        ),
+        source="한국가스안전공사 LPG 충전소 조회 API 사본",
+        source_id="data.go.kr B410019/kgsapi/lpg_station",
+        source_url="https://www.data.go.kr/",
+        as_of_reader=snapshot_as_of,
+        count_unit="행",
+        note=SNAPSHOT_NOTE,
+        counter=snapshot_row_count,
+        api_snapshot=True,
+    ),
+    BundledFile(
+        id="crematorium",
+        name="전국 화장시설 좌표 사본",
+        path=crematorium_source.DEFAULT_SNAPSHOT_PATH,
+        purpose=(
+            "1차 화장장(500m) 판정의 전국 목록에 주소 지오코딩 좌표를 붙여 둔 사본입니다. 서버가 켜질 "
+            "때마다 60여 곳을 다시 지오코딩하지 않습니다."
+        ),
+        source="보건복지부 전국 화장시설 현황 API + 주소 지오코딩 사본",
+        source_id="data.go.kr 1352000/ODMS_DATA_05_1",
+        source_url="https://www.data.go.kr/",
+        as_of_reader=snapshot_as_of,
+        count_unit="곳",
+        note=SNAPSHOT_NOTE,
+        counter=snapshot_row_count,
+        api_snapshot=True,
+    ),
+    BundledFile(
+        id="lpg_municipal",
+        name="시군구 액화석유가스업 좌표 사본",
+        path=lpg_municipal_source.DEFAULT_SNAPSHOT_PATH,
+        purpose=(
+            "1차 LPG 판매소(50m)·저장소 참고 핀의 시군구 파일에 좌표를 붙여 둔 사본입니다(데이터셋별). "
+            "그 시군구의 첫 심사가 파일 수신·지오코딩을 기다리지 않습니다."
+        ),
+        source="공공데이터포털 시군구 액화석유가스업 파일(ODcloud) + 주소 지오코딩 사본",
+        source_id="api.odcloud.kr (데이터셋 ID 별)",
+        source_url=lpg_municipal_source.ODCLOUD_BASE,
+        as_of_reader=snapshot_as_of,
+        count_unit="곳",
+        note=SNAPSHOT_NOTE + " 전북(익산시·부안군) 파일을 미리 받아 두고, 다른 시군구는 첫 심사 때 더해집니다.",
+        counter=snapshot_row_count,
+        api_snapshot=True,
+    ),
+    BundledFile(
+        id="lpg_seoul",
+        name="서울 액화석유가스업 좌표 사본",
+        path=lpg_seoul_source.DEFAULT_SNAPSHOT_PATH,
+        purpose=(
+            "서울 사업지의 LPG 판매소·저장소 목록(520여 곳)에 좌표를 붙여 둔 사본입니다. 서버가 켜질 "
+            "때마다 전량을 다시 지오코딩하지 않습니다."
+        ),
+        source="서울 열린데이터광장 액화석유가스업 현황 + 주소 지오코딩 사본",
+        source_id=f"data.seoul.go.kr {lpg_seoul_source.SEOUL_LPG_DATASET_ID}",
+        source_url=lpg_seoul_source.SEOUL_LPG_PAGE_URL,
+        as_of_reader=snapshot_as_of,
+        count_unit="곳",
+        note=SNAPSHOT_NOTE,
+        counter=snapshot_row_count,
+        api_snapshot=True,
+    ),
+    *_layer_snapshot_files(),
 )
+
+
+def snapshot_file_names() -> list[str]:
+    """API 사본·캐시 파일 이름(backend/data 기준 상대 경로). 야간 갱신이 주고받을 파일이다."""
+
+    names: list[str] = []
+    for entry in BUNDLED_FILES:
+        if not entry.api_snapshot:
+            continue
+        try:
+            names.append(entry.path.relative_to(DATA_DIR).as_posix())
+        except ValueError:
+            names.append(entry.path.name)
+    return names
 
 
 def bundled_files_response() -> BundledFilesResponse:

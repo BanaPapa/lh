@@ -8,12 +8,19 @@
 
 호출: `http://openapi.seoul.go.kr:8088/{KEY}/json/SeoulListLPGSales/{start}/{end}/` —
 버스정류소(seoul_bus)와 같은 인증키(SEOUL_OPEN_DATA_KEY)다. 한 번에 1,000행까지.
+
+서버 사본(2026-10-01): 서버가 켜질 때마다 520건을 다시 지오코딩했다(실측 27초 · 카카오
+520여 회 — 최소 인스턴스 0 인 배포에서는 켜질 때마다 쿼터가 나간다). 좌표까지 붙인 목록을
+파일(lpg_seoul_cache.json)로 두어 곧바로 쓰고, 하루가 지났으면 뒤에서 새로 받는다. 새로
+받을 때 상호·주소가 그대로인 행은 사본의 좌표를 다시 쓴다(snapshot_store 참고).
 """
 
 from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -28,9 +35,13 @@ from app.services.lpg_municipal import (
     MunicipalFacility,
     MunicipalLookup,
     classify_kind,
+    facility_from_snapshot,
+    known_coordinates,
     sido_of,
+    snapshot_row,
 )
 from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, SnapshotGuard
 
 SEOUL_LPG_SERVICE = "SeoulListLPGSales"
 SEOUL_LPG_BASE = "http://openapi.seoul.go.kr:8088"
@@ -40,6 +51,10 @@ SEOUL_LPG_PAGE_URL = "https://data.seoul.go.kr/dataList/OA-13652/S/1/datasetView
 PAGE_SIZE = 1000
 MAX_PAGES = 5
 CACHE_TTL_SECONDS = 24 * 60 * 60
+
+# 좌표까지 붙인 서울 액화석유가스업 목록 사본. 앱 배선만 이 경로를 준다.
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "lpg_seoul_cache.json"
+SNAPSHOT_KEY = SEOUL_LPG_DATASET_ID
 
 Geocoder = Callable[[str], Awaitable[Coordinates | None]]
 
@@ -65,11 +80,13 @@ class SeoulLpgClient:
         geocode: Geocoder | None = None,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self._geocode = geocode
         self.timeout = timeout
         self._transport = transport
+        self.snapshot = SnapshotGuard(snapshot_path, SNAPSHOT_KEY, SEOUL_LPG_TITLE)
         self._cache: list[MunicipalFacility] = []
         self._failures: list[GeocodeFailure] = []
         self._cached_at = 0.0
@@ -89,9 +106,40 @@ class SeoulLpgClient:
 
     @property
     def has_fast_path(self) -> bool:
-        """전량 지오코딩(약 500건)이 심사 중에 일어나지 않게, 캐시가 데워졌을 때만 준비로 본다."""
+        """전량 지오코딩(약 500건)이 심사 중에 일어나지 않게, 목록이 있을 때만 준비로 본다.
 
-        return self._is_warm()
+        메모리에 목록이 있거나 서버 사본이 있으면 준비다. 하루 넘은 목록도 그대로 쓰면서
+        뒤에서 새로 받는다.
+        """
+
+        if not self._cache:
+            self._adopt_snapshot()
+        return bool(self._cache)
+
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self.snapshot.notice if self._cache else ""
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        return self.snapshot.as_of if self._cache else None
+
+    def _adopt_snapshot(self) -> None:
+        """메모리가 비어 있으면 서버 사본을 올린다(프로세스에서 한 번)."""
+
+        if self._cache:
+            return
+        snapshot = self.snapshot.load()
+        if snapshot is None:
+            return
+        facilities = [f for f in map(facility_from_snapshot, snapshot.rows) if f is not None]
+        if not facilities:
+            return
+        self._cache = facilities
+        self._cached_at = time.monotonic() - snapshot.age_seconds
+        self.snapshot.adopt(snapshot)
 
     async def facilities_for_site(
         self, site_address: str, center: Coordinates, radius_m: float
@@ -103,7 +151,9 @@ class SeoulLpgClient:
         except PublicDataAPIError as exc:
             return MunicipalLookup([], [], {SEOUL_LPG_DATASET_ID: str(exc)}, [])
         near = [f for f in facilities if haversine_meters(center, f.coordinates) <= radius_m]
-        return MunicipalLookup(near, [SEOUL_LPG_DATASET_ID], {}, list(self._failures))
+        return MunicipalLookup(
+            near, [SEOUL_LPG_DATASET_ID], {}, list(self._failures), self.snapshot_notice
+        )
 
     async def probe_total(self) -> int:
         async with httpx.AsyncClient(
@@ -113,25 +163,49 @@ class SeoulLpgClient:
         return total
 
     async def all_facilities(self) -> list[MunicipalFacility]:
+        """서울 전량. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
         if not self.enabled:
             return []
         if self._is_warm():
             return self._cache
+        self._adopt_snapshot()
+        if self._is_warm():
+            return self._cache
+        if self._cache:
+            self.snapshot.refresh_in_background(self.refresh)
+            if self.snapshot.expired_and_failing:
+                raise PublicDataAPIError(self.snapshot.outage_message())
+            return self._cache
+        return await self.refresh()
+
+    async def refresh(self, force: bool = False) -> list[MunicipalFacility]:
+        """전량을 새로 받아 좌표를 붙이고 메모리와 서버 사본을 갈아 끼운다. 실패는 예외."""
+
+        if not self.enabled:
+            return []
         async with self._fill_lock.get():
-            if self._is_warm():
+            if not force and self._is_warm():
                 return self._cache
+            self._adopt_snapshot()
             rows = await self._fetch_rows()
-            facilities, failures = await self._geocode_rows(rows)
+            facilities, failures = await self._geocode_rows(rows, known_coordinates(self._cache))
+            shrunk = self.snapshot.shrink_reason(len(facilities), len(self._cache))
+            if shrunk:
+                raise PublicDataAPIError(shrunk)
             self._cache = facilities
             self._failures = failures
             self._cached_at = time.monotonic()
+            self.snapshot.mark_live([snapshot_row(facility) for facility in facilities])
             return facilities
 
     def _is_warm(self) -> bool:
         return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
 
     async def _geocode_rows(
-        self, rows: list[dict[str, Any]]
+        self,
+        rows: list[dict[str, Any]],
+        known: dict[tuple[str, str], Coordinates] | None = None,
     ) -> tuple[list[MunicipalFacility], list[GeocodeFailure]]:
         assert self._geocode is not None
         facilities: list[MunicipalFacility] = []
@@ -142,11 +216,13 @@ class SeoulLpgClient:
             kind_raw = _text(row, "LPG_BSIN_SORT_CODE")
             if not name or not address:
                 continue
-            coordinates: Coordinates | None = None
-            for candidate in address_candidates(address):
-                coordinates = await self._geocode(candidate)
-                if coordinates is not None:
-                    break
+            # 상호·주소가 그대로면 직전 목록의 좌표를 다시 쓴다(지오코딩은 새 주소에만).
+            coordinates: Coordinates | None = (known or {}).get((name, address))
+            if coordinates is None:
+                for candidate in address_candidates(address):
+                    coordinates = await self._geocode(candidate)
+                    if coordinates is not None:
+                        break
             if coordinates is None:
                 failures.append(GeocodeFailure(name, address))
                 continue

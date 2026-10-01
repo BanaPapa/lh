@@ -10,13 +10,20 @@
 - `numOfRows=1000` 은 정상, `numOfRows=1` 은 실패한다. 페이지당 1000으로 받는다.
 - 좌표 `x`·`y` 는 EPSG:3857(Web Mercator)다. `gis_x_coor`·`gis_y_coor` 는
   좌표계를 특정하지 못해 쓰지 않는다.
+
+서버 사본(2026-10-01): 전국 목록(15쪽)을 받는 동안 첫 심사가 「아직 준비되지 않음」
+신호를 받아 「조회 실패 — 재심사 필요」가 떴다(Cloud Run 은 켜질 때마다 식어 있다).
+식은 캐시는 장애가 아니므로, 받아 둔 목록을 파일(safemap_fuel_cache.json)로 실어 첫
+조회부터 곧바로 쓰고 하루가 지났으면 뒤에서 새로 받는다(snapshot_store 참고).
 """
 
 from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -26,6 +33,7 @@ from app.models import Coordinates
 from app.services.geo import haversine_meters
 from app.services.http_client import shared_verify
 from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, SnapshotGuard
 
 
 SAFEMAP_IF0033_URL = "http://www.safemap.go.kr/openapi2/IF_0033"
@@ -42,11 +50,17 @@ CACHE_TTL_SECONDS = 24 * 60 * 60
 # 좌표 x·y 는 Web Mercator 다.
 SAFEMAP_CRS = "EPSG:3857"
 
+# 전국 주유시설 목록 사본. 배포 이미지에 실어 켜지자마자 쓴다(앱 배선만 이 경로를 준다).
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "safemap_fuel_cache.json"
+SNAPSHOT_KEY = "IF_0033"
+
 
 class SafemapAPIError(RuntimeError):
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
+        # 데이터 사용신청 승인 전(resultCode 30)인가 — 장애가 아니라 아직 못 쓰는 상태.
+        self.unapproved = False
 
 
 class SafemapStation(NamedTuple):
@@ -92,9 +106,32 @@ def _station(row: dict[str, Any]) -> SafemapStation | None:
     if not (33.0 <= lat <= 39.5 and 124.0 <= lng <= 132.0):
         return None
 
-    oil_brand = str(row.get("poll_div_co") or "").strip()
-    gas_brand = str(row.get("gpoll_div_co") or "").strip()
-    lpg_yn = str(row.get("lpg_yn") or "N").strip().upper() == "Y"
+    return _classified(
+        station_id=str(row.get("uni_cd") or "").strip(),
+        name=str(row.get("os_nm") or "").strip(),
+        coordinates=Coordinates(lat=lat, lng=lng),
+        address=str(row.get("van_adr") or "").strip(),
+        road_address=str(row.get("new_adr") or "").strip(),
+        phone=str(row.get("tel") or "").strip(),
+        oil_brand=str(row.get("poll_div_co") or "").strip(),
+        gas_brand=str(row.get("gpoll_div_co") or "").strip(),
+        lpg_yn=str(row.get("lpg_yn") or "N").strip().upper() == "Y",
+    )
+
+
+def _classified(
+    *,
+    station_id: str,
+    name: str,
+    coordinates: Coordinates,
+    address: str,
+    road_address: str,
+    phone: str,
+    oil_brand: str,
+    gas_brand: str,
+    lpg_yn: bool,
+) -> SafemapStation:
+    """상표·lpg_yn 으로 주유소·LPG 충전소·미분류를 가른다(API 행·사본 행 공통)."""
 
     # 주유소 상표가 있으면 주유소, 충전소 상표나 LPG 취급이면 충전소. 둘 다면 겸업.
     is_gas = bool(oil_brand)
@@ -106,12 +143,12 @@ def _station(row: dict[str, Any]) -> SafemapStation | None:
     is_unclassified = not is_gas and not is_lpg
 
     return SafemapStation(
-        station_id=str(row.get("uni_cd") or "").strip(),
-        name=str(row.get("os_nm") or "").strip(),
-        coordinates=Coordinates(lat=lat, lng=lng),
-        address=str(row.get("van_adr") or "").strip(),
-        road_address=str(row.get("new_adr") or "").strip(),
-        phone=str(row.get("tel") or "").strip(),
+        station_id=station_id,
+        name=name,
+        coordinates=coordinates,
+        address=address,
+        road_address=road_address,
+        phone=phone,
         oil_brand=oil_brand,
         gas_brand=gas_brand,
         lpg_yn=lpg_yn,
@@ -121,16 +158,56 @@ def _station(row: dict[str, Any]) -> SafemapStation | None:
     )
 
 
+def snapshot_row(station: SafemapStation) -> dict[str, Any]:
+    """사본 한 행. 좌표는 WGS84 로 바꾼 값을 둔다(다시 읽을 때 좌표 변환을 하지 않는다)."""
+
+    return {
+        "id": station.station_id,
+        "name": station.name,
+        "lat": station.coordinates.lat,
+        "lng": station.coordinates.lng,
+        "addr": station.address,
+        "road": station.road_address,
+        "tel": station.phone,
+        "oil": station.oil_brand,
+        "gas": station.gas_brand,
+        "lpg": station.lpg_yn,
+    }
+
+
+def station_from_snapshot(row: Any) -> SafemapStation | None:
+    if not isinstance(row, dict):
+        return None
+    try:
+        coordinates = Coordinates(lat=float(row["lat"]), lng=float(row["lng"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return _classified(
+        station_id=str(row.get("id") or ""),
+        name=str(row.get("name") or ""),
+        coordinates=coordinates,
+        address=str(row.get("addr") or ""),
+        road_address=str(row.get("road") or ""),
+        phone=str(row.get("tel") or ""),
+        oil_brand=str(row.get("oil") or ""),
+        gas_brand=str(row.get("gas") or ""),
+        lpg_yn=bool(row.get("lpg")),
+    )
+
+
 class SafemapFuelClient:
     def __init__(
         self,
         service_key: str,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self.timeout = timeout
         self._transport = transport
+        # 전국 목록 서버 사본. 경로는 앱 배선만 준다(테스트는 실제 data 폴더에 쓰지 않는다).
+        self.snapshot = SnapshotGuard(snapshot_path, SNAPSHOT_KEY, "생활안전지도 주유시설")
         self._cache: list[SafemapStation] = []
         self._cached_at = 0.0
         # 전량 조회가 완료돼 캐시가 데워졌는지. 빈 응답과 미조회를 구분하기 위해
@@ -151,6 +228,46 @@ class SafemapFuelClient:
             self._warmed
             and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
         )
+
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self.snapshot.notice if self._warmed else ""
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        """지금 쓰는 목록을 받은 시각."""
+
+        return self.snapshot.as_of if self._warmed else None
+
+    def _adopt_snapshot(self) -> None:
+        """메모리가 비어 있으면 서버 사본을 올린다(프로세스에서 한 번)."""
+
+        if self._warmed:
+            return
+        snapshot = self.snapshot.load()
+        if snapshot is None:
+            return
+        stations = [s for s in map(station_from_snapshot, snapshot.rows) if s is not None]
+        if not stations:
+            return
+        self._cache = stations
+        # 받은 지 지난 시간만큼 캐시 시각을 물려, 하루 넘은 사본은 「오래됨」으로 읽힌다.
+        self._cached_at = time.monotonic() - snapshot.age_seconds
+        self._warmed = True
+        self.snapshot.adopt(snapshot)
+
+    def _serve_stale(self) -> list[SafemapStation]:
+        """받은 지 하루 넘은 목록을 그대로 쓰면서 뒤에서 새로 받는다.
+
+        사본이 7일을 넘겼는데 새로 받기도 실패했으면 원천 장애로 올린다.
+        """
+
+        self._ensure_prefetch()
+        if self.snapshot.expired_and_failing:
+            raise SafemapAPIError(self.snapshot.outage_message())
+        return self._cache
 
     async def stations_around(
         self,
@@ -185,14 +302,21 @@ class SafemapFuelClient:
         올린다. 상위(판정 서비스)는 이 신호를 원천 조회 실패로 받아 '충돌 없음'이
         아니라 '스냅샷 미확보'로 정직하게 반영한다. 조용히 빈 리스트를 돌려주면
         미조회가 '충돌 없음'으로 둔갑하므로 그렇게 하지 않는다.
+
+        서버 사본(2026-10-01): 사본이 있으면 켜지자마자 그것으로 답한다. 하루 넘은
+        사본도 그대로 쓰고 뒤에서 새로 받는다. 콜드 신호는 사본이 아예 없고 받기도
+        끝나지 않았을 때만 올린다.
         """
 
         if not self.enabled:
             return []
-        if self._is_warm():
+        if not self._is_warm():
+            self._adopt_snapshot()
+        if self._warmed:
+            stations = self._cache if self._is_warm() else self._serve_stale()
             return [
                 station
-                for station in self._cache
+                for station in stations
                 if haversine_meters(center, station.coordinates) <= radius_m
             ]
         self._ensure_prefetch()
@@ -202,35 +326,45 @@ class SafemapFuelClient:
         )
 
     def _ensure_prefetch(self) -> None:
-        """백그라운드로 전량 캐시를 데운다. 이미 진행 중이면 중복 실행하지 않는다."""
+        """백그라운드로 전량 캐시를 데운다. 이미 진행 중이면 중복 실행하지 않는다.
 
-        if self._prefetch_task is not None and not self._prefetch_task.done():
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        self._prefetch_task = loop.create_task(self._safe_warm())
+        실패(429·키 오류 등)는 삼키고 기록만 한다. 사본이 없을 때는 다음 요청이 곧바로
+        다시 시도하고, 사본으로 답하는 동안에는 쿨다운 뒤에 다시 시도한다.
+        """
 
-    async def _safe_warm(self) -> None:
-        """프리페치 실패(429·키 오류 등)는 삼킨다. 다음 요청이 다시 시도한다."""
-
-        try:
-            await self.all_stations()
-        except SafemapAPIError:
-            pass
+        task = self.snapshot.refresh_in_background(self.refresh, cooldown=self._warmed)
+        if task is not None:
+            self._prefetch_task = task
 
     async def all_stations(self) -> list[SafemapStation]:
+        """전국 목록. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
         if not self.enabled:
             return []
         if self._is_warm():
             return self._cache
+        self._adopt_snapshot()
+        if self._is_warm():
+            return self._cache
+        if self._warmed:
+            return self._serve_stale()
+        return await self.refresh()
 
+    async def refresh(self, force: bool = False) -> list[SafemapStation]:
+        """전국 목록을 API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다. 실패는 예외.
+
+        force 가 아니면 잠금을 기다리는 동안 먼저 들어간 호출이 채운 캐시를 그대로 쓴다.
+        """
+
+        if not self.enabled:
+            return []
         async with self._fill_lock.get():
             # 잠금을 잡은 뒤 다시 확인한다. 먼저 들어간 호출이 이미 채웠으면
             # 재조회하지 않는다(double-checked).
-            if self._is_warm():
+            if not force and self._is_warm():
                 return self._cache
+            # 직전 목록(사본)이 있어야 새 목록이 크게 줄었는지 가릴 수 있다.
+            self._adopt_snapshot()
 
             stations: list[SafemapStation] = []
             # 조회가 실패하면 예외가 그대로 전파돼 캐시를 건드리지 않는다. 실패를
@@ -251,9 +385,13 @@ class SafemapFuelClient:
                     if len(rows) < PAGE_SIZE or page * PAGE_SIZE >= total:
                         break
 
+            shrunk = self.snapshot.shrink_reason(len(stations), len(self._cache))
+            if shrunk:
+                raise SafemapAPIError(shrunk)
             self._cache = stations
             self._cached_at = time.monotonic()
             self._warmed = True
+            self.snapshot.mark_live([snapshot_row(station) for station in stations])
             return stations
 
     async def _page(

@@ -109,3 +109,47 @@ def test_store_backed_cache(tmp_path) -> None:
     rows2 = asyncio.run(second.all_retailers())
     assert second.loaded_from == "store" and calls == []
     assert {r.record_id for r in rows2} == {r.record_id for r in rows}
+
+
+def test_refresh_recollects_fresh_store_and_reuses_stored_coordinates(tmp_path) -> None:
+    # 야간 사본 갱신: 저장분이 신선해도 새로 받되, 상호·주소가 그대로인 판매소는 저장분의
+    # 좌표를 다시 써서 지오코딩(4,542건)은 새 주소에만 쓴다.
+    store = FacilityStore(tmp_path / "f.db")
+    asyncio.run(
+        LpgRetailerFileClient("key", geocode=geocode, transport=_transport(), store=store)
+        .all_retailers()
+    )
+    asked: list[str] = []
+
+    async def counting_geocode(address: str) -> Coordinates | None:
+        asked.append(address)
+        return None
+
+    calls: list[str] = []
+    client = LpgRetailerFileClient(
+        "key", geocode=counting_geocode, transport=_transport(calls), store=store
+    )
+
+    retailers = asyncio.run(client.refresh())
+
+    assert calls and client.loaded_from == "api"
+    assert [r.name for r in retailers] == ["(주)태성산업가스경기충전소", "대륙가스"]
+    assert retailers[0].coordinates == Coordinates(lat=37.27, lng=127.12)
+    # 저장분에 없던 주소(지오코딩 실패분)만 다시 물었다.
+    assert asked and all("모르는곳" in address or "전북" in address for address in asked)
+    assert store.sync_state_for(mod.STORE_DATASET_KEY).record_count == 2
+
+
+def test_refresh_keeps_store_when_new_list_shrinks_abnormally(tmp_path) -> None:
+    store = FacilityStore(tmp_path / "f.db")
+    asyncio.run(
+        LpgRetailerFileClient("key", geocode=geocode, transport=_transport(), store=store)
+        .all_retailers()
+    )
+    empty = httpx.MockTransport(lambda request: httpx.Response(200, content=_payload([])))
+    client = LpgRetailerFileClient("key", geocode=geocode, transport=empty, store=store)
+
+    with pytest.raises(PublicDataAPIError, match="저장분을 유지"):
+        asyncio.run(client.refresh())
+
+    assert store.sync_state_for(mod.STORE_DATASET_KEY).record_count == 2

@@ -148,14 +148,32 @@ async def _probe_opinet(hazard: Any, screening: Any) -> str:
     return f"주유소 {len(rows)}건"
 
 
+def _snapshot_state(client: Any) -> str:
+    """전량 목록 원천이 지금 어떤 목록으로 답하는지(받은 시각 · 서버 사본 여부).
+
+    서버 사본(services/snapshot_store) 덕에 API 가 죽어도 심사는 받아 둔 목록으로 돈다.
+    그렇다고 연결 점검까지 「정상」으로 보이면 안 되므로, 새로 받기가 실패한 상태면 그
+    사유를 올려 점검을 실패로 표시한다.
+    """
+
+    guard = getattr(client, "snapshot", None)
+    notice = getattr(client, "snapshot_notice", "")
+    if getattr(guard, "error", "") and isinstance(notice, str) and notice:
+        raise RuntimeError(notice)
+    if isinstance(notice, str) and notice:
+        return f" · {notice}"
+    as_of = getattr(client, "data_as_of", None)
+    return f" · 목록 수신 {as_of.astimezone(KST):%m-%d %H:%M}" if as_of is not None else ""
+
+
 async def _probe_safemap(hazard: Any, screening: Any) -> str:
     rows = await hazard.safemap.stations_around(PROBE_POINT, PROBE_RADIUS_M)
-    return f"주유시설 {len(rows)}건"
+    return f"주유시설 {len(rows)}건" + _snapshot_state(hazard.safemap)
 
 
 async def _probe_kgs(hazard: Any, screening: Any) -> str:
     rows = await hazard.kgs_lpg.all_stations()
-    return f"전국 {len(rows):,}건"
+    return f"전국 {len(rows):,}건" + _snapshot_state(hazard.kgs_lpg)
 
 
 async def _probe_cng(hazard: Any, screening: Any) -> str:
@@ -270,7 +288,7 @@ async def _probe_lpg_seoul(hazard: Any, screening: Any) -> str:
     for row in rows:
         kinds[row.kind] = kinds.get(row.kind, 0) + 1
     detail = " · ".join(f"{k} {v}" for k, v in sorted(kinds.items()))
-    return f"서울 {total}건(좌표 {len(rows)}건: {detail})"
+    return f"서울 {total}건(좌표 {len(rows)}건: {detail})" + _snapshot_state(client)
 
 
 async def _probe_building_scan(hazard: Any, screening: Any) -> str:
@@ -290,7 +308,7 @@ async def _probe_building_scan(hazard: Any, screening: Any) -> str:
 
 async def _probe_crematorium(hazard: Any, screening: Any) -> str:
     rows = await hazard.crematorium.all_crematoriums()
-    return f"전국 {len(rows):,}건"
+    return f"전국 {len(rows):,}건" + _snapshot_state(hazard.crematorium)
 
 
 async def _probe_ncmc(hazard: Any, screening: Any) -> str:

@@ -26,6 +26,15 @@ session-log/
 backend/data/facilities.db
 backend/data/factory_geocode_cache.json
 backend/data/factory_rows_cache.json
+# 전량 목록 공개 API 서버 사본(services/snapshot_store). python -m app.refresh_snapshots 로
+# 다시 만든다. git 에는 없지만 배포 업로드에는 들어간다(.gcloudignore 가 data/ 를 빼지 않는다).
+backend/data/safemap_fuel_cache.json
+backend/data/kgs_lpg_cache.json
+backend/data/crematorium_cache.json
+backend/data/lpg_municipal_cache.json
+backend/data/lpg_seoul_cache.json
+backend/data/safemap_layer_*.json
+backend/data/*.json.tmp
 backend/data/cadastral_*.sqlite
 backend/data/cadastral_*.db
 
