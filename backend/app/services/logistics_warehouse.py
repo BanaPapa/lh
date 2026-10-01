@@ -41,6 +41,7 @@ from app.services.kgs import PublicDataAPIError
 from app.services.localdata import LocalDataRecord
 from app.services.safemap_facilities import SafemapFacility
 from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import MIN_KEEP_RATIO
 
 WAREHOUSE_BASE_URL = "https://apis.data.go.kr/1611000/whsinfoview2"
 WAREHOUSE_LIST_URL = f"{WAREHOUSE_BASE_URL}/WhsInfoList"
@@ -190,8 +191,37 @@ class LogisticsWarehouseClient:
             self._cached_at = time.monotonic()
             return facilities
 
-    def _load_from_store(self) -> list[SafemapFacility] | None:
-        """저장분이 있고 STORE_MAX_AGE 안이면 그것을 쓴다. 없거나 오래됐으면 None."""
+    async def refresh(self) -> list[SafemapFacility]:
+        """저장분 나이와 상관없이 전량을 새로 모아 저장소에 갈아 끼운다(야간 사본 갱신용).
+
+        상호·주소가 그대로인 창고는 저장분의 좌표를 다시 써서 지오코딩은 새 주소에만 쓴다.
+        새 목록이 저장분의 절반에 못 미치면 응답 이상으로 보고 저장분을 그대로 둔다.
+        """
+
+        if not self.enabled:
+            return []
+        async with self._fill_lock.get():
+            previous = self._load_from_store(any_age=True) or []
+            known = {(f.name, f.address): f.coordinates for f in previous}
+            facilities, failures = await self._load(known)
+            if not facilities or len(facilities) < len(previous) * MIN_KEEP_RATIO:
+                raise PublicDataAPIError(
+                    f"환경부 보관·저장 창고 응답 이상 — 새 목록 {len(facilities):,}건이 저장분 "
+                    f"{len(previous):,}건에 크게 못 미쳐 저장분을 유지합니다"
+                )
+            self.loaded_from = "api"
+            self.synced_at = datetime.now(UTC)
+            self._save_to_store(facilities)
+            self._cache = facilities
+            self._failures = failures
+            self._cached_at = time.monotonic()
+            return facilities
+
+    def _load_from_store(self, any_age: bool = False) -> list[SafemapFacility] | None:
+        """저장분이 있고 STORE_MAX_AGE 안이면 그것을 쓴다. 없거나 오래됐으면 None.
+
+        any_age 면 오래된 저장분도 돌려준다(새로 모을 때 좌표를 물려받는 용도).
+        """
 
         if self._store is None:
             return None
@@ -201,7 +231,7 @@ class LogisticsWarehouseClient:
         synced = state.synced_at
         if synced.tzinfo is None:
             synced = synced.replace(tzinfo=UTC)
-        if datetime.now(UTC) - synced > STORE_MAX_AGE:
+        if not any_age and datetime.now(UTC) - synced > STORE_MAX_AGE:
             return None
         self.synced_at = synced
         return [
@@ -231,7 +261,9 @@ class LogisticsWarehouseClient:
     def _is_warm(self) -> bool:
         return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
 
-    async def _load(self) -> tuple[list[SafemapFacility], list[GeocodeFailure]]:
+    async def _load(
+        self, known: dict[tuple[str, str], Coordinates] | None = None
+    ) -> tuple[list[SafemapFacility], list[GeocodeFailure]]:
         assert self._geocode is not None
         async with httpx.AsyncClient(
             timeout=self.timeout, transport=self._transport, verify=shared_verify()
@@ -259,7 +291,7 @@ class LogisticsWarehouseClient:
             if not address:
                 failures.append(GeocodeFailure(name, ""))
                 continue
-            coordinates = await self._geocode_any(address)
+            coordinates = (known or {}).get((name, address)) or await self._geocode_any(address)
             if coordinates is None:
                 failures.append(GeocodeFailure(name, address))
                 continue

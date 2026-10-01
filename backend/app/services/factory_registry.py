@@ -57,6 +57,9 @@ CACHE_TTL_SECONDS = 24 * 3600
 WILDCARD_NAME = " "
 # 지오코딩 동시 호출 상한(카카오 초당 제한 보호).
 GEOCODE_CONCURRENCY = 8
+# 야간 사본 갱신이 캐시에 없는 주소를 한꺼번에 채울 때의 속도(동시 2건 · 건마다 0.1초 쉼).
+WARM_GEOCODE_CONCURRENCY = 2
+WARM_GEOCODE_INTERVAL_SECONDS = 0.1
 DEFAULT_GEOCODE_CACHE = (
     Path(__file__).resolve().parents[2] / "data" / "factory_geocode_cache.json"
 )
@@ -239,6 +242,58 @@ class FactoryRegistryClient:
                 asyncio.get_running_loop().create_task(self._refresh_in_background(code))
             return rows
         return await self._fetch_and_store(code)
+
+    async def refresh_sigungu(self, sigungu_code: str) -> list[dict[str, str]]:
+        """시군구 목록을 API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다(야간 사본 갱신용).
+
+        실패는 예외로 올리고 사본은 그대로 둔다.
+        """
+
+        code = (sigungu_code or "")[:5]
+        if not self.enabled or len(code) < 5:
+            return []
+        return await self._fetch_and_store(code, force=True)
+
+    async def warm_geocodes(
+        self,
+        sigungu_code: str,
+        concurrency: int = WARM_GEOCODE_CONCURRENCY,
+        interval_seconds: float = WARM_GEOCODE_INTERVAL_SECONDS,
+    ) -> int:
+        """시군구 등록공장 주소 중 지오코딩 캐시에 없는 것만 지오코딩해 캐시에 남긴다.
+
+        반환: 이번에 새로 지오코딩한 주소 수. 심사 때 새 주소를 기다리지 않게 야간 사본
+        갱신이 미리 돌린다. 등록 지번 파일로 필지가 잡히는 공장은 지오코딩하지 않는다.
+        한 번도 심사하지 않은 시군구는 주소가 1천 건을 넘으므로 천천히 묻는다 — 동시 8건
+        으로 2천여 건을 몰아 묻자 카카오가 「API limit has been exceeded」로 막았다
+        (2026-10-01 실측, 초당 한도).
+        """
+
+        rows = await self.factories_in_sigungu(sigungu_code)
+        cache = self._load_geocache()
+        pending = sorted(
+            {
+                address
+                for row in rows
+                if (address := row.get("rnAdres") or "")
+                and address not in cache
+                and self.registered_lot(row) is None
+            }
+        )
+        self.last_geocode_outages = 0
+        if not pending:
+            return 0
+        semaphore = asyncio.Semaphore(max(1, concurrency))
+
+        async def locate(address: str) -> None:
+            async with semaphore:
+                await self._coordinates_for(address)
+                if interval_seconds:
+                    await asyncio.sleep(interval_seconds)
+
+        await asyncio.gather(*(locate(address) for address in pending))
+        self._save_geocache()
+        return len(pending)
 
     async def _refresh_in_background(self, code: str) -> None:
         try:

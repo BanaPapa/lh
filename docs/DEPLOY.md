@@ -43,6 +43,22 @@ cd backend
 .venv\Scripts\python -m app.sync_facilities
 ```
 
+원장 말고도 전량 목록 원천(생활안전지도 주유시설·시설 레이어, 가스안전공사 LPG 충전소,
+화장시설, 등록공장 목록 등)은 받아 둔 사본 파일(`backend/data/*_cache.json` ·
+`safemap_layer_*.json`)을 이미지에 실어 서버가 켜지자마자 쓴다. 사본이 없으면 켜진 직후 첫
+심사가 목록을 기다리거나 「조회 실패」 경고를 띄운다. 원장까지 한 번에 새로 만드는 명령:
+
+```powershell
+cd backend
+.venv\Scripts\python -m app.refresh_snapshots              # 전부(원장 포함)
+.venv\Scripts\python -m app.refresh_snapshots --skip facilities   # 원장은 빼고
+.venv\Scripts\python -m app.refresh_snapshots --list-files  # 사본·캐시 파일 이름
+```
+
+단계마다 한 줄 요약을 찍고 마지막 줄이 `REFRESH_RESULT ok=<n> failed=<m>` 이다. 실패한 단계는
+기존 사본을 그대로 둔다. 서버는 받은 지 하루가 지난 사본을 그대로 쓰면서 뒤에서 새로 받고,
+새로 받기가 실패하면 결과에 「서버 사본 사용(기준일)」을 밝힌다(7일을 넘기면 조회 실패).
+
 ## 3. 백엔드 배포 (Cloud Run)
 
 ```powershell

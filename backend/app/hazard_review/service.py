@@ -196,6 +196,16 @@ _scan_complete: contextvars.ContextVar[bool] = contextvars.ContextVar(
 _pinned_local_sources: contextvars.ContextVar["LocalSourcesBundle | None"] = (
     contextvars.ContextVar("_pinned_local_sources", default=None)
 )
+# 이번 판정에서 「서버 사본」(받은 지 하루 넘은 전량 목록)으로 답한 원천 → 고지 문구.
+# 공공 API 가 응답하지 않는 날(예: 가스안전공사 429)에도 받아 둔 목록으로 판정하되,
+# 실시간 답처럼 보이지 않게 종류 비고·원천 칩·원천 상태에 기준일을 드러낸다
+# (services/snapshot_store). 조회 시점에 기록해, 판정 중에 뒤에서 갱신이 끝나도 이
+# 판정이 실제로 본 목록의 상태가 남는다.
+_snapshot_notices: contextvars.ContextVar["dict[str, str] | None"] = (
+    contextvars.ContextVar("_snapshot_notices", default=None)
+)
+# 원천 칩에 붙이는 사본 표시.
+SNAPSHOT_CHIP_SUFFIX = " · 서버 사본"
 
 
 SOURCE_FAILURE_LABELS: dict[str, str] = {
@@ -217,6 +227,7 @@ SOURCE_FAILURE_LABELS: dict[str, str] = {
     "lpg_seoul": "서울 열린데이터광장 액화석유가스업 현황",
     "building_use_scan": "건축물대장 용도 스캔(브이월드 필지 + 표제부)",
     "safemap_waste": "생활안전지도 폐기물처리시설(IF_0051)",
+    "safemap_emission": "생활안전지도 환경배출시설(IF_0040)",
     "safemap": "생활안전지도 전국 주유시설 현황",
     "crematorium": "보건복지부 전국 화장시설 현황",
     "noise_emission": "전국 소음진동배출시설 표준데이터",
@@ -657,9 +668,11 @@ class HazardReviewService:
         token = _pinned_local_sources.set(self._local_sources_bundle)
         covered_token = _covered_providers.set(frozenset())
         scan_token = _scan_complete.set(False)
+        notice_token = _snapshot_notices.set({})
         try:
             return await self._review_impl(request, progress, cancel_event)
         finally:
+            _snapshot_notices.reset(notice_token)
             _covered_providers.reset(covered_token)
             _scan_complete.reset(scan_token)
             _pinned_local_sources.reset(token)
@@ -818,6 +831,9 @@ class HazardReviewService:
         sources = self._build_sources(now, boundary_rings, failed_sources)
         source_connection = self._source_connection_score(sources)
         source_freshness = self._source_freshness_score(sources)
+        # 서버 사본으로 답한 원천을 원천 상태에 한 줄씩 싣는다(기준일 고지). 연결·신선도
+        # 점수를 낸 뒤에 붙여, 고지 줄이 점수를 움직이지 않게 한다.
+        sources.extend(self._snapshot_source_rows(now, failed_sources))
         boundary_coverage = self._boundary_coverage_score(
             judged_categories_all, site_boundary_resolved
         )
@@ -973,7 +989,28 @@ class HazardReviewService:
             )
         except SafemapAPIError:
             return None, True
+        self._note_snapshot("safemap", self.safemap)
         return stations, False
+
+    @staticmethod
+    def _note_snapshot(source_key: str, client: Any = None, notice: Any = None) -> None:
+        """방금 조회한 목록이 서버 사본(받은 지 하루 넘음)이면 그 고지를 이번 판정에 남긴다.
+
+        고지는 종류 비고·원천 칩·원천 상태에 실린다 — 사본으로 낸 답을 실시간 답처럼
+        보이지 않게 한다. 최신 목록이면 아무 것도 남기지 않는다.
+        """
+
+        text = notice if notice is not None else getattr(client, "snapshot_notice", "")
+        notices = _snapshot_notices.get()
+        if notices is not None and isinstance(text, str) and text:
+            notices[source_key] = text
+
+    @staticmethod
+    def _data_as_of(client: Any, now: datetime) -> datetime:
+        """원천 목록을 받은 시각. 사본·캐시가 아니면(또는 모르면) 지금."""
+
+        value = getattr(client, "data_as_of", None)
+        return value if isinstance(value, datetime) else now
 
     # ------------------------------------------------------------------
     # 후보 조회 (공개원천만)
@@ -1602,9 +1639,13 @@ class HazardReviewService:
                     request.site.coordinates, search_radius_m
                 )
             except PublicDataAPIError:
-                # 가스안전공사 조회 실패. LPG 충전소 스냅샷이 없다.
+                # 가스안전공사 조회 실패. LPG 충전소 스냅샷이 없다(서버 사본도 없거나
+                # 7일을 넘겼다 — 사본이 있으면 클라이언트가 그것으로 답한다).
                 failed_sources.add("kgs")
                 lpg_stations = []
+            else:
+                self._note_snapshot("kgs", self.kgs_lpg)
+            kgs_as_of = self._data_as_of(self.kgs_lpg, now)
             for station in lpg_stations:
                 distance = self._measure_distance(request, station.coordinates, None)
                 if distance > search_limit_m:
@@ -1635,7 +1676,7 @@ class HazardReviewService:
                         provider="kgs",
                         source_label="한국가스안전공사 전국 LPG 충전소 현황",
                         source_record_id=station.station_id,
-                        source_as_of=now,
+                        source_as_of=kgs_as_of,
                         geometry_quality="C",
                         geometry_note="허가 등록 점 좌표 · 시설경계 미확인",
                         classification_note=(
@@ -1870,7 +1911,8 @@ class HazardReviewService:
                         provider="safemap",
                         source_label="생활안전지도 전국 주유시설 현황(IF_0033)",
                         source_record_id=station.station_id,
-                        source_as_of=now,
+                        # 서버 사본·캐시로 답했으면 그 목록을 받은 시각.
+                        source_as_of=self._data_as_of(self.safemap, now),
                         geometry_quality="C",
                         geometry_note="주유시설 등록 점 좌표 · 시설경계 미확인",
                         classification_note=note,
@@ -1893,6 +1935,8 @@ class HazardReviewService:
             except CrematoriumAPIError:
                 failed_sources.add("crematorium")
                 crematoriums = []
+            else:
+                self._note_snapshot("crematorium", self.crematorium)
             for crematorium in crematoriums:
                 distance = self._measure_distance(
                     request, crematorium.coordinates, None
@@ -1915,7 +1959,7 @@ class HazardReviewService:
                         provider="crematorium",
                         source_label="보건복지부 전국 화장시설 현황",
                         source_record_id=crematorium.facility_id,
-                        source_as_of=now,
+                        source_as_of=self._data_as_of(self.crematorium, now),
                         # 등록 점 좌표가 아니라 주소 지오코딩 점이라 한 등급 낮춘다.
                         geometry_quality="D",
                         geometry_note="주소 지오코딩 점 좌표 · 시설경계 미확인",
@@ -1982,6 +2026,9 @@ class HazardReviewService:
                 continue
             if lookup.covered:
                 _covered_providers.set(_covered_providers.get() | {provider_id})
+                self._note_snapshot(
+                    provider_id, notice=getattr(lookup, "snapshot_notice", "")
+                )
             municipal_items.extend((provider_id, item) for item in lookup.facilities)
         if municipal_items:
             for provider_id, item in municipal_items:
@@ -2512,6 +2559,7 @@ class HazardReviewService:
         except Exception:  # noqa: BLE001 — 참고 핀 원천 실패는 판정에 영향 없음
             failed_sources.add(provider)
             return []
+        self._note_snapshot(provider, feed)
         pins: list[HazardFacility] = []
         for row in rows:
             distance = self._measure_distance(request, row.coordinates, None)
@@ -2594,6 +2642,8 @@ class HazardReviewService:
                 )
             except Exception:  # noqa: BLE001 — 주석 원천 실패는 판정에 영향 없음
                 emission_rows = []
+            else:
+                self._note_snapshot("safemap_emission", self.emission_feed)
 
         for factory in registered:
             notes: list[str] = []
@@ -3053,7 +3103,8 @@ class HazardReviewService:
                 chip = partial_source(identifier)
             if chip is not None and chip.detail not in {s.detail for s in sources}:
                 sources.append(chip)
-        return sources
+        # 참고 핀 원천도 서버 사본으로 답했으면 칩에 표시한다(비고는 건드리지 않는다).
+        return self._mark_snapshot_sources(sources)[0]
 
     def _not_connected_note(self, category: Category) -> str:
         """연결되지 않은 종류의 dataset_missing note. 원인을 구분해 드러낸다."""
@@ -3810,6 +3861,10 @@ class HazardReviewService:
             if connected
             else []
         )
+        # 서버 사본(받은 지 하루 넘은 목록)으로 답한 원천은 칩과 비고에 기준일을 드러낸다.
+        data_sources, snapshot_note = self._mark_snapshot_sources(data_sources)
+        if snapshot_note:
+            note = f"{note} {snapshot_note}".strip()
         return HazardCategorySummary(
             key=category.key,
             label=category.label,
@@ -3840,6 +3895,29 @@ class HazardReviewService:
             facilities=sorted(candidates, key=lambda item: item.distance_m),
             doc_ref=category.doc_ref,
         )
+
+    @staticmethod
+    def _mark_snapshot_sources(
+        chips: list[HazardDataSource],
+    ) -> tuple[list[HazardDataSource], str]:
+        """이번 판정에서 서버 사본으로 답한 원천의 칩에 표시를 달고, 비고에 붙일 고지를 만든다.
+
+        반환: (칩 목록, 비고 문구). 사본으로 답한 원천이 없으면 칩 그대로 · 빈 문자열.
+        """
+
+        notices = _snapshot_notices.get() or {}
+        if not notices or not chips:
+            return chips, ""
+        marked: list[HazardDataSource] = []
+        lines: list[str] = []
+        for chip in chips:
+            notice = notices.get(chip.detail) if chip.kind in ("api", "partial", "bypass") else None
+            if not notice:
+                marked.append(chip)
+                continue
+            lines.append(f"{chip.label} — {notice}.")
+            marked.append(chip.model_copy(update={"label": chip.label + SNAPSHOT_CHIP_SUFFIX}))
+        return marked, " ".join(dict.fromkeys(lines))
 
     @staticmethod
     def _is_tourist_accommodation(facility: HazardFacility) -> bool:
@@ -4232,9 +4310,18 @@ class HazardReviewService:
                 label="한국가스안전공사 전국 LPG 충전소 현황",
                 state=_state("kgs", self._lpg_ready()),
                 retrieved_at=now,
-                as_of=now if self._lpg_ready() else None,
+                # 전국 목록을 받은 시각. 서버 사본으로 답했으면 그 사본의 기준 시각이다.
+                as_of=self._data_as_of(self.kgs_lpg, now) if self._lpg_ready() else None,
                 coverage_note=(
-                    "전국 LPG 충전소 허가 등록 기반입니다."
+                    " ".join(
+                        filter(
+                            None,
+                            [
+                                "전국 LPG 충전소 허가 등록 기반입니다.",
+                                (_snapshot_notices.get() or {}).get("kgs", ""),
+                            ],
+                        )
+                    )
                     if self._lpg_ready()
                     else "공공데이터포털 인증키가 설정되지 않았습니다."
                 ),
@@ -4276,6 +4363,40 @@ class HazardReviewService:
                 )
                 for key in sorted(failed_sources - {"localdata", "opinet", "kgs"})
             ],
+        ]
+
+    def _snapshot_source_rows(
+        self, now: datetime, failed_sources: set[str]
+    ) -> list[HazardSourceStatus]:
+        """이번 판정에서 서버 사본(받은 지 하루 넘은 목록)으로 답한 원천의 상태 줄.
+
+        가스안전공사 LPG 는 고정 줄(kgs-lpg)의 비고에 이미 실리므로 뺀다. 실패한 원천은
+        「실패」 줄이 따로 있다. 상태는 「일부」로 둔다 — 실시간 답이 아니다.
+        """
+
+        clients: dict[str, Any] = {
+            "safemap": self.safemap,
+            "crematorium": self.crematorium,
+            "lpg_seoul": self.lpg_seoul,
+            "safemap_chemical": self.chemical_feed,
+            "safemap_waste": self.waste_feed,
+            "safemap_emission": self.emission_feed,
+        }
+        notices = _snapshot_notices.get() or {}
+        return [
+            HazardSourceStatus(
+                source_id=f"snapshot-{key}",
+                label=SOURCE_FAILURE_LABELS.get(key, key),
+                state="partial",
+                retrieved_at=now,
+                # 기준일은 고지 문구에 있다. 목록을 받은 시각을 아는 원천만 as_of 를 채운다.
+                as_of=getattr(clients.get(key), "data_as_of", None),
+                coverage_note=f"{notice}.",
+                geometry_note="",
+                required_for=[],
+            )
+            for key, notice in sorted(notices.items())
+            if key != "kgs" and key not in failed_sources
         ]
 
     @staticmethod

@@ -99,19 +99,29 @@ class SafemapLayerClient:
         async with self._fill_lock.get():
             if self._cache and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS:
                 return self._cache
-            rows: list[dict[str, Any]] = []
-            async with httpx.AsyncClient(
-                timeout=self.timeout, transport=self._transport, verify=shared_verify(),
-                follow_redirects=True,
-            ) as client:
-                for page in range(1, MAX_PAGES + 1):
-                    page_rows, total = await self._page(client, page, PAGE_SIZE)
-                    rows.extend(page_rows)
-                    if len(page_rows) < PAGE_SIZE or len(rows) >= total:
-                        break
+            rows = await self.fetch_rows()
             self._cache = rows
             self._cached_at = time.monotonic()
             return rows
+
+    async def fetch_rows(self) -> list[dict[str, Any]]:
+        """레이어 전량을 지금 받아 그대로 돌려준다(캐시하지 않는다).
+
+        시설 피드(SafemapFacilityFeed)는 파싱한 목록만 들고 원본 행은 버리므로 이쪽을
+        쓴다 — 환경배출시설(6만 행)의 원본 dict 를 하루 내내 붙잡지 않는다.
+        """
+
+        rows: list[dict[str, Any]] = []
+        async with httpx.AsyncClient(
+            timeout=self.timeout, transport=self._transport, verify=shared_verify(),
+            follow_redirects=True,
+        ) as client:
+            for page in range(1, MAX_PAGES + 1):
+                page_rows, total = await self._page(client, page, PAGE_SIZE)
+                rows.extend(page_rows)
+                if len(page_rows) < PAGE_SIZE or len(rows) >= total:
+                    break
+        return rows
 
     async def _page(
         self, client: httpx.AsyncClient, page: int, size: int
@@ -142,7 +152,10 @@ class SafemapLayerClient:
                     f"이 레이어({self.layer.layer_id})는 생활안전지도에서 데이터 사용신청이 "
                     "아직 승인되지 않았습니다 (등록되지 않은 서비스키)"
                 )
-            raise SafemapAPIError(f"{self.layer.label}: {message}")
+            error = SafemapAPIError(f"{self.layer.label}: {message}")
+            # 사용신청 승인 전은 장애가 아니다. 야간 사본 갱신이 「실패」로 세지 않게 표시한다.
+            error.unapproved = code == "30"
+            raise error
         body = payload.get("body") or {}
         items = body.get("items") or []
         if isinstance(items, dict):

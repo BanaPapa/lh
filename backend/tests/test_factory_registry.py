@@ -348,3 +348,64 @@ async def test_rows_snapshot_answers_without_api_and_refreshes_when_stale(tmp_pa
     assert [r["cmpnyNm"] for r in await client.factories_in_sigungu("52130")] == ["새공장"]
     saved = json.loads(snapshot.read_text(encoding="utf-8"))
     assert saved["52130"]["rows"][0]["cmpnyNm"] == "새공장"
+
+
+@pytest.mark.asyncio
+async def test_refresh_sigungu_forces_a_new_download_even_when_snapshot_is_fresh(tmp_path) -> None:
+    # 야간 사본 갱신(refresh_snapshots)은 받은 지 하루가 안 된 사본도 새로 받는다.
+    import time
+
+    snapshot = tmp_path / "rows.json"
+    snapshot.write_text(
+        json.dumps({"52130": {"fetched_at": time.time() - 3600,
+                              "rows": [factory_row("1", "옛공장", "군산시 1로 1")]}},
+                   ensure_ascii=False),
+        encoding="utf-8",
+    )
+    recorder = Recorder([xml_page([factory_row("2", "새공장", "군산시 2로 2")], total=1)])
+    client = FactoryRegistryClient(
+        "key", cache_path=tmp_path / "geo.json", transport=recorder.transport(),
+        rows_cache_path=snapshot,
+    )
+
+    rows = await client.refresh_sigungu("52130")
+
+    assert [r["cmpnyNm"] for r in rows] == ["새공장"]
+    assert len(recorder.requests) == 1
+    saved = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert saved["52130"]["rows"][0]["cmpnyNm"] == "새공장"
+
+
+@pytest.mark.asyncio
+async def test_warm_geocodes_only_asks_for_addresses_missing_from_cache(tmp_path) -> None:
+    cache = tmp_path / "geo.json"
+    cache.write_text(
+        json.dumps({"군산시 1로 1": {"lat": 35.96, "lng": 126.73}, "군산시 없는길 9": None},
+                   ensure_ascii=False),
+        encoding="utf-8",
+    )
+    rows = [
+        factory_row("1", "아는공장", "군산시 1로 1"),
+        factory_row("2", "못찾은공장", "군산시 없는길 9"),
+        factory_row("3", "새공장", "군산시 2로 2"),
+        factory_row("4", "같은주소공장", "군산시 2로 2"),
+    ]
+    asked: list[str] = []
+
+    async def geocoder(address: str) -> Coordinates | None:
+        asked.append(address)
+        return Coordinates(lat=35.97, lng=126.74)
+
+    client = FactoryRegistryClient(
+        "key", geocoder=geocoder, cache_path=cache,
+        transport=Recorder([xml_page(rows, total=len(rows))]).transport(),
+    )
+
+    assert await client.warm_geocodes("52130") == 1
+    # 캐시에 있는 주소(찾은 것·못 찾은 것 모두)는 다시 묻지 않고, 새 주소는 한 번만 묻는다.
+    assert asked == ["군산시 2로 2"]
+    saved = json.loads(cache.read_text(encoding="utf-8"))
+    assert saved["군산시 2로 2"] == {"lat": 35.97, "lng": 126.74}
+    # 다시 돌리면 새 주소가 없다.
+    assert await client.warm_geocodes("52130") == 0
+    assert asked == ["군산시 2로 2"]

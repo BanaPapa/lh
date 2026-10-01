@@ -5,11 +5,19 @@
 
 이 API는 지역 필터가 없고 한 번에 100건씩만 준다. 전국이 2천 건 이하라
 전량을 받아 메모리에 캐시한 뒤 좌표로 걸러 쓴다.
+
+서버 사본(2026-10-01): 이 API 가 하루 종일 429 를 낸 날(2026-09-30) 7개 사업지가 「조회
+실패 — 검토 필요」에 묶였다. 받아 둔 전국 목록을 파일(kgs_lpg_cache.json)로 두어, 켜지자
+마자 그것으로 답하고 하루가 지났으면 뒤에서 새로 받는다. 새로 받기가 실패한 날은 어제
+목록으로 판정하되 「서버 사본 사용(기준일 …)」으로 드러낸다. 사본이 없는데 API 도
+실패하거나, 7일 넘은 사본인데 API 가 실패하면 종전대로 조회 실패다(snapshot_store 참고).
 """
 
 from __future__ import annotations
 
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -18,9 +26,16 @@ from app.models import Coordinates
 from app.services.geo import haversine_meters
 from app.services.http_client import shared_verify
 from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, SnapshotGuard
 
 
 KGS_LPG_URL = "https://apis.data.go.kr/B410019/kgsapi/lpg_station"
+
+# 전국 LPG 충전소 목록 사본. 앱 배선만 이 경로를 준다(테스트는 실제 data 폴더에 쓰지 않는다).
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "kgs_lpg_cache.json"
+SNAPSHOT_KEY = "lpg_station"
+# 사본에 남기는 열(판정이 읽는 것만). 나머지 열은 버려 파일을 줄인다.
+SNAPSHOT_COLUMNS = ("BSES_NM", "ADDR", "SECT_NM", "LAT", "LOT", "TELNO", "MGT_NM")
 
 # 공공데이터포털 공통 상한. 더 큰 값을 넣어도 100건만 온다.
 PAGE_SIZE = 100
@@ -176,10 +191,13 @@ class KgsLpgClient:
         service_key: str,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self.timeout = timeout
         self._transport = transport
+        # 전국 목록 서버 사본(받은 시각 · 새로 받기 실패 기록 포함).
+        self.snapshot = SnapshotGuard(snapshot_path, SNAPSHOT_KEY, "가스안전공사 LPG 충전소")
         self._cache: list[LpgStation] = []
         self._quarantined: list[QuarantinedStation] = []
         self._cached_at = 0.0
@@ -190,6 +208,18 @@ class KgsLpgClient:
     @property
     def enabled(self) -> bool:
         return bool(self.service_key)
+
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self.snapshot.notice if self._cache else ""
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        """지금 쓰는 목록을 받은 시각."""
+
+        return self.snapshot.as_of if self._cache else None
 
     @property
     def quarantined(self) -> list[QuarantinedStation]:
@@ -234,17 +264,57 @@ class KgsLpgClient:
     def _is_warm(self) -> bool:
         return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
 
+    def _adopt_snapshot(self) -> None:
+        """메모리가 비어 있으면 서버 사본을 올린다(프로세스에서 한 번)."""
+
+        if self._cache:
+            return
+        snapshot = self.snapshot.load()
+        if snapshot is None:
+            return
+        stations = self._ingest([row for row in snapshot.rows if isinstance(row, dict)])
+        if not stations:
+            return
+        self._cache = stations
+        # 받은 지 지난 시간만큼 캐시 시각을 물려, 하루 넘은 사본은 「오래됨」으로 읽힌다.
+        self._cached_at = time.monotonic() - snapshot.age_seconds
+        self.snapshot.adopt(snapshot)
+
     async def all_stations(self) -> list[LpgStation]:
+        """전국 목록. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
         if not self.enabled:
             return []
         if self._is_warm():
             return self._cache
+        self._adopt_snapshot()
+        if self._is_warm():
+            return self._cache
+        if self._cache:
+            # 받은 지 하루 넘은 목록(서버 사본, 또는 오래 켜 둔 서버의 메모리). 그대로
+            # 쓰면서 뒤에서 새로 받는다 — 429 가 뜬 날에도 어제 목록으로 판정한다.
+            self.snapshot.refresh_in_background(self.refresh)
+            if self.snapshot.expired_and_failing:
+                # 7일 넘은 사본인데 새로 받기도 실패했다. 더는 사본으로 답하지 않는다.
+                raise PublicDataAPIError(self.snapshot.outage_message())
+            return self._cache
+        return await self.refresh()
 
+    async def refresh(self, force: bool = False) -> list[LpgStation]:
+        """전국 목록을 API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다. 실패는 예외.
+
+        force 가 아니면 잠금을 기다리는 동안 먼저 들어간 호출이 채운 캐시를 그대로 쓴다.
+        """
+
+        if not self.enabled:
+            return []
         async with self._fill_lock.get():
             # 잠금을 잡은 뒤 다시 확인한다. 먼저 들어간 호출이 이미 채웠으면
             # 재조회하지 않는다(double-checked).
-            if self._is_warm():
+            if not force and self._is_warm():
                 return self._cache
+            # 직전 목록(사본)이 있어야 새 목록이 크게 줄었는지 가릴 수 있다.
+            self._adopt_snapshot()
 
             all_rows: list[dict[str, Any]] = []
             # 조회가 실패하면 예외가 그대로 전파돼 캐시를 건드리지 않는다. 실패를
@@ -260,9 +330,17 @@ class KgsLpgClient:
                     if len(rows) < PAGE_SIZE or page >= total_pages:
                         break
 
+            previous_quarantined = self._quarantined
             stations = self._ingest(all_rows)
+            shrunk = self.snapshot.shrink_reason(len(stations), len(self._cache))
+            if shrunk:
+                self._quarantined = previous_quarantined
+                raise PublicDataAPIError(shrunk)
             self._cache = stations
             self._cached_at = time.monotonic()
+            self.snapshot.mark_live(
+                [{column: row.get(column) for column in SNAPSHOT_COLUMNS} for row in all_rows]
+            )
             return stations
 
     async def _page(

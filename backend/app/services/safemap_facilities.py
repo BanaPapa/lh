@@ -26,13 +26,18 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Callable
+from datetime import datetime
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
 
 from app.models import Coordinates
 from app.services.geo import haversine_meters
+from app.services.safemap import SafemapAPIError
 from app.services.safemap_layers import LAYER_BY_ID, SafemapLayerClient
+from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, SnapshotGuard
 
 # EPSG:3857 (Web Mercator) 반지름. 생활안전지도 x/y 는 이 좌표계다(IF_0033 과 같다).
 _MERCATOR_RADIUS_M = 6378137.0
@@ -210,12 +215,61 @@ PARSER_BY_LAYER: dict[str, Parser] = {
 
 CACHE_TTL_SECONDS = 24 * 3600
 
+# 앱이 쓰는 레이어(1차: IF_0040·0049·0051 · 2차: IF_0022·0031·0034·0035·0038). 서버 사본을
+# 만들어 싣는 범위다 — 서버에 실은 파일 목록(bundled_files)과 야간 갱신(refresh_snapshots)이
+# 이 목록을 따른다.
+SNAPSHOT_LAYER_IDS: tuple[str, ...] = (
+    "IF_0022", "IF_0031", "IF_0034", "IF_0035", "IF_0038", "IF_0040", "IF_0049", "IF_0051",
+)
+
+
+def layer_snapshot_path(layer_id: str) -> Path:
+    """레이어 하나의 서버 사본 경로(backend/data/safemap_layer_IF_0031.json 꼴).
+
+    레이어마다 파일을 따로 둔다 — 한 파일에 모으면 레이어 하나를 새로 받을 때마다
+    환경배출시설(4만7천 곳)까지 통째로 다시 쓰게 된다.
+    """
+
+    return DATA_DIR / f"safemap_layer_{layer_id}.json"
+
+
+def snapshot_row(facility: SafemapFacility) -> dict[str, Any]:
+    return {
+        "id": facility.record_id,
+        "name": facility.name,
+        "addr": facility.address,
+        "kind": facility.kind,
+        "lat": facility.coordinates.lat,
+        "lng": facility.coordinates.lng,
+    }
+
+
+def facility_from_snapshot(layer_id: str, row: Any) -> SafemapFacility | None:
+    if not isinstance(row, dict):
+        return None
+    try:
+        coordinates = Coordinates(lat=float(row["lat"]), lng=float(row["lng"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return SafemapFacility(
+        layer_id=layer_id,
+        record_id=str(row.get("id") or ""),
+        name=str(row.get("name") or ""),
+        address=str(row.get("addr") or ""),
+        kind=str(row.get("kind") or ""),
+        coordinates=coordinates,
+    )
+
 
 class SafemapFacilityFeed:
     """레이어 하나를 전량 받아(24시간 캐시) 반경으로 거른 시설 목록을 준다.
 
     조회 실패는 예외로 올린다(SafemapAPIError). 빈 목록으로 접으면 「시설 없음」과
     구분되지 않아 2차 등급·1차 주석이 조용히 틀어진다.
+
+    서버 사본(2026-10-01): 받아 둔 목록을 파일로 두면 켜지자마자 그것으로 답하고,
+    하루가 지났으면 그대로 쓰면서 뒤에서 새로 받는다(snapshot_store 참고). 경로는 앱
+    배선만 준다.
     """
 
     def __init__(
@@ -224,6 +278,7 @@ class SafemapFacilityFeed:
         layer_id: str,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         if layer_id not in PARSER_BY_LAYER:
             raise ValueError(f"시설 파서가 없는 생활안전지도 레이어: {layer_id}")
@@ -233,8 +288,12 @@ class SafemapFacilityFeed:
             service_key, layer_id, timeout=timeout, transport=transport
         )
         self._parse = PARSER_BY_LAYER[layer_id]
+        self.snapshot = SnapshotGuard(
+            snapshot_path, layer_id, f"생활안전지도 {self.layer.label}({layer_id})"
+        )
         self._cache: list[SafemapFacility] = []
         self._cached_at = 0.0
+        self._fill_lock = LoopSafeLock()
 
     @property
     def enabled(self) -> bool:
@@ -244,24 +303,87 @@ class SafemapFacilityFeed:
     def service_key(self) -> str:
         return self._client.service_key
 
-    @property
-    def has_fast_path(self) -> bool:
-        """전량 캐시가 데워져 즉시 답할 수 있는가. 아니면 첫 호출이 전량 수신(IF_0049 3,820건
-        약 20초)으로 판정을 막으므로, 판정 경로는 False 인 동안 이 레이어를 건너뛴다."""
-
+    def _is_warm(self) -> bool:
         return bool(self._cache) and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS
 
+    @property
+    def has_fast_path(self) -> bool:
+        """즉시 답할 수 있는가 — 메모리에 목록이 있거나 서버 사본이 있다.
+
+        아니면 첫 호출이 전량 수신(IF_0049 3,820건 약 20초)으로 판정을 막으므로, 판정
+        경로는 False 인 동안 이 레이어를 건너뛴다. 하루 넘은 목록도 「있다」로 본다 —
+        그대로 쓰면서 뒤에서 새로 받는다.
+        """
+
+        if not self._cache:
+            self._adopt_snapshot()
+        return bool(self._cache)
+
+    @property
+    def snapshot_notice(self) -> str:
+        """받은 지 하루 넘은 목록(서버 사본)으로 답하고 있으면 그 고지. 아니면 빈 문자열."""
+
+        return self.snapshot.notice if self._cache else ""
+
+    @property
+    def data_as_of(self) -> datetime | None:
+        return self.snapshot.as_of if self._cache else None
+
+    def _adopt_snapshot(self) -> None:
+        """메모리가 비어 있으면 서버 사본을 올린다(프로세스에서 한 번)."""
+
+        if self._cache:
+            return
+        snapshot = self.snapshot.load()
+        if snapshot is None:
+            return
+        facilities = [
+            facility
+            for facility in (facility_from_snapshot(self.layer_id, row) for row in snapshot.rows)
+            if facility is not None
+        ]
+        if not facilities:
+            return
+        self._cache = facilities
+        self._cached_at = time.monotonic() - snapshot.age_seconds
+        self.snapshot.adopt(snapshot)
+
     async def all_facilities(self) -> list[SafemapFacility]:
+        """레이어 전량. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
         if not self.enabled:
             return []
-        if self._cache and time.monotonic() - self._cached_at < CACHE_TTL_SECONDS:
+        if self._is_warm():
             return self._cache
-        rows = await self._client.all_rows()
-        parsed = [self._parse(self.layer_id, row) for row in rows]
-        facilities = [facility for facility in parsed if facility is not None]
-        self._cache = facilities
-        self._cached_at = time.monotonic()
-        return facilities
+        self._adopt_snapshot()
+        if self._is_warm():
+            return self._cache
+        if self._cache:
+            self.snapshot.refresh_in_background(self.refresh)
+            if self.snapshot.expired_and_failing:
+                raise SafemapAPIError(self.snapshot.outage_message())
+            return self._cache
+        return await self.refresh()
+
+    async def refresh(self, force: bool = False) -> list[SafemapFacility]:
+        """레이어 전량을 API 에서 새로 받아 메모리와 서버 사본을 갈아 끼운다. 실패는 예외."""
+
+        if not self.enabled:
+            return []
+        async with self._fill_lock.get():
+            if not force and self._is_warm():
+                return self._cache
+            self._adopt_snapshot()
+            rows = await self._client.fetch_rows()
+            parsed = [self._parse(self.layer_id, row) for row in rows]
+            facilities = [facility for facility in parsed if facility is not None]
+            shrunk = self.snapshot.shrink_reason(len(facilities), len(self._cache))
+            if shrunk:
+                raise SafemapAPIError(shrunk)
+            self._cache = facilities
+            self._cached_at = time.monotonic()
+            self.snapshot.mark_live([snapshot_row(facility) for facility in facilities])
+            return facilities
 
     async def facilities_around(
         self, center: Coordinates, radius_m: float

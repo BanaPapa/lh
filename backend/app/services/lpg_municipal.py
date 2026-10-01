@@ -13,12 +13,18 @@ LPG 판매·저장은 액화석유가스법상 시군구 허가라 행안부 LOC
   구분/업종) 휴리스틱으로 읽는다. 좌표 열이 있는 파일(광진구·미추홀구·남양주 등)은 그것을
   쓰고, 없으면 주소를 카카오로 지오코딩한다.
 - 갱신주기가 연 1회~수시로 제각각이라 폐업 반영이 늦을 수 있다.
+
+서버 사본(2026-10-01): 서버가 켜진 뒤 그 시군구의 첫 심사가 파일을 받고 주소를 지오코딩
+하느라 7초(익산시 실측)를 썼다. 좌표까지 붙인 목록을 데이터셋별로 파일
+(lpg_municipal_cache.json)에 두어 곧바로 쓰고, 하루가 지났으면 뒤에서 새로 받는다. 새로
+받을 때 상호·주소가 그대로인 행은 사본의 좌표를 다시 쓴다(snapshot_store 참고).
 """
 
 from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -29,11 +35,15 @@ from app.services.geo import haversine_meters
 from app.services.http_client import shared_verify
 from app.services.kgs import PublicDataAPIError
 from app.services.single_flight import LoopSafeLock
+from app.services.snapshot_store import DATA_DIR, SnapshotGuard
 
 ODCLOUD_BASE = "https://api.odcloud.kr/api"
 PAGE_SIZE = 1000
 MAX_PAGES = 5
 CACHE_TTL_SECONDS = 24 * 60 * 60
+
+# 데이터셋(시군구 파일)별 좌표 붙인 목록 사본. 앱 배선만 이 경로를 준다.
+DEFAULT_SNAPSHOT_PATH = DATA_DIR / "lpg_municipal_cache.json"
 
 Geocoder = Callable[[str], Awaitable[Coordinates | None]]
 
@@ -232,10 +242,49 @@ class MunicipalLookup(NamedTuple):
     datasets_used: list[str]
     unavailable: dict[str, str]
     geocode_failures: list[GeocodeFailure]
+    # 받은 지 하루 넘은 목록(서버 사본)으로 답했으면 그 고지. 최신이면 빈 문자열.
+    snapshot_notice: str = ""
 
     @property
     def covered(self) -> bool:
         return bool(self.datasets_used)
+
+
+def snapshot_row(facility: MunicipalFacility) -> dict[str, Any]:
+    return {
+        "dataset": facility.dataset_id,
+        "title": facility.dataset_title,
+        "id": facility.record_id,
+        "name": facility.name,
+        "addr": facility.address,
+        "kind": facility.kind,
+        "kind_raw": facility.kind_raw,
+        "status": facility.status,
+        "lat": facility.coordinates.lat,
+        "lng": facility.coordinates.lng,
+    }
+
+
+def facility_from_snapshot(row: Any) -> MunicipalFacility | None:
+    if not isinstance(row, dict):
+        return None
+    try:
+        coordinates = Coordinates(lat=float(row["lat"]), lng=float(row["lng"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return MunicipalFacility(
+        str(row.get("dataset") or ""), str(row.get("title") or ""), str(row.get("id") or ""),
+        str(row.get("name") or ""), str(row.get("addr") or ""), str(row.get("kind") or ""),
+        str(row.get("kind_raw") or ""), str(row.get("status") or ""), coordinates,
+    )
+
+
+def known_coordinates(
+    facilities: list[MunicipalFacility],
+) -> dict[tuple[str, str], Coordinates]:
+    """(상호, 주소) → 직전 목록의 좌표. 새로 받을 때 같은 행은 지오코딩하지 않는다."""
+
+    return {(f.name, f.address): f.coordinates for f in facilities}
 
 
 class LpgMunicipalClient:
@@ -247,6 +296,7 @@ class LpgMunicipalClient:
         geocode: Geocoder | None = None,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        snapshot_path: Path | None = None,
     ) -> None:
         self.service_key = service_key
         self._geocode = geocode
@@ -255,6 +305,16 @@ class LpgMunicipalClient:
         self._cache: dict[str, tuple[list[MunicipalFacility], list[GeocodeFailure], float]] = {}
         self._unavailable: dict[str, str] = {}
         self._fill_lock = LoopSafeLock()
+        # 데이터셋별 서버 사본(한 파일에 데이터셋 ID 를 키로 둔다).
+        self._snapshot_path = snapshot_path
+        self._snapshots: dict[str, SnapshotGuard] = {}
+
+    def snapshot_for(self, dataset: MunicipalDataset) -> SnapshotGuard:
+        guard = self._snapshots.get(dataset.dataset_id)
+        if guard is None:
+            guard = SnapshotGuard(self._snapshot_path, dataset.dataset_id, dataset.title)
+            self._snapshots[dataset.dataset_id] = guard
+        return guard
 
     @property
     def enabled(self) -> bool:
@@ -273,6 +333,7 @@ class LpgMunicipalClient:
         used: list[str] = []
         unavailable: dict[str, str] = {}
         failures: list[GeocodeFailure] = []
+        notices: list[str] = []
         for dataset in datasets_for_address(site_address):
             try:
                 rows, dataset_failures = await self._dataset(dataset)
@@ -283,10 +344,13 @@ class LpgMunicipalClient:
             self._unavailable.pop(dataset.dataset_id, None)
             used.append(dataset.dataset_id)
             failures.extend(dataset_failures)
+            notice = self.snapshot_for(dataset).notice
+            if notice:
+                notices.append(notice)
             facilities.extend(
                 f for f in rows if haversine_meters(center, f.coordinates) <= radius_m
             )
-        return MunicipalLookup(facilities, used, unavailable, failures)
+        return MunicipalLookup(facilities, used, unavailable, failures, " · ".join(notices))
 
     async def probe(self, dataset: MunicipalDataset) -> int:
         """첫 1건으로 승인·생존 확인. 총건수를 돌려준다."""
@@ -300,20 +364,73 @@ class LpgMunicipalClient:
     async def _dataset(
         self, dataset: MunicipalDataset
     ) -> tuple[list[MunicipalFacility], list[GeocodeFailure]]:
-        cached = self._cache.get(dataset.dataset_id)
-        if cached and time.monotonic() - cached[2] < CACHE_TTL_SECONDS:
+        """데이터셋 하나. 메모리 → 서버 사본(하루 넘었으면 뒤에서 갱신) → API 순."""
+
+        if self._is_fresh(dataset):
+            cached = self._cache[dataset.dataset_id]
             return cached[0], cached[1]
+        self._adopt_snapshot(dataset)
+        cached = self._cache.get(dataset.dataset_id)
+        if cached and self._is_fresh(dataset):
+            return cached[0], cached[1]
+        if cached and cached[0]:
+            guard = self.snapshot_for(dataset)
+            guard.refresh_in_background(lambda: self.refresh_dataset(dataset))
+            if guard.expired_and_failing:
+                raise PublicDataAPIError(guard.outage_message())
+            return cached[0], cached[1]
+        return await self.refresh_dataset(dataset)
+
+    def _is_fresh(self, dataset: MunicipalDataset) -> bool:
+        cached = self._cache.get(dataset.dataset_id)
+        return bool(cached) and time.monotonic() - cached[2] < CACHE_TTL_SECONDS
+
+    def _adopt_snapshot(self, dataset: MunicipalDataset) -> None:
+        """이 데이터셋이 메모리에 없으면 서버 사본을 올린다(프로세스에서 한 번)."""
+
+        if dataset.dataset_id in self._cache:
+            return
+        guard = self.snapshot_for(dataset)
+        snapshot = guard.load()
+        if snapshot is None:
+            return
+        facilities = [f for f in map(facility_from_snapshot, snapshot.rows) if f is not None]
+        if not facilities:
+            return
+        self._cache[dataset.dataset_id] = (
+            facilities, [], time.monotonic() - snapshot.age_seconds
+        )
+        guard.adopt(snapshot)
+
+    async def refresh_dataset(
+        self, dataset: MunicipalDataset, force: bool = False
+    ) -> tuple[list[MunicipalFacility], list[GeocodeFailure]]:
+        """데이터셋 하나를 새로 받아 좌표를 붙이고 메모리와 서버 사본을 갈아 끼운다."""
+
         async with self._fill_lock.get():
-            cached = self._cache.get(dataset.dataset_id)
-            if cached and time.monotonic() - cached[2] < CACHE_TTL_SECONDS:
+            if not force and self._is_fresh(dataset):
+                cached = self._cache[dataset.dataset_id]
                 return cached[0], cached[1]
+            self._adopt_snapshot(dataset)
+            previous = self._cache.get(dataset.dataset_id)
+            previous_rows = previous[0] if previous else []
+            guard = self.snapshot_for(dataset)
             rows = await self._fetch_rows(dataset)
-            facilities, failures = await self._geocode_rows(dataset, rows)
+            facilities, failures = await self._geocode_rows(
+                dataset, rows, known_coordinates(previous_rows)
+            )
+            shrunk = guard.shrink_reason(len(facilities), len(previous_rows))
+            if shrunk:
+                raise PublicDataAPIError(shrunk)
             self._cache[dataset.dataset_id] = (facilities, failures, time.monotonic())
+            guard.mark_live([snapshot_row(facility) for facility in facilities])
             return facilities, failures
 
     async def _geocode_rows(
-        self, dataset: MunicipalDataset, rows: list[dict[str, Any]]
+        self,
+        dataset: MunicipalDataset,
+        rows: list[dict[str, Any]],
+        known: dict[tuple[str, str], Coordinates] | None = None,
     ) -> tuple[list[MunicipalFacility], list[GeocodeFailure]]:
         assert self._geocode is not None
         facilities: list[MunicipalFacility] = []
@@ -323,6 +440,9 @@ class LpgMunicipalClient:
             if parsed is None:
                 continue
             coordinates = parsed.coordinates
+            if coordinates is None and known:
+                # 상호·주소가 그대로면 직전 목록의 좌표를 다시 쓴다(지오코딩은 새 주소에만).
+                coordinates = known.get((parsed.name, parsed.address))
             if coordinates is None:
                 for candidate in address_candidates(parsed.address):
                     coordinates = await self._geocode(candidate)

@@ -543,6 +543,9 @@ class FeedResult(NamedTuple):
     # 역 피드만 채운다: 원천이 역과 함께 준 출입구 (역명, 출구 이름, 좌표). VWorld 지하철역
     # 검색은 「○○역3번출입구」를 같은 질의로 돌려준다.
     station_doors: tuple[tuple[str, str, Coordinates], ...] = ()
+    # 서버 사본(받은 지 하루 넘은 전량 목록)으로 답했으면 그 고지. 시설군 비고에 붙여
+    # 실시간 답처럼 보이지 않게 한다(services/snapshot_store). 최신이면 빈 문자열.
+    snapshot_note: str = ""
 
 
 class MeasuredDoor(NamedTuple):
@@ -870,6 +873,13 @@ def _kakao_place(document: dict[str, Any]) -> RawPlace | None:
 
 def _feed_enabled(feed: SafemapFacilityFeed | None) -> bool:
     return feed is not None and feed.enabled
+
+
+def _snapshot_note(feed: object, label: str) -> str:
+    """피드가 서버 사본(받은 지 하루 넘은 목록)으로 답했으면 시설군 비고에 붙일 고지."""
+
+    notice = getattr(feed, "snapshot_notice", "")
+    return f"{label} — {notice}." if isinstance(notice, str) and notice else ""
 
 
 def _layer_places(
@@ -1816,6 +1826,7 @@ class AmenityCollector:
             return FeedResult(
                 _layer_places(rows, lambda r: f"교육,학문 > 학교 > {r.kind}"),
                 SAFEMAP_SCHOOL_SOURCE,
+                snapshot_note=_snapshot_note(self.safemap_schools, "생활안전지도 학교 레이어"),
             )
         except Exception:
             logger.warning("생활안전지도 학교 레이어 실패: 지도 분류로 대체", exc_info=True)
@@ -1852,7 +1863,11 @@ class AmenityCollector:
             )
         )
         # 소방서(IF_0038)는 보강하지 않는다 — 내부망 앱 공공시설에 소방서가 없다.
-        return FeedResult(tuple(places), SAFEMAP_OFFICE_SOURCE)
+        return FeedResult(
+            tuple(places),
+            SAFEMAP_OFFICE_SOURCE,
+            snapshot_note=_snapshot_note(self.safemap_offices, "생활안전지도 관공서 레이어"),
+        )
 
     async def _universities(self, center: Coordinates, radius_m: int) -> FeedResult:
         """대학교 지정 원천: 교육부 대학교 위치(생활안전지도 IF_0034).
@@ -1881,6 +1896,9 @@ class AmenityCollector:
         return FeedResult(
             _layer_places(rows, lambda r: UNIVERSITY_LAYER_CATEGORY),
             SAFEMAP_UNIVERSITY_SOURCE,
+            snapshot_note=_snapshot_note(
+                self.safemap_universities, "생활안전지도 대학교 레이어"
+            ),
         )
 
     async def _designated_hospitals(
@@ -1943,6 +1961,7 @@ class AmenityCollector:
             SAFEMAP_HOSPITAL_SOURCE,
             degraded=bool(ncmc_alert),
             alert=ncmc_alert,
+            snapshot_note=_snapshot_note(self.safemap_hospitals, "생활안전지도 병원 레이어"),
         )
 
     async def _kakao_category(
@@ -2704,6 +2723,14 @@ class AmenityCollector:
                 facilities = _apply_bus_headway(facilities, headways)
                 state = "connected"
                 note = BUS_STOP_HEADWAY_NOTE
+        # 서버 사본(받은 지 하루 넘은 목록)으로 답한 원천은 비고에 기준일을 드러낸다.
+        snapshot_notes = [
+            outcome.snapshot_note
+            for outcome in (results.get(feed) for feed in spec.feeds)
+            if isinstance(outcome, FeedResult) and outcome.snapshot_note
+        ]
+        if snapshot_notes:
+            note = " ".join([note, *dict.fromkeys(snapshot_notes)]).strip()
         return GroupCollection(
             key=key,
             state=state,

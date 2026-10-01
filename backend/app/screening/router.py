@@ -61,7 +61,7 @@ from app.services.public_library import PublicLibraryClient
 from app.services.rail_stations import KorailStationClient
 from app.services.city_parks import CityParkClient
 from app.services.ncmc_hospital import NcmcHospitalClient
-from app.services.safemap_facilities import SafemapFacilityFeed
+from app.services.safemap_facilities import SafemapFacilityFeed, layer_snapshot_path
 from app.services.seoul_bus import SeoulBusStopClient
 from app.services.tago import TagoClient
 from app.services.transfer_center import TransferCenterClient
@@ -107,6 +107,14 @@ def get_cadastral_store() -> CadastralLocalStore:
     return CadastralLocalStore()
 
 
+def _layer_feed(service_key: str, layer_id: str) -> SafemapFacilityFeed:
+    """생활안전지도 시설 레이어 피드(서버 사본 경로 포함). 사본 경로는 앱 배선만 준다."""
+
+    return SafemapFacilityFeed(
+        service_key, layer_id, snapshot_path=layer_snapshot_path(layer_id)
+    )
+
+
 @lru_cache
 def get_screening_service() -> ScreeningService:
     config = get_settings()
@@ -149,11 +157,12 @@ def get_screening_service() -> ScreeningService:
             seoul_bus=SeoulBusStopClient(config.seoul_open_data_key),
             # 생활안전지도 시설 레이어(2026-09-17 승인). 초·중·고·관공서는 지정 원천,
             # 대학교는 후보 보강, 종합병원은 국립중앙의료원 시도 조회의 전국본 폴백.
-            safemap_schools=SafemapFacilityFeed(config.safemap_api_key, "IF_0035"),
-            safemap_universities=SafemapFacilityFeed(config.safemap_api_key, "IF_0034"),
-            safemap_offices=SafemapFacilityFeed(config.safemap_api_key, "IF_0031"),
-            safemap_hospitals=SafemapFacilityFeed(config.safemap_api_key, "IF_0022"),
-            safemap_fire=SafemapFacilityFeed(config.safemap_api_key, "IF_0038"),
+            # 전량 목록 서버 사본을 붙인다 — 켜지자마자 쓰고 하루 지나면 뒤에서 새로 받는다.
+            safemap_schools=_layer_feed(config.safemap_api_key, "IF_0035"),
+            safemap_universities=_layer_feed(config.safemap_api_key, "IF_0034"),
+            safemap_offices=_layer_feed(config.safemap_api_key, "IF_0031"),
+            safemap_hospitals=_layer_feed(config.safemap_api_key, "IF_0022"),
+            safemap_fire=_layer_feed(config.safemap_api_key, "IF_0038"),
         ),
         demo_mode=config.demo_mode,
     )

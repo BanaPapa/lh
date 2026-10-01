@@ -115,3 +115,41 @@ async def test_refresh_stale_keeps_old_rows_when_download_keeps_failing(
 
     # 받기에 실패해도 어제 원장은 지우지 않는다.
     assert target.key in store.ready_datasets()
+
+
+@pytest.mark.asyncio
+async def test_refresh_keeps_old_rows_when_new_download_shrinks_abnormally(
+    tmp_path: Path,
+) -> None:
+    """포털이 오류를 빈(또는 일부) 목록으로 주면 받기는 「성공」한다. 그런 원장으로 갈아 끼우면
+    야간 갱신 뒤 시설이 통째로 사라진다 — 기존 적재의 절반에 못 미치면 실패로 치고 둔다."""
+
+    from app.sync_facilities import refresh
+
+    store = FacilityStore(tmp_path / "f.db")
+    shrinking, healthy = DATASETS[0], DATASETS[1]
+    for dataset in (shrinking, healthy):
+        store.replace_dataset(
+            dataset.key,
+            [_record(dataset.key)._replace(record_id=f"{dataset.key}-{n}") for n in range(10)],
+        )
+
+    class ShrinkingClient:
+        async def fetch_all(self, dataset: LocalDataSet) -> list[LocalDataRecord]:
+            count = 0 if dataset.key == shrinking.key else 9
+            return [
+                _record(dataset.key)._replace(record_id=f"{dataset.key}-new-{n}")
+                for n in range(count)
+            ]
+
+    messages: list[str] = []
+    failed = await refresh(
+        ShrinkingClient(), store, [shrinking, healthy],  # type: ignore[arg-type]
+        report=messages.append, pause_seconds=0,
+    )
+
+    counts = {state.dataset_key: state.record_count for state in store.sync_states()}
+    assert failed == [shrinking]
+    assert counts[shrinking.key] == 10  # 기존 적재 유지
+    assert counts[healthy.key] == 9     # 정상 범위의 변동은 그대로 갈아 끼운다
+    assert any("기존 적재를 유지" in message for message in messages)

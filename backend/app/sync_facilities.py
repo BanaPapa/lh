@@ -27,6 +27,9 @@ logger = logging.getLogger("uvicorn.error")
 # 원장 갱신 주기. 포털 원장이 하루 한 번 바뀌므로 그보다 자주 받을 이유가 없다.
 MAX_AGE = timedelta(hours=24)
 
+# 새로 받은 원장이 기존 적재의 이 비율에 못 미치면 응답 이상으로 보고 갈아 끼우지 않는다.
+MIN_KEEP_RATIO = 0.5
+
 # 데이터셋을 연달아 받으면 포털이 429 를 낸다. 사이에 쉬고, 실패분은 한 번 더 받는다.
 PAUSE_BETWEEN_DATASETS_SECONDS = 3.0
 RETRY_FAILED_AFTER_SECONDS = 60.0
@@ -75,10 +78,13 @@ async def refresh(
     """데이터셋을 차례로 받아 갈아끼운다. 실패한 데이터셋을 돌려준다.
 
     한 데이터셋 실패가 나머지를 막지 않는다. 실패분은 기존 적재를 그대로 둔다 —
-    어제 원장이 비어 있는 원장보다 낫다.
+    어제 원장이 비어 있는 원장보다 낫다. 받기는 성공했는데 건수가 기존 적재의 절반에
+    못 미치는 응답(포털이 오류를 빈 목록으로 줄 때 0건이 온다)도 실패로 치고 기존
+    적재를 지우지 않는다(2026-10-01: 야간 갱신이 줄어든 원장을 저장하지 않게).
     """
 
     pause = PAUSE_BETWEEN_DATASETS_SECONDS if pause_seconds is None else pause_seconds
+    previous_counts = {state.dataset_key: state.record_count for state in store.sync_states()}
     failed: list[LocalDataSet] = []
     for index, dataset in enumerate(datasets):
         if index and pause:
@@ -88,6 +94,14 @@ async def refresh(
             records = await client.fetch_all(dataset)
         except Exception as exc:
             report(f"  {dataset.label:<24} 실패: {exc}")
+            failed.append(dataset)
+            continue
+        previous = previous_counts.get(dataset.key, 0)
+        if previous > 0 and len(records) < previous * MIN_KEEP_RATIO:
+            report(
+                f"  {dataset.label:<24} 실패: 응답 이상 — 새 원장 {len(records):,}건이 기존 "
+                f"{previous:,}건의 {int(MIN_KEEP_RATIO * 100)}%에 못 미쳐 기존 적재를 유지합니다"
+            )
             failed.append(dataset)
             continue
         # 수만 행 적재는 동기 sqlite 쓰기라 이벤트 루프를 막지 않게 스레드로 뺀다.
