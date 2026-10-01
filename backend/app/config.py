@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # 수시로 새로 켜지고 디스크가 임시라, 켤 때마다 58MB 를 다시 받게 된다. 배포에서는
     # 끄고 이미지를 만들 때 최신 원장을 구워 넣는다.
     facility_sync_on_startup: bool = True
+    # 사본 갱신 빌드가 「업데이트 중」 상태 파일을 두는 버킷(app/maintenance.py). 비면 확인하지 않는다.
+    snapshot_bucket: str = ""
+    # 이 시각(ISO)까지 「업데이트 중」으로 본다 — 로컬 시험·수동 점검용.
+    maintenance_until: str = ""
     # 누구나 접속하는 배포에서 공공 API 쿼터를 지키는 접속자(IP)별 심사 시작 제한.
     # 0 이면 제한하지 않는다(로컬 기본).
     rate_limit_per_minute: int = 0

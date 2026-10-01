@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from app.kst import KST
 from app.config import get_settings
+from app.maintenance import ensure_not_updating
 from app.hazard_review.models import HazardParcelResolveRequest, HazardReviewResult, HazardSite
 from app.hazard_review.multi_parcel import representative_address
 from app.hazard_review.parcels import ParcelResolver
@@ -807,6 +808,7 @@ async def start_batch(
         raise HTTPException(
             status_code=400, detail=f"한 번에 {limit}건까지 심사할 수 있습니다({len(payload.rows)}건)."
         )
+    await ensure_not_updating()
     await _await_warmup(screening)
     evict_finished_batches()
     batch_id = str(uuid4())

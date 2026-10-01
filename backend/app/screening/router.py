@@ -14,6 +14,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.maintenance import ensure_not_updating
 from app.hazard_review.router import (
     ensure_api_sources_warmup,
     ensure_local_sources_warmup,
@@ -371,6 +372,7 @@ async def screen(
     payload: ScreeningRequest,
     service: ScreeningService = Depends(get_screening_service),
 ) -> ScreeningResult:
+    await ensure_not_updating()
     await _await_warmup(service)
     try:
         result = await service.screen(payload)
@@ -404,6 +406,7 @@ async def start_screening_job(
     # 나가고, 두 번째 심사부터 정상이 된다. 같은 사업지의 첫 판정과 두 번째 판정이
     # 다르게 나오는 건 검증 도구로서 결격이다. 그래서 기다린다 — 캐시가 있으면
     # 1초 남짓이고, 캐시가 없는 최초 1회(실측 103초)만 상한에서 끊고 진행한다.
+    await ensure_not_updating()
     await _await_warmup(service)
     job_id = str(uuid4())
     screening_jobs[job_id] = ScreeningJobStatus(

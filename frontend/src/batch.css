@@ -587,3 +587,40 @@
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* 자료 업데이트 안내 — 닫기 버튼이 없고, 끝나면 스스로 닫힌다. */
+.maintenance-modal {
+  width: min(460px, 100%);
+}
+
+.maintenance-modal p:not(:first-child) {
+  font-size: 15px;
+}
+
+.maintenance-modal .maintenance-modal-times {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.maintenance-modal .maintenance-modal-wait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.maintenance-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-2);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: maintenance-spin 900ms linear infinite;
+}
+
+@keyframes maintenance-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

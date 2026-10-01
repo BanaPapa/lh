@@ -1,7 +1,8 @@
 import { MapPin } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { getProviderStatus, searchAddress } from "./api";
+import { getMaintenanceStatus, getProviderStatus, searchAddress } from "./api";
+import type { MaintenanceStatus } from "./api";
 import { useTheme } from "./theme";
 import { MapPanel } from "./components/MapPanel";
 import { TopSearchBar } from "./components/TopSearchBar";
@@ -186,6 +187,27 @@ function App() {
   const [batchOpen, setBatchOpen] = useState(false);
   // 배포 테스트 서버에서는 일괄 심사 전에 테스트·건수 제한 안내를 먼저 띄운다.
   const [batchNoticeOpen, setBatchNoticeOpen] = useState(false);
+  // 자료 업데이트(매일 오전 사본 갱신) 중 안내. 업데이트 중이면 20초마다, 아니면 1분마다 확인한다.
+  // 이미 돌고 있는 심사·일괄 심사는 가리지 않는다(서버가 끝나길 기다렸다가 바뀐다).
+  const [maintenance, setMaintenance] = useState<MaintenanceStatus | null>(null);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const updating = Boolean(maintenance?.updating);
+  useEffect(() => {
+    let cancelled = false;
+    const check = () => {
+      getMaintenanceStatus()
+        .then((status) => {
+          if (!cancelled) setMaintenance(status);
+        })
+        .catch(() => undefined);
+    };
+    check();
+    const timer = window.setInterval(check, updating ? 20_000 : 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [updating]);
   const [selectedHazardFindingId, setSelectedHazardFindingId] =
     useState<string | null>(null);
   const [selectedHazardFacilityId, setSelectedHazardFacilityId] =
@@ -985,6 +1007,29 @@ function App() {
         )}
       </div>
 
+      {updating && !screeningRunning && !batchRunning && (
+        <div className="api-keys-backdrop is-layered" role="presentation">
+          <section
+            className="test-notice-modal maintenance-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-label="자료 업데이트 안내"
+          >
+            <p>자료 업데이트 중입니다</p>
+            <p>{maintenance?.message}</p>
+            <p className="maintenance-modal-times">
+              {maintenance?.started_at && <>시작 {maintenance.started_at}</>}
+              {maintenance?.started_at && maintenance?.expected_end && " · "}
+              {maintenance?.expected_end && <>예상 종료 {maintenance.expected_end}</>}
+            </p>
+            <p className="maintenance-modal-wait">
+              <span className="maintenance-spinner" aria-hidden="true" />
+              끝나면 이 창이 자동으로 닫힙니다.
+            </p>
+          </section>
+        </div>
+      )}
+
       {batchNoticeOpen && (
         <div
           className="api-keys-backdrop"
@@ -1017,6 +1062,7 @@ function App() {
 
       <BatchPanel
         open={batchOpen}
+        onRunningChange={setBatchRunning}
         covered={sheetOpen}
         onClose={() => setBatchOpen(false)}
         applicationTypes={hazardApplicationTypes}

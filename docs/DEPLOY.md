@@ -103,3 +103,30 @@ VWorld 키는 서버에서만 부르고 `VWORLD_DOMAIN`(지금 등록된 값)을
   `deploy/deploy-backend.ps1` 의 `$deploySettings` 에서 바꿔 다시 배포한다.
 - **비용 확인**: Google Cloud 콘솔 → 결제 → 예산 및 알림에서 예산(예: 월 5천원)과 알림을
   걸어 두면 예상 밖 과금을 바로 안다.
+
+## 사본 갱신 — 매일 오전 9시 (GCP, 2026-10-01)
+
+공공 API 로 받아 서버에 두는 사본(인허가 원장 `facilities.db`, 산단공 등록공장 목록, 생활안전지도
+주유시설, LPG 충전소, 지오코딩 캐시 등)은 매일 오전 9시 GCP 에서 새로 만들어 배포한다(새벽에는
+정부 API 가 점검으로 먹통인 일이 잦아 오전으로 잡았다).
+
+- 구성: Cloud Scheduler `lh-nightly-snapshots`(매일 09:00 KST) → Cloud Build(`deploy/nightly-refresh.yaml`,
+  asia-northeast3) → Cloud Run 새 리비전.
+- 빌드가 하는 일: ① 서비스의 환경변수(API 키)와 버킷 `gs://<프로젝트>-snapshots/snapshots/` 의 지난
+  사본을 가져온다 ② 코드 이미지(`:code`) 안에서 `python -m app.refresh_snapshots` 를 돌린다
+  ③ 새 사본을 버킷에 올리고, 코드 이미지 위에 사본만 덮은 이미지(`:nightly-<빌드ID>`)를 배포한다.
+  갱신이 전부 실패했거나 인허가 원장이 20% 넘게 줄면 배포하지 않는다(기존 리비전 유지).
+- 업데이트 중 안내: 빌드가 시작할 때 버킷에 `status/maintenance.json` 을 두고 끝나면 지운다. 서버
+  (`app/maintenance.py`, 환경변수 `SNAPSHOT_BUCKET`)가 이를 읽어 `GET /api/status/maintenance` 로 알리고,
+  화면은 닫을 수 없는 안내 모달을 띄워 새 심사를 미룬다(끝나면 자동으로 닫힘). 서버도 새 심사 시작을
+  503 으로 거절한다. 이미 돌던 심사는 가리지 않고, 빌드는 배포 전에 그 심사가 끝나길 최대 10분 기다린다.
+  빌드가 죽어 표시가 남아도 45분 뒤에는 무시된다.
+- 만들기/고치기: `powershell -ExecutionPolicy Bypass -File deploy\setup-nightly.ps1 -Project <프로젝트ID>`
+  (`nightly-refresh.yaml` 을 고친 뒤 다시 돌리면 스케줄러에 반영된다).
+- 지금 한 번 돌리기: `gcloud scheduler jobs run lh-nightly-snapshots --project <프로젝트ID> --location asia-northeast3`
+- 수동 배포(`deploy-backend.ps1`)는 배포 전에 버킷의 더 새로운 사본을 `backend/data` 로 받고, 배포 뒤
+  이미지에 `:code` 태그를 붙이고 로컬 사본을 버킷에 올린다. 그래서 수동 배포가 밤사이 갱신분을 되돌리지 않는다.
+- git 에 있는 자료(CSV·LH 개별 맞춤)와 관리자 설정(`rule_overrides.json`)은 야간 작업이 건드리지 않는다.
+  늘 마지막 수동 배포의 것을 쓴다.
+- 비용: Cloud Build 무료 한도(월 2,500분) 안, 버킷·이미지 보관 월 수백 원 수준. 야간 이미지는 최근 5장과
+  `:code` 만 남기고 7일 지난 것은 지운다.

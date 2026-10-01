@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
 from app.hazard_review.multi_parcel import representative_address
+from app.maintenance import MaintenanceState, maintenance_state
 from app.hazard_review.router import router as hazard_review_router
 from app.models import GeocodeResponse
 from app.screening.batch import router as screening_batch_router
@@ -127,6 +128,20 @@ async def provider_status(config: Settings = Depends(get_settings)) -> dict[str,
             else ""
         ),
     }
+
+
+@app.get("/api/status/maintenance", response_model=MaintenanceState)
+async def maintenance_status(config: Settings = Depends(get_settings)) -> MaintenanceState:
+    """자료 업데이트(사본 갱신) 중인가. 화면이 안내 모달을 띄우고 새 심사를 잠깐 미룬다."""
+
+    from app.screening.batch import batches
+    from app.screening.router import screening_jobs
+
+    state = await maintenance_state(config)
+    state.active_jobs = sum(
+        1 for job in screening_jobs.values() if job.status in ("queued", "running")
+    ) + sum(1 for batch in batches.values() if batch.status in ("queued", "running"))
+    return state
 
 
 # 배포 서버에서 외부 원천까지 연결되는지 잰다(원천 장애 진단용). 고정된 주소만

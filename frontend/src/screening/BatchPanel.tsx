@@ -31,6 +31,8 @@ interface BatchPanelProps {
    * 반응하지 않는다.
    */
   covered?: boolean;
+  /** 일괄 심사가 돌고 있는지 알린다(자료 업데이트 안내가 진행 중인 심사를 가리지 않게). */
+  onRunningChange?: (running: boolean) => void;
   onClose: () => void;
   applicationTypes: HazardApplicationTypesResponse | null;
   defaultHousingType: HazardHousingType;
@@ -74,6 +76,7 @@ function criterionText(row: BatchRowStatus, key: string): string {
 export function BatchPanel({
   open,
   covered = false,
+  onRunningChange,
   onClose,
   applicationTypes,
   defaultHousingType,
@@ -118,6 +121,9 @@ export function BatchPanel({
 
   // 진행 중이면 서버 상태를 주기적으로 받아온다.
   const running = batch !== null && (batch.status === "queued" || batch.status === "running");
+  useEffect(() => {
+    onRunningChange?.(running);
+  }, [running, onRunningChange]);
   useEffect(() => {
     if (!running || !batch) return;
     let cancelled = false;

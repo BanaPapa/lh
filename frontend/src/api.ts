@@ -126,6 +126,19 @@ export function getProviderStatus(): Promise<ProviderStatus> {
   return request<ProviderStatus>("/api/status/providers");
 }
 
+export interface MaintenanceStatus {
+  updating: boolean;
+  message: string;
+  started_at: string;
+  expected_end: string;
+  active_jobs: number;
+}
+
+// 자료 업데이트(매일 오전 사본 갱신) 중인가. 업데이트 중이면 화면이 안내 모달로 새 심사를 미룬다.
+export function getMaintenanceStatus(): Promise<MaintenanceStatus> {
+  return request<MaintenanceStatus>("/api/status/maintenance");
+}
+
 export function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/api/health");
 }

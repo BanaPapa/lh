@@ -1,0 +1,112 @@
+# 사본 갱신 — Cloud Scheduler 가 매일 오전 9시 이 빌드를 Cloud Build 에 넣는다(새벽에는 정부 API 가
+# 점검으로 먹통인 일이 잦다). 도는 동안 버킷에 「업데이트 중」 표시를 두어 화면이 새 심사를 미룬다.
+#
+#   1) 배포된 서비스의 환경변수(API 키)와 버킷의 지난 사본을 가져온다.
+#   2) 코드 이미지(:code — deploy-backend.ps1 이 배포할 때마다 붙인다) 안에서
+#      `python -m app.refresh_snapshots` 를 돌려 사본을 새로 만든다.
+#   3) 새 사본을 버킷에 올리고, 코드 이미지 위에 사본만 덮은 이미지를 만들어 배포한다.
+#
+# 사본·캐시 파일 목록은 코드가 정한다(`--list-files`). git 에 있는 자료(CSV·LH 개별 맞춤·
+# 관리자 설정)는 늘 코드 이미지 것을 쓴다. 키는 이미지에 굽지 않는다(실행 때만 넘긴다).
+# 수동 실행: gcloud builds submit --no-source --config deploy/nightly-refresh.yaml
+#            --region asia-northeast3 --project lh-test-510113
+substitutions:
+  _REGION: asia-northeast3
+  _SERVICE: lh-screening-api
+  _BUCKET: lh-test-510113-snapshots
+  _IMAGE: asia-northeast3-docker.pkg.dev/lh-test-510113/cloud-run-source-deploy/lh-screening-api
+timeout: 5400s
+options:
+  logging: CLOUD_LOGGING_ONLY
+serviceAccount: projects/lh-test-510113/serviceAccounts/117202716743-compute@developer.gserviceaccount.com
+steps:
+  - id: prepare
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        gcloud run services describe ${_SERVICE} --region ${_REGION} --format=json > /workspace/svc.json
+        python3 - <<'PY'
+        import json
+        svc = json.load(open("/workspace/svc.json"))
+        env = svc["spec"]["template"]["spec"]["containers"][0].get("env", [])
+        with open("/workspace/env.list", "w", encoding="utf-8") as handle:
+            for item in env:
+                handle.write(f"{item['name']}={item.get('value', '')}\n")
+        print("env vars:", len(env))
+        PY
+        mkdir -p /workspace/snap /workspace/out
+        gcloud storage cp "gs://${_BUCKET}/snapshots/*" /workspace/snap/ || echo "버킷에 지난 사본이 없습니다(첫 실행)."
+        ls -la /workspace/snap
+        # 「업데이트 중」 표시(app/maintenance.py 가 읽는다). 빌드가 죽어도 expires_at 뒤에는 무시된다.
+        now=$$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        end=$$(date -u -d '+20 minutes' +%Y-%m-%dT%H:%M:%SZ)
+        exp=$$(date -u -d '+45 minutes' +%Y-%m-%dT%H:%M:%SZ)
+        printf '{"started_at":"%s","expected_end":"%s","expires_at":"%s","build":"%s"}' "$$now" "$$end" "$$exp" "$BUILD_ID" > /workspace/maintenance.json
+        gcloud storage cp /workspace/maintenance.json "gs://${_BUCKET}/status/maintenance.json"
+
+  - id: refresh
+    name: gcr.io/cloud-builders/docker
+    # 실패해도 다음 단계(표시 지우기)는 돌아야 한다. 성공 여부는 /workspace/refresh_ok 로 넘긴다.
+    allowFailure: true
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        CODE=${_IMAGE}:code
+        docker pull -q $$CODE
+        FILES=$$(docker run --rm $$CODE python -m app.refresh_snapshots --list-files)
+        echo "사본 파일: $$FILES"
+        docker create --name refresh --env-file /workspace/env.list $$CODE python -m app.refresh_snapshots
+        for f in $$FILES; do
+          if [ -f "/workspace/snap/$$f" ]; then docker cp "/workspace/snap/$$f" "refresh:/app/data/$$f"; fi
+        done
+        docker start -a refresh | tee /workspace/refresh.log
+        for f in $$FILES; do
+          docker cp "refresh:/app/data/$$f" "/workspace/out/$$f" || echo "없음: $$f"
+        done
+        # 결과 점검 — 전부 실패했거나 인허가 원장이 크게 줄었으면 배포하지 않는다.
+        grep -q "^REFRESH_RESULT ok=[1-9]" /workspace/refresh.log || { echo "갱신에 성공한 사본이 없습니다."; exit 1; }
+        if [ -f /workspace/snap/facilities.db ] && [ -f /workspace/out/facilities.db ]; then
+          old=$$(stat -c %s /workspace/snap/facilities.db); new=$$(stat -c %s /workspace/out/facilities.db)
+          echo "facilities.db $$old -> $$new bytes"
+          if [ $$((new * 10)) -lt $$((old * 8)) ]; then echo "인허가 원장이 20% 넘게 줄었습니다. 배포를 멈춥니다."; exit 1; fi
+        fi
+        printf 'FROM %s\nCOPY out/ /app/data/\n' "$$CODE" > /workspace/Dockerfile
+        docker build -q -t ${_IMAGE}:nightly-$BUILD_ID -t ${_IMAGE}:nightly -f /workspace/Dockerfile /workspace
+        docker push -q ${_IMAGE}:nightly-$BUILD_ID
+        docker push -q ${_IMAGE}:nightly
+        touch /workspace/refresh_ok
+
+  - id: publish
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -uo pipefail
+        status=0
+        if [ -f /workspace/refresh_ok ]; then
+          (
+            set -e
+            gcloud storage cp /workspace/out/* "gs://${_BUCKET}/snapshots/"
+            url=$$(gcloud run services describe ${_SERVICE} --region ${_REGION} --format='value(status.url)')
+            # 돌고 있는 심사가 끝나길 기다린다(최대 10분) — 새 버전으로 바뀌면 돌던 심사가 끊긴다.
+            for i in $$(seq 1 60); do
+              n=$$(curl -fsS "$$url/api/status/maintenance" | python3 -c "import sys,json; print(json.load(sys.stdin).get('active_jobs', 0))" 2>/dev/null || echo 0)
+              if [ "$$n" = "0" ]; then break; fi
+              echo "진행 중인 심사 $$n건 — 끝나길 기다립니다."; sleep 10
+            done
+            gcloud run deploy ${_SERVICE} --image ${_IMAGE}:nightly-$BUILD_ID --region ${_REGION} --quiet
+            curl -fsS "$$url/api/health" && echo && echo "사본 갱신 배포 완료"
+          ) || status=1
+        else
+          echo "사본 갱신이 실패해 배포하지 않습니다(기존 버전 유지)."
+          status=1
+        fi
+        gcloud storage cp /workspace/refresh.log "gs://${_BUCKET}/logs/refresh-$BUILD_ID.log" || true
+        gcloud storage rm "gs://${_BUCKET}/status/maintenance.json" || true
+        exit $$status

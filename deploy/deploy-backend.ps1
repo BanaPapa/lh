@@ -39,8 +39,18 @@ $deploySettings = [ordered]@{
   RATE_LIMIT_PER_MINUTE     = "3"      # 접속자당 1분에 심사 시작 3건
   RATE_LIMIT_PER_DAY        = "40"     # 접속자당 하루 40건
   BATCH_MAX_ROWS            = "20"     # 일괄 심사 한 번에 20건 (frontend TEST_BATCH_LIMIT 와 같게)
+  SNAPSHOT_BUCKET           = "$Project-snapshots"  # 사본 갱신 빌드의 「업데이트 중」 표시를 읽는 버킷
 }
 foreach ($k in $deploySettings.Keys) { $values[$k] = $deploySettings[$k] }
+
+# 야간 사본 갱신(deploy\setup-nightly.ps1)과 같은 버킷을 쓴다. 버킷의 사본이 로컬보다
+# 새것이면 먼저 받아, 수동 배포가 밤사이 갱신된 자료를 옛것으로 되돌리지 않게 한다.
+$bucket = "$Project-snapshots"
+$dataDir = Join-Path $root "backend\data"
+$hasBucket = (gcloud storage buckets list --project $Project --format "value(name)") -contains $bucket
+if ($hasBucket) {
+  gcloud storage rsync "gs://$bucket/snapshots" $dataDir --skip-if-dest-has-newer-mtime --project $Project
+}
 
 $yaml = Join-Path $env:TEMP "lh-cloudrun-env.yaml"
 $lines = foreach ($k in $values.Keys) { "{0}: '{1}'" -f $k, ($values[$k] -replace "'", "''") }
@@ -61,3 +71,23 @@ try {
 } finally {
   Remove-Item $yaml -ErrorAction SilentlyContinue
 }
+if ($LASTEXITCODE -ne 0) { throw "배포에 실패했습니다." }
+
+# 방금 배포한 이미지를 :code 로 표시한다 — 야간 사본 갱신이 이 이미지 위에 사본만 덮는다.
+$image = gcloud run services describe $Service --project $Project --region $Region `
+  --format "value(spec.template.spec.containers[0].image)"
+$repo = ($image -split "@")[0]
+gcloud artifacts docker tags add $image "${repo}:code" --project $Project --quiet
+
+# 로컬 사본(인허가 원장·등록공장 목록 등)을 버킷에 올려 야간 갱신의 출발점으로 삼는다.
+if ($hasBucket) {
+  $python = Join-Path $root "backend\.venv\Scripts\python.exe"
+  Push-Location (Join-Path $root "backend")
+  $files = & $python -m app.refresh_snapshots --list-files
+  Pop-Location
+  foreach ($f in $files) {
+    $path = Join-Path $dataDir $f
+    if (Test-Path $path) { gcloud storage cp $path "gs://$bucket/snapshots/$f" --project $Project --quiet }
+  }
+}
+
